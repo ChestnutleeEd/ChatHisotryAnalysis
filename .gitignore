@@ -1,0 +1,18 @@
+# Only synthetic fixtures may be committed under data/mock/.
+# Never commit real CipherTalk or WeChat exports.
+.codex/
+data/private/
+data/exports/
+uploads/
+outputs/
+*.xlsx
+*.xls
+*.dmg
+*.pkg
+*.exe
+.env
+.DS_Store
+
+# Python-generated local files
+__pycache__/
+*.py[cod]
