@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Callable, TypeVar
 
+from .input_preflight import InputSelection, PreflightedInputs, preflight_inputs
 from .startup import StartupGate
 
 
@@ -58,3 +59,11 @@ def run_startup_check() -> None:
     """Use the production source-access root with a no-op readiness continuation."""
 
     run_source_operation(lambda authorization: None)
+
+
+def run_input_preflight(selection: InputSelection) -> PreflightedInputs:
+    """Validate selected paths only after the complete production startup gate."""
+
+    return run_source_operation(
+        lambda authorization: preflight_inputs(selection),
+    )

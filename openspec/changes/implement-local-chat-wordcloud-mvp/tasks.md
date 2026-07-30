@@ -14,9 +14,9 @@
 
 ## 2. CLI Input Roles and Capacity Preflight
 
-- [ ] 2.1 Implement repeated explicit `--annual-source`, repeated optional `--overlap-verification`, and required `--output-dir` arguments.
-- [ ] 2.2 Reject role inference from filenames or directory names and reject invocations without at least one annual source.
-- [ ] 2.3 Validate that every source is a readable regular local file and the output target is under a Git-ignored local path.
+- [x] 2.1 Implement repeated explicit `--annual-source`, repeated optional `--overlap-verification`, and required `--output-dir` arguments.
+- [x] 2.2 Reject role inference from filenames or directory names and reject invocations without at least one annual source.
+- [x] 2.3 Validate that every source is a readable regular local file and the output target is under a Git-ignored local path.
 - [ ] 2.4 Enforce the inclusive 536,870,912-byte per-raw-file limit before parsing.
 - [ ] 2.5 Enforce the inclusive 20 annual-source-file limit before parsing.
 - [ ] 2.6 Enforce the inclusive 2,147,483,648-byte aggregate raw-input limit across both roles.
