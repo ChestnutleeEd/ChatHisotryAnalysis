@@ -1,6 +1,6 @@
 # ChatHisotryAnalysis
 
-本项目用于开发和验证本地聊天历史分析能力。当前阶段包含可复现的合成数据基线、本地 Python 预处理器的可信启动边界、CipherTalk `detailed-json` 三遍流式验证、单消息分类与文本/发送者/时间规范化，以及只使用合成探针的本地前端基础设施；尚不包含 SQLite、跨文件去重/合并、NDJSON、manifest、完整词云业务应用、后端 API、数据库解密或微信/CipherTalk 连接功能。
+本项目用于开发和验证本地聊天历史分析能力。当前阶段包含可复现的合成数据基线、本地 Python 预处理器的可信启动边界、CipherTalk `detailed-json` 三遍流式验证、消息规范化、私有 SQLite 暂存、跨文件去重/合并、确定性 NDJSON/manifest 和原子发布，以及只使用合成探针的本地前端基础设施；尚不包含浏览器 normalized-file 导入、Worker 分析、完整词云业务应用、Stage 7 通用进度/SIGINT 取消、后端 API、数据库解密或微信/CipherTalk 连接功能。
 
 ## 当前阶段：合成数据基线
 
@@ -44,20 +44,44 @@ python3 scripts/generate_mock_chat.py \
 
 该命令只验证运行时、保留的官方 `ijson` 制品、已安装包字节、原生 `yajl2_c` 后端和内存解析器自检；它不接受、打开或处理 CipherTalk 文件。项目元数据允许 Python 3.9+ 安装，仅用于让已安装的兼容入口在不支持的解释器上输出稳定拒绝；应用运行时仍严格限定为 CPython 3.12.x/macOS/arm64。
 
-## CipherTalk 流式验证
+## CipherTalk 本地预处理
 
-`preprocess` 当前完成 Stage 4 的只读流式规范化边界：
+`preprocess` 完成 Stages 2–6 的流式验证、最小化、去重和原子输出：
 
 ```bash
 <external-venv>/bin/chat-history-analysis preprocess \
   --annual-source <annual-detailed-json> \
   --overlap-verification <optional-verification-detailed-json> \
-  --output-dir <git-ignored-future-output-directory>
+  --output-dir <git-ignored-absent-dataset-directory>
 ```
 
-`--annual-source` 和 `--overlap-verification` 可重复。每个 source 依次执行 binary SHA-256/strict UTF-8、`yajl2_c` validation/range、ranked staging stream 三遍；每个后续 pass 都复核内容 hash 与首遍文件身份。全局 raw message limit 是包含两种角色的 2,000,000 条，第 2,000,001 条立即中止。验证结果只保留 source role/ordinal、byte/hash evidence、消息数、实际时间范围、file rank 和假名化 conversation fingerprint，不保留消息正文。
+`--annual-source` 和 `--overlap-verification` 可重复。每个 source 依次执行 binary SHA-256/strict UTF-8、`yajl2_c` validation/range、ranked staging stream，并在 final promotion 前再次执行 binary digest/identity revalidation；每个后续 pass 都复核内容 hash 与首遍文件身份。全局 raw message limit 是包含两种角色的 2,000,000 条，第 2,000,001 条立即中止。验证结果只保留 source role/ordinal、byte/hash evidence、消息数、实际时间范围、file rank 和假名化 conversation fingerprint，不保留消息正文。
 
-第三遍 ranked staging stream 会逐条执行完整 `chatLabType` 映射、safe-integer `localType` 验证、精确文本资格、占位符/XML/URL 过滤、`isSend` 双方角色映射和固定 UTC+08:00 时间一致性检查。Production sink 只保留合格/跳过/警告聚合计数，当前正文在回调结束后立即丢弃；recoverable record 不阻断后续流式消费，fatal dataset error 立即停止。`--output-dir` 在本阶段仍只执行 Git ignore-policy preflight，不创建目录，不生成 SQLite、NDJSON、manifest 或任何正式输出。
+第三遍 ranked staging stream 会逐条执行完整 `chatLabType` 映射、safe-integer `localType` 验证、精确文本资格、占位符/XML/URL 过滤、`isSend` 双方角色映射和固定 UTC+08:00 时间一致性检查。合格记录进入 output parent 内 owner-only 的同文件系统 SQLite sibling；主/回退加密身份用于跨文件去重，verification 记录只比较、不贡献年度总数。完成后写出固定字段顺序的 compact UTF-8/LF NDJSON、canonical manifest，重新从磁盘验证 schema、privacy、size、count 和 SHA-256，清除数据库及所有非输出 entry，再通过一次 exclusive atomic directory rename 发布。
+
+Final destination 必须不存在；工具没有 overwrite、merge、replace 或 copy fallback。输出规范、exact limits、manifest/chunk contract、权限和 recovery 说明见 [Normalized local dataset](docs/NORMALIZED_DATASET.md)。
+
+对已存在且完整的 normalized dataset 运行独立只读 overlap 检查：
+
+```bash
+<external-venv>/bin/chat-history-analysis verify-overlap \
+  --dataset-dir <existing-ignored-dataset-directory> \
+  --overlap-verification <verification-detailed-json>
+```
+
+检查显式 output parent 中的 crash remnant，或确认后每次只清理一个 ordinal：
+
+```bash
+<external-venv>/bin/chat-history-analysis recover-staging \
+  --output-parent <existing-ignored-output-parent>
+
+<external-venv>/bin/chat-history-analysis recover-staging \
+  --output-parent <existing-ignored-output-parent> \
+  --candidate-ordinal 1 \
+  --confirm
+```
+
+Recovery 是逐 entry 的逻辑清理，不承诺 forensic 或 cryptographic erasure。
 
 稳定退出码为：
 
@@ -68,6 +92,8 @@ python3 scripts/generate_mock_chat.py \
 | `65` | input validation failure |
 | `66` | output ignore-policy failure |
 | `67` | byte/message capacity failure |
+| `68` | output/staging/serialization/cleanup/promotion failure |
+| `69` | overlap verification failure |
 
 失败输出是单行 JSON，只包含固定 category、phase、reason code、role、source/record ordinal 和受控 field；不包含 path、basename、消息值、JSON 片段、hash、内部异常或 traceback。
 

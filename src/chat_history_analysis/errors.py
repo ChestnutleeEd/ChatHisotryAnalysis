@@ -14,6 +14,12 @@ SOURCE_VALIDATION_PHASE: Final = "source-validation"
 SOURCE_STAGING_PHASE: Final = "source-staging"
 SESSION_VALIDATION_PHASE: Final = "session-validation"
 MESSAGE_NORMALIZATION_PHASE: Final = "message-normalization"
+DATASET_STAGING_PHASE: Final = "dataset-staging"
+OUTPUT_SERIALIZATION_PHASE: Final = "output-serialization"
+OUTPUT_VERIFICATION_PHASE: Final = "output-verification"
+OUTPUT_PROMOTION_PHASE: Final = "output-promotion"
+OVERLAP_VERIFICATION_PHASE: Final = "overlap-verification"
+RECOVERY_PHASE: Final = "recovery"
 
 
 class ExitCode(IntEnum):
@@ -25,6 +31,8 @@ class ExitCode(IntEnum):
     INPUT_VALIDATION_FAILURE = 65
     IGNORE_POLICY_FAILURE = 66
     CAPACITY_FAILURE = 67
+    OUTPUT_FAILURE = 68
+    VERIFICATION_FAILURE = 69
 
 
 class FailureCategory(str, Enum):
@@ -35,6 +43,8 @@ class FailureCategory(str, Enum):
     INPUT_VALIDATION = "input-validation"
     IGNORE_POLICY = "ignore-policy"
     CAPACITY = "capacity"
+    OUTPUT = "output"
+    VERIFICATION = "verification"
 
 
 class StartupReasonCode(str, Enum):
@@ -146,6 +156,67 @@ class SourceValidationReasonCode(str, Enum):
         "AGGREGATE_RAW_INPUT_LIMIT_EXCEEDED"
     )
     RAW_MESSAGE_LIMIT_EXCEEDED = "RAW_MESSAGE_LIMIT_EXCEEDED"
+
+
+class DatasetPersistenceReasonCode(str, Enum):
+    """Stable Stage 5/6 reasons that never carry internal exception text."""
+
+    OUTPUT_DESTINATION_EXISTS = "OUTPUT_DESTINATION_EXISTS"
+    OUTPUT_PARENT_UNSAFE = "OUTPUT_PARENT_UNSAFE"
+    OUTPUT_STAGING_FAILED = "OUTPUT_STAGING_FAILED"
+    SQLITE_POLICY_FAILED = "SQLITE_POLICY_FAILED"
+    CRYPTOGRAPHIC_IDENTITY_COLLISION = (
+        "CRYPTOGRAPHIC_IDENTITY_COLLISION"
+    )
+    OVERLAP_VERIFICATION_FAILED = "OVERLAP_VERIFICATION_FAILED"
+    NO_ELIGIBLE_TEXT_RECORDS = "NO_ELIGIBLE_TEXT_RECORDS"
+    NORMALIZED_RECORD_TOO_LARGE = "NORMALIZED_RECORD_TOO_LARGE"
+    NORMALIZED_RECORD_LIMIT_EXCEEDED = (
+        "NORMALIZED_RECORD_LIMIT_EXCEEDED"
+    )
+    NORMALIZED_DATASET_LIMIT_EXCEEDED = (
+        "NORMALIZED_DATASET_LIMIT_EXCEEDED"
+    )
+    NORMALIZED_SCHEMA_INVALID = "NORMALIZED_SCHEMA_INVALID"
+    PRIVACY_VALIDATION_FAILED = "PRIVACY_VALIDATION_FAILED"
+    OUTPUT_WRITE_FAILED = "OUTPUT_WRITE_FAILED"
+    OUTPUT_FLUSH_FAILED = "OUTPUT_FLUSH_FAILED"
+    OUTPUT_INTEGRITY_FAILED = "OUTPUT_INTEGRITY_FAILED"
+    OUTPUT_CLEANUP_FAILED = "OUTPUT_CLEANUP_FAILED"
+    OUTPUT_PROMOTION_FAILED = "OUTPUT_PROMOTION_FAILED"
+    DATASET_SELECTION_INVALID = "DATASET_SELECTION_INVALID"
+    RECOVERY_PARENT_UNSAFE = "RECOVERY_PARENT_UNSAFE"
+    RECOVERY_CANDIDATE_INVALID = "RECOVERY_CANDIDATE_INVALID"
+    RECOVERY_CONFIRMATION_REQUIRED = "RECOVERY_CONFIRMATION_REQUIRED"
+    RECOVERY_CLEANUP_FAILED = "RECOVERY_CLEANUP_FAILED"
+
+
+class DatasetPersistenceError(Exception):
+    """A Stage 5/6 failure with a deliberately tiny public representation."""
+
+    def __init__(
+        self,
+        reason_code: DatasetPersistenceReasonCode,
+        *,
+        phase: str,
+        category: FailureCategory = FailureCategory.OUTPUT,
+        aggregate_count: int | None = None,
+    ) -> None:
+        self.reason_code = reason_code
+        self.phase = phase
+        self.category = category
+        self.aggregate_count = aggregate_count
+        super().__init__(reason_code.value)
+
+    def public_payload(self) -> Mapping[str, str | int]:
+        payload: dict[str, str | int] = {
+            "category": self.category.value,
+            "phase": self.phase,
+            "reasonCode": self.reason_code.value,
+        }
+        if self.aggregate_count is not None:
+            payload["aggregateCount"] = self.aggregate_count
+        return payload
 
 
 class SourceRole(str, Enum):

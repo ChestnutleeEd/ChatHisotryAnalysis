@@ -95,6 +95,16 @@ def observe(
     )
 
 
+def collect_annual(
+    records: list[NormalizedMessage],
+) -> MessageNormalizationConsumer:
+    return MessageNormalizationConsumer(
+        on_annual_eligible=lambda _descriptor, record, _platform_id, _owner, _peer: (
+            records.append(record)
+        )
+    )
+
+
 class MessageClassificationTests(unittest.TestCase):
     def test_complete_primary_mapping_is_exact(self) -> None:
         self.assertEqual(
@@ -261,7 +271,7 @@ class MessageClassificationTests(unittest.TestCase):
 class EligibleTextTests(unittest.TestCase):
     def test_owner_other_and_source_evidence_are_normalized(self) -> None:
         records: list[NormalizedMessage] = []
-        consumer = MessageNormalizationConsumer(records.append)
+        consumer = collect_annual(records)
         observe(consumer, eligible_message(), 7)
         observe(
             consumer,
@@ -290,7 +300,7 @@ class EligibleTextTests(unittest.TestCase):
 
     def test_content_exclusions_and_mixed_url_cleanup(self) -> None:
         records: list[NormalizedMessage] = []
-        consumer = MessageNormalizationConsumer(records.append)
+        consumer = collect_annual(records)
         excluded = (
             "",
             " \t\n ",
@@ -345,7 +355,7 @@ class EligibleTextTests(unittest.TestCase):
 
     def test_valid_is_send_is_authoritative_on_metadata_conflict(self) -> None:
         records: list[NormalizedMessage] = []
-        consumer = MessageNormalizationConsumer(records.append)
+        consumer = collect_annual(records)
         observe(
             consumer,
             eligible_message(sender=PEER, is_send=1),
@@ -358,7 +368,7 @@ class EligibleTextTests(unittest.TestCase):
 
     def test_fixed_utc_plus_eight_time_and_failures(self) -> None:
         records: list[NormalizedMessage] = []
-        consumer = MessageNormalizationConsumer(records.append)
+        consumer = collect_annual(records)
         observe(consumer, eligible_message(create_time=-28_800))
         observe(
             consumer,
@@ -398,14 +408,20 @@ class EligibleTextTests(unittest.TestCase):
         self.assertEqual(summary.skipped_count, 1)
         self.assertEqual(
             set(MessageNormalizationConsumer.__slots__),
-            {"_annual", "_complete", "_on_eligible", "_verification"},
+            {
+                "_annual",
+                "_complete",
+                "_on_annual_eligible",
+                "_on_verification_eligible",
+                "_verification",
+            },
         )
         self.assertLessEqual(len(consumer._annual.skipped), 1)
         self.assertEqual(len(consumer._annual.warnings), 0)
 
     def test_normalized_record_repr_hides_body(self) -> None:
         records: list[NormalizedMessage] = []
-        consumer = MessageNormalizationConsumer(records.append)
+        consumer = collect_annual(records)
         observe(
             consumer,
             eligible_message(

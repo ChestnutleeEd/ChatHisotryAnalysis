@@ -11,6 +11,8 @@ import unittest
 
 from chat_history_analysis.cli import _run_for_test
 from chat_history_analysis.errors import (
+    DatasetPersistenceError,
+    DatasetPersistenceReasonCode,
     ExitCode,
     FailureCategory,
     SOURCE_VALIDATION_PHASE,
@@ -91,6 +93,8 @@ class ExitClassificationTests(unittest.TestCase):
             ExitCode.INPUT_VALIDATION_FAILURE: 65,
             ExitCode.IGNORE_POLICY_FAILURE: 66,
             ExitCode.CAPACITY_FAILURE: 67,
+            ExitCode.OUTPUT_FAILURE: 68,
+            ExitCode.VERIFICATION_FAILURE: 69,
         }
         self.assertEqual(
             {member: int(member) for member in expected},
@@ -228,10 +232,73 @@ class ExitClassificationTests(unittest.TestCase):
             exit_code,
             stdout,
             stderr,
-            expected_exit=ExitCode.INPUT_VALIDATION_FAILURE,
-            expected_category=FailureCategory.INPUT_VALIDATION,
+            expected_exit=ExitCode.OUTPUT_FAILURE,
+            expected_category=FailureCategory.OUTPUT,
         )
-        self.assertEqual(payload["reasonCode"], "INPUT_PREFLIGHT_FAILED")
+        self.assertEqual(payload["reasonCode"], "OUTPUT_WRITE_FAILED")
+
+    def test_stage6_output_failure_is_content_free_and_distinct(self) -> None:
+        def fail(selection: object) -> object:
+            raise DatasetPersistenceError(
+                DatasetPersistenceReasonCode.OUTPUT_INTEGRITY_FAILED,
+                phase="output-verification",
+                category=FailureCategory.OUTPUT,
+            )
+
+        exit_code, stdout, stderr = self.run_cli(
+            [
+                "preprocess",
+                "--annual-source",
+                os.fspath(self.source),
+                "--output-dir",
+                os.fspath(self.ignored_output),
+            ],
+            fail,
+        )
+        payload = self.assert_private_failure(
+            exit_code,
+            stdout,
+            stderr,
+            expected_exit=ExitCode.OUTPUT_FAILURE,
+            expected_category=FailureCategory.OUTPUT,
+        )
+        self.assertEqual(payload["reasonCode"], "OUTPUT_INTEGRITY_FAILED")
+
+    def test_overlap_verification_failure_is_content_free_and_distinct(
+        self,
+    ) -> None:
+        def fail(selection: object) -> object:
+            raise DatasetPersistenceError(
+                DatasetPersistenceReasonCode.OVERLAP_VERIFICATION_FAILED,
+                phase="overlap-verification",
+                category=FailureCategory.VERIFICATION,
+            )
+
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            exit_code = _run_for_test(
+                [
+                    "verify-overlap",
+                    "--dataset-dir",
+                    os.fspath(self.ignored_output),
+                    "--overlap-verification",
+                    os.fspath(self.source),
+                ],
+                lambda: None,
+                overlap_verification_runner=fail,
+            )
+        payload = self.assert_private_failure(
+            exit_code,
+            stdout.getvalue(),
+            stderr.getvalue(),
+            expected_exit=ExitCode.VERIFICATION_FAILURE,
+            expected_category=FailureCategory.VERIFICATION,
+        )
+        self.assertEqual(
+            payload["reasonCode"],
+            "OVERLAP_VERIFICATION_FAILED",
+        )
 
 
 if __name__ == "__main__":

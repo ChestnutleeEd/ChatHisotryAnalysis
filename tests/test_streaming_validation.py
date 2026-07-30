@@ -90,11 +90,11 @@ class RecordingConsumer(StagingConsumer):
         self.complete_called = False
         self.abort_called = False
 
-    def stage_annual_message(
+    def stage_annual_record(
         self,
         descriptor: ValidatedSourceDescriptor,
-        source_array_index: int,
-        message_value: dict[str, object],
+        record: object,
+        platform_message_id: object,
         *,
         owner_identity: str,
         peer_identity: str,
@@ -103,21 +103,21 @@ class RecordingConsumer(StagingConsumer):
             (
                 descriptor.supplied_ordinal,
                 descriptor.file_rank,
-                source_array_index,
+                record.source_array_index,
             )
         )
 
-    def observe_verification_message(
+    def observe_verification_record(
         self,
         descriptor: ValidatedSourceDescriptor,
-        source_array_index: int,
-        message_value: dict[str, object],
+        record: object,
+        platform_message_id: object,
         *,
         owner_identity: str,
         peer_identity: str,
     ) -> None:
         self.verification.append(
-            (descriptor.supplied_ordinal, source_array_index)
+            (descriptor.supplied_ordinal, record.source_array_index)
         )
 
     def complete(self) -> None:
@@ -600,19 +600,19 @@ class StreamingValidationTests(unittest.TestCase):
         )
 
         class ReplacingConsumer(RecordingConsumer):
-            def stage_annual_message(
+            def stage_annual_record(
                 nested_self,
                 descriptor: ValidatedSourceDescriptor,
-                source_array_index: int,
-                message_value: dict[str, object],
+                record: object,
+                platform_message_id: object,
                 *,
                 owner_identity: str,
                 peer_identity: str,
             ) -> None:
-                super().stage_annual_message(
+                super().stage_annual_record(
                     descriptor,
-                    source_array_index,
-                    message_value,
+                    record,
+                    platform_message_id,
                     owner_identity=owner_identity,
                     peer_identity=peer_identity,
                 )
@@ -648,19 +648,19 @@ class StreamingValidationTests(unittest.TestCase):
         original = source.read_bytes()
 
         class MutatingConsumer(RecordingConsumer):
-            def stage_annual_message(
+            def stage_annual_record(
                 nested_self,
                 descriptor: ValidatedSourceDescriptor,
-                source_array_index: int,
-                message_value: dict[str, object],
+                record: object,
+                platform_message_id: object,
                 *,
                 owner_identity: str,
                 peer_identity: str,
             ) -> None:
-                super().stage_annual_message(
+                super().stage_annual_record(
                     descriptor,
-                    source_array_index,
-                    message_value,
+                    record,
+                    platform_message_id,
                     owner_identity=owner_identity,
                     peer_identity=peer_identity,
                 )

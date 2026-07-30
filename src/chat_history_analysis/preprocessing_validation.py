@@ -8,6 +8,7 @@ from typing import Any, Protocol
 
 from .backend import BackendEvidence
 from .errors import (
+    FailureCategory,
     SESSION_VALIDATION_PHASE,
     SOURCE_STAGING_PHASE,
     SourceRole,
@@ -21,6 +22,7 @@ from .message_capacity import (
 )
 from .message_normalization import (
     MessageNormalizationConsumer,
+    NormalizedMessage,
     NormalizationSummary,
 )
 from .source_validation import (
@@ -83,23 +85,23 @@ class ValidationResult:
 
 
 class StagingConsumer(Protocol):
-    """Future Stage 4/5 boundary with verification insertion impossible."""
+    """Stage 5 boundary receiving only Stage 4 eligible records."""
 
-    def stage_annual_message(
+    def stage_annual_record(
         self,
         descriptor: ValidatedSourceDescriptor,
-        source_array_index: int,
-        message: dict[str, Any],
+        record: NormalizedMessage,
+        platform_message_id: object,
         *,
         owner_identity: str,
         peer_identity: str,
     ) -> None: ...
 
-    def observe_verification_message(
+    def observe_verification_record(
         self,
         descriptor: ValidatedSourceDescriptor,
-        source_array_index: int,
-        message: dict[str, Any],
+        record: NormalizedMessage,
+        platform_message_id: object,
         *,
         owner_identity: str,
         peer_identity: str,
@@ -112,103 +114,41 @@ class StagingConsumer(Protocol):
 
 @dataclass
 class DiscardingStagingConsumer:
-    """Production Stage 3 consumer that retains counts but no raw message."""
+    """Default sink that retains counts but no normalized body."""
 
-    annual_message_count: int = 0
-    verification_message_count: int = 0
+    annual_record_count: int = 0
+    verification_record_count: int = 0
     _complete: bool = False
 
-    def stage_annual_message(
+    def stage_annual_record(
         self,
         descriptor: ValidatedSourceDescriptor,
-        source_array_index: int,
-        message: dict[str, Any],
+        record: NormalizedMessage,
+        platform_message_id: object,
         *,
         owner_identity: str,
         peer_identity: str,
     ) -> None:
-        self.annual_message_count += 1
+        self.annual_record_count += 1
 
-    def observe_verification_message(
+    def observe_verification_record(
         self,
         descriptor: ValidatedSourceDescriptor,
-        source_array_index: int,
-        message: dict[str, Any],
+        record: NormalizedMessage,
+        platform_message_id: object,
         *,
         owner_identity: str,
         peer_identity: str,
     ) -> None:
-        self.verification_message_count += 1
+        self.verification_record_count += 1
 
     def complete(self) -> None:
         self._complete = True
 
     def abort(self) -> None:
-        self.annual_message_count = 0
-        self.verification_message_count = 0
+        self.annual_record_count = 0
+        self.verification_record_count = 0
         self._complete = False
-
-
-@dataclass
-class _CompositeStagingConsumer:
-    primary: StagingConsumer
-    secondary: StagingConsumer
-
-    def stage_annual_message(
-        self,
-        descriptor: ValidatedSourceDescriptor,
-        source_array_index: int,
-        message: dict[str, Any],
-        *,
-        owner_identity: str,
-        peer_identity: str,
-    ) -> None:
-        self.primary.stage_annual_message(
-            descriptor,
-            source_array_index,
-            message,
-            owner_identity=owner_identity,
-            peer_identity=peer_identity,
-        )
-        self.secondary.stage_annual_message(
-            descriptor,
-            source_array_index,
-            message,
-            owner_identity=owner_identity,
-            peer_identity=peer_identity,
-        )
-
-    def observe_verification_message(
-        self,
-        descriptor: ValidatedSourceDescriptor,
-        source_array_index: int,
-        message: dict[str, Any],
-        *,
-        owner_identity: str,
-        peer_identity: str,
-    ) -> None:
-        self.primary.observe_verification_message(
-            descriptor,
-            source_array_index,
-            message,
-            owner_identity=owner_identity,
-            peer_identity=peer_identity,
-        )
-        self.secondary.observe_verification_message(
-            descriptor,
-            source_array_index,
-            message,
-            owner_identity=owner_identity,
-            peer_identity=peer_identity,
-        )
-
-    def complete(self) -> None:
-        self.primary.complete()
-        self.secondary.complete()
-
-    def abort(self) -> None:
-        self.primary.abort()
-        self.secondary.abort()
 
 
 def _contexts(
@@ -269,6 +209,11 @@ def _conversation_error(
         phase=SESSION_VALIDATION_PHASE,
         role=descriptor.role,
         source_ordinal=descriptor.supplied_ordinal,
+        category=(
+            FailureCategory.VERIFICATION
+            if descriptor.role is SourceRole.OVERLAP_VERIFICATION
+            else FailureCategory.INPUT_VALIDATION
+        ),
         field="session",
     )
 
@@ -336,10 +281,15 @@ def _assert_same_pass(
             phase=SOURCE_STAGING_PHASE,
             role=descriptor.role,
             source_ordinal=descriptor.supplied_ordinal,
+            category=(
+                FailureCategory.VERIFICATION
+                if descriptor.role is SourceRole.OVERLAP_VERIFICATION
+                else FailureCategory.INPUT_VALIDATION
+            ),
         )
 
 
-def validate_preflighted_inputs(
+def _validate_preflighted_inputs(
     inputs: PreflightedInputs,
     backend: BackendEvidence,
     *,
@@ -386,10 +336,29 @@ def validate_preflighted_inputs(
         verification_descriptors,
     )
     ranked_annual = _rank_annual_sources(annual_descriptors)
-    normalizer = MessageNormalizationConsumer()
-    consumer: StagingConsumer = normalizer
-    if staging_consumer is not None:
-        consumer = _CompositeStagingConsumer(normalizer, staging_consumer)
+    consumer = staging_consumer or DiscardingStagingConsumer()
+    normalizer = MessageNormalizationConsumer(
+        on_annual_eligible=lambda descriptor, record, platform_id, owner, peer: (
+            consumer.stage_annual_record(
+                descriptor,
+                record,
+                platform_id,
+                owner_identity=owner,
+                peer_identity=peer,
+            )
+        ),
+        on_verification_eligible=(
+            lambda descriptor, record, platform_id, owner, peer: (
+                consumer.observe_verification_record(
+                    descriptor,
+                    record,
+                    platform_id,
+                    owner_identity=owner,
+                    peer_identity=peer,
+                )
+            )
+        ),
+    )
 
     try:
         for descriptor in ranked_annual:
@@ -403,7 +372,7 @@ def validate_preflighted_inputs(
                 phase=SOURCE_STAGING_PHASE,
                 on_message=lambda source_index, message, selected=descriptor,
                 expected=identity: (
-                    consumer.stage_annual_message(
+                    normalizer.stage_annual_message(
                         selected,
                         source_index,
                         message,
@@ -424,7 +393,7 @@ def validate_preflighted_inputs(
                 phase=SOURCE_STAGING_PHASE,
                 on_message=lambda source_index, message, selected=descriptor,
                 expected=identity: (
-                    consumer.observe_verification_message(
+                    normalizer.observe_verification_message(
                         selected,
                         source_index,
                         message,
@@ -434,8 +403,13 @@ def validate_preflighted_inputs(
                 ),
             )
             _assert_same_pass(descriptor, summary)
+        normalizer.complete()
         consumer.complete()
     except BaseException:
+        try:
+            normalizer.abort()
+        except BaseException:
+            pass
         try:
             consumer.abort()
         except BaseException:
@@ -459,3 +433,28 @@ def validate_preflighted_inputs(
         annual_normalization=normalizer.annual_summary,
         verification_normalization=normalizer.verification_summary,
     )
+
+
+def validate_preflighted_inputs(
+    inputs: PreflightedInputs,
+    backend: BackendEvidence,
+    *,
+    message_limit: int = MAX_AGGREGATE_RAW_MESSAGES,
+    staging_consumer: StagingConsumer | None = None,
+) -> ValidationResult:
+    """Own a supplied staging consumer across every validation phase."""
+
+    try:
+        return _validate_preflighted_inputs(
+            inputs,
+            backend,
+            message_limit=message_limit,
+            staging_consumer=staging_consumer,
+        )
+    except BaseException:
+        if staging_consumer is not None:
+            try:
+                staging_consumer.abort()
+            except BaseException:
+                pass
+        raise

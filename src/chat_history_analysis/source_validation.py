@@ -128,6 +128,11 @@ def _error(
         phase=phase,
         role=context.role,
         source_ordinal=context.source_ordinal,
+        category=(
+            FailureCategory.VERIFICATION
+            if context.role is SourceRole.OVERLAP_VERIFICATION
+            else FailureCategory.INPUT_VALIDATION
+        ),
         field=field,
         record_ordinal=record_ordinal,
     )

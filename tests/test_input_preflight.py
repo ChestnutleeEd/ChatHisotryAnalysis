@@ -14,6 +14,10 @@ from unittest.mock import Mock, patch
 
 from chat_history_analysis.application import run_input_preflight
 from chat_history_analysis.cli import _run_for_test
+from chat_history_analysis.dataset_persistence import (
+    OverlapVerificationResult,
+    RecoveryResult,
+)
 from chat_history_analysis.errors import (
     InputPreflightError,
     StartupError,
@@ -22,7 +26,10 @@ from chat_history_analysis.errors import (
 from chat_history_analysis.input_preflight import (
     GIT_EXECUTABLE,
     InputSelection,
+    OverlapVerificationSelection,
+    preflight_ignored_existing_directory,
     preflight_inputs,
+    preflight_overlap_verification,
 )
 
 
@@ -180,6 +187,96 @@ class CliInputRoleTests(unittest.TestCase):
             (Path("same-looking-name"),),
         )
 
+    def test_separate_overlap_command_preserves_explicit_source_order(self):
+        captured: list[OverlapVerificationSelection] = []
+
+        def verify(selection: OverlapVerificationSelection):
+            captured.append(selection)
+            return OverlapVerificationResult(2, 3, 2, 1)
+
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
+            exit_code = _run_for_test(
+                [
+                    "verify-overlap",
+                    "--dataset-dir",
+                    "dataset",
+                    "--overlap-verification",
+                    "verification-b",
+                    "--overlap-verification",
+                    "verification-a",
+                ],
+                lambda: None,
+                overlap_verification_runner=verify,
+            )
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            captured,
+            [
+                OverlapVerificationSelection(
+                    dataset_directory=Path("dataset"),
+                    overlap_verifications=(
+                        Path("verification-b"),
+                        Path("verification-a"),
+                    ),
+                )
+            ],
+        )
+        self.assertEqual(
+            json.loads(stdout.getvalue()),
+            {
+                "eligibleRecordCount": 3,
+                "matchPercentage": 66.67,
+                "matchedRecordCount": 2,
+                "phase": "overlap-verification",
+                "sourceCount": 2,
+                "status": "ready",
+                "unmatchedRecordCount": 1,
+            },
+        )
+
+    def test_recovery_command_uses_only_ordinal_confirmation_and_states(self):
+        captured: list[tuple[Path, int | None, bool]] = []
+
+        def recover(
+            parent: Path,
+            *,
+            candidate_ordinal: int | None,
+            confirmed: bool,
+        ) -> RecoveryResult:
+            captured.append((parent, candidate_ordinal, confirmed))
+            return RecoveryResult(2, ("SAFE", "UNSAFE"), 1)
+
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
+            exit_code = _run_for_test(
+                [
+                    "recover-staging",
+                    "--output-parent",
+                    "ignored-parent",
+                    "--candidate-ordinal",
+                    "2",
+                    "--confirm",
+                ],
+                lambda: None,
+                recovery_runner=recover,
+            )
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            captured,
+            [(Path("ignored-parent"), 2, True)],
+        )
+        self.assertEqual(
+            json.loads(stdout.getvalue()),
+            {
+                "candidateCount": 2,
+                "phase": "recovery",
+                "removedCount": 1,
+                "stateCodes": ["SAFE", "UNSAFE"],
+                "status": "ready",
+            },
+        )
+
 
 class IsolatedGitPreflightTestCase(unittest.TestCase):
     def setUp(self):
@@ -287,6 +384,24 @@ class SourcePreflightTests(IsolatedGitPreflightTestCase):
     def test_missing_source_is_rejected(self):
         self.assert_rejected(
             self.selection(annual_sources=(self.root / "missing-source",))
+        )
+
+    def test_missing_verification_source_is_classified_separately(self):
+        with self.assertRaises(InputPreflightError) as raised:
+            preflight_inputs(
+                self.selection(
+                    overlap_verifications=(
+                        self.root / "missing-verification",
+                    ),
+                )
+            )
+        self.assertEqual(
+            raised.exception.public_payload(),
+            {
+                "category": "verification",
+                "phase": "input-preflight",
+                "reasonCode": "INPUT_PREFLIGHT_FAILED",
+            },
         )
 
     def test_directory_source_is_rejected(self):
@@ -423,6 +538,29 @@ class OutputPolicyTests(IsolatedGitPreflightTestCase):
         output.mkdir(parents=True)
         result = preflight_inputs(self.selection(output_directory=output))
         self.assertEqual(result.output_directory, output.resolve(strict=True))
+
+    def test_existing_dataset_and_recovery_parent_require_ignored_directories(
+        self,
+    ):
+        source = self.source("verification-source")
+        parent = self.root / "ignored"
+        dataset = parent / "dataset"
+        dataset.mkdir(parents=True)
+        result = preflight_overlap_verification(
+            OverlapVerificationSelection(
+                dataset_directory=dataset,
+                overlap_verifications=(source,),
+            )
+        )
+        self.assertEqual(result.dataset_directory, dataset.resolve())
+        self.assertEqual(
+            result.overlap_verifications,
+            (source.resolve(),),
+        )
+        self.assertEqual(
+            preflight_ignored_existing_directory(parent),
+            parent.resolve(),
+        )
 
     def test_tracked_output_directory_is_rejected_even_if_ignore_matches(self):
         output = self.root / "tracked-output"

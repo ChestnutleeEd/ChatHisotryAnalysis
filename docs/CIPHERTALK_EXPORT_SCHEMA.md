@@ -386,6 +386,8 @@ Disk exhaustion、write/flush failure、hash mismatch、interrupted write、pre-
 - explicit confirmation 后每次只逐项删除一个 selected candidate；
 - 不宣称 forensic erasure。
 
+Stages 5–6 已覆盖 promotion 前异常/中断的资源关闭与 staging cleanup；Stage 7 的显式 SIGINT flag、安全 checkpoint、独立 cancellation exit status 和 progress presentation 尚未实施。
+
 ## Error-output privacy
 
 Errors、warnings、progress、logs、screenshots、stdout/stderr、browser errors、progress events、snapshots、debug logs 和 manifest warnings 只能包含：

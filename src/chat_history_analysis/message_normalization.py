@@ -11,6 +11,7 @@ import unicodedata
 from typing import Callable, Final, Mapping
 
 from .errors import (
+    FailureCategory,
     MESSAGE_NORMALIZATION_PHASE,
     SourceRole,
     SourceValidationError,
@@ -133,7 +134,7 @@ class NormalizedMessage:
 
     source_role: SourceRole
     source_ordinal: int
-    file_rank: int
+    file_rank: int | None
     source_array_index: int
     create_time: int
     formatted_time: str
@@ -329,17 +330,32 @@ class MessageNormalizationConsumer:
     __slots__ = (
         "_annual",
         "_complete",
-        "_on_eligible",
+        "_on_annual_eligible",
+        "_on_verification_eligible",
         "_verification",
     )
 
     def __init__(
         self,
-        on_eligible: Callable[[NormalizedMessage], None] | None = None,
+        on_annual_eligible: Callable[
+            [object, NormalizedMessage, object, str, str],
+            None,
+        ]
+        | None = None,
+        on_verification_eligible: Callable[
+            [object, NormalizedMessage, object, str, str],
+            None,
+        ]
+        | None = None,
     ) -> None:
         self._annual = _MutableStats()
         self._verification = _MutableStats()
-        self._on_eligible = on_eligible or (lambda record: None)
+        self._on_annual_eligible = on_annual_eligible or (
+            lambda descriptor, record, platform_id, owner, peer: None
+        )
+        self._on_verification_eligible = on_verification_eligible or (
+            lambda descriptor, record, platform_id, owner, peer: None
+        )
         self._complete = False
 
     @property
@@ -359,7 +375,10 @@ class MessageNormalizationConsumer:
         owner_identity: str,
         peer_identity: str,
         stats: _MutableStats,
-        emit_record: bool,
+        on_eligible: Callable[
+            [object, NormalizedMessage, object, str, str],
+            None,
+        ],
     ) -> None:
         stats.observed_count += 1
         try:
@@ -370,6 +389,11 @@ class MessageNormalizationConsumer:
                 phase=MESSAGE_NORMALIZATION_PHASE,
                 role=descriptor.role,
                 source_ordinal=descriptor.supplied_ordinal,
+                category=(
+                    FailureCategory.VERIFICATION
+                    if descriptor.role is SourceRole.OVERLAP_VERIFICATION
+                    else FailureCategory.INPUT_VALIDATION
+                ),
                 field="messages.localType",
                 record_ordinal=source_array_index + 1,
             ) from None
@@ -397,9 +421,7 @@ class MessageNormalizationConsumer:
             stats.owner_count += 1
         else:
             stats.other_count += 1
-        if not emit_record:
-            return
-        if descriptor.file_rank is None or content is None:
+        if content is None:
             raise TypeError
         normalized = NormalizedMessage(
             source_role=descriptor.role,
@@ -412,7 +434,13 @@ class MessageNormalizationConsumer:
             sender_scope=scope,
             content=content,
         )
-        self._on_eligible(normalized)
+        on_eligible(
+            descriptor,
+            normalized,
+            message.get("platformMessageId"),
+            owner_identity,
+            peer_identity,
+        )
 
     def stage_annual_message(
         self,
@@ -430,7 +458,7 @@ class MessageNormalizationConsumer:
             owner_identity=owner_identity,
             peer_identity=peer_identity,
             stats=self._annual,
-            emit_record=True,
+            on_eligible=self._on_annual_eligible,
         )
 
     def observe_verification_message(
@@ -449,7 +477,7 @@ class MessageNormalizationConsumer:
             owner_identity=owner_identity,
             peer_identity=peer_identity,
             stats=self._verification,
-            emit_record=False,
+            on_eligible=self._on_verification_eligible,
         )
 
     def complete(self) -> None:

@@ -54,45 +54,45 @@
 
 ## 5. File Ranking, Staging, Deduplication, and Merge
 
-- [ ] 5.1 Rank annual sources by actual minimum time, maximum time, and explicit user-supplied order.
-- [ ] 5.2 Permit annual gaps, detect overlaps, and emit an aggregate suspicious-overlap warning using a documented synthetic-tested threshold.
-- [ ] 5.3 Apply umask `0077` and create one unique marked `0700` staging sibling with `0600` files inside the selected ignored normalized-output parent.
-- [ ] 5.4 Verify the staging sibling and final destination parent share a filesystem; prohibit global database locations, generic shared temporary directories, cross-filesystem staging, and location disclosure.
-- [ ] 5.5 Create the exact ten-column staging-record table for identity kind/digests, canonical time/date, sender scope, cleaned content, file rank, and source-array index.
-- [ ] 5.6 Add only the unique `(identity_kind, identity_digest, identity_verifier)`, collision lookup `(identity_kind, identity_digest)`, and canonical ordering `(create_time, file_rank, source_array_index)` structures.
-- [ ] 5.7 Set and read back `journal_mode=DELETE`, `temp_store=MEMORY`, `secure_delete=ON`, and `busy_timeout=0` before private insertion; disable shared cache, prohibit WAL, and enable foreign keys if a revised schema adds them.
-- [ ] 5.8 Prohibit deprecated/process-global SQLite temp-directory settings and stop for an OpenSpec revision if supported-scale memory profiling cannot retain `temp_store=MEMORY`.
-- [ ] 5.9 Implement unsigned-64-bit length-prefixed `ChatHistoryAnalysis/dedup/platform-id/v1` SHA-256 identities over decoded 32-byte conversation fingerprint plus UTF-8 raw ID, with `ChatHistoryAnalysis/dedup/platform-id-verifier/v1` 16-byte BLAKE2b verifiers.
-- [ ] 5.10 Implement `ChatHistoryAnalysis/dedup/fallback/v1` SHA-256 identities plus `ChatHistoryAnalysis/dedup/fallback-verifier/v1` 16-byte BLAKE2b verifiers over decoded fingerprint, signed-64-bit time, length-prefixed formatted time/sender/type, and cleaned-content SHA-256 without raw content in the encoding.
-- [ ] 5.11 Discard raw string `platformMessageId` immediately after digesting and prove it, all other forbidden raw fields, paths, and basenames are absent from SQLite.
-- [ ] 5.12 Treat matching kind/SHA/verifier as duplicate, but stop with content-free `CRYPTOGRAPHIC_IDENTITY_COLLISION` when a matching kind/SHA has a different verifier.
-- [ ] 5.13 Resolve confirmed duplicates by file rank and original source-array index without using `localId`, timestamp, or source index alone.
-- [ ] 5.14 Preserve distinct messages with identical timestamps, order by time/rank/original index, and assign monotonically increasing canonical source indexes.
-- [ ] 5.15 Implement overlap-verification comparison without inserting verification records into annual totals or normalized output.
-- [ ] 5.16 Implement a separate read-only overlap-verification command and abort combined preprocessing promotion on verification failure.
-- [ ] 5.17 Implement marker-based recovery that scans only an explicitly selected output parent, reports ordinal counts/state codes, refuses symlinks or unsafe ownership/permissions/types, and deletes one explicitly confirmed recognized remnant per invocation entry-by-entry.
-- [ ] 5.18 Document logical cleanup without claiming forensic or cryptographic erasure.
+- [x] 5.1 Rank annual sources by actual minimum time, maximum time, and explicit user-supplied order.
+- [x] 5.2 Permit annual gaps, detect overlaps, and emit an aggregate suspicious-overlap warning using a documented synthetic-tested threshold.
+- [x] 5.3 Apply umask `0077` and create one unique marked `0700` staging sibling with `0600` files inside the selected ignored normalized-output parent.
+- [x] 5.4 Verify the staging sibling and final destination parent share a filesystem; prohibit global database locations, generic shared temporary directories, cross-filesystem staging, and location disclosure.
+- [x] 5.5 Create the exact ten-column staging-record table for identity kind/digests, canonical time/date, sender scope, cleaned content, file rank, and source-array index.
+- [x] 5.6 Add only the unique `(identity_kind, identity_digest, identity_verifier)`, collision lookup `(identity_kind, identity_digest)`, and canonical ordering `(create_time, file_rank, source_array_index)` structures.
+- [x] 5.7 Set and read back `journal_mode=DELETE`, `temp_store=MEMORY`, `secure_delete=ON`, and `busy_timeout=0` before private insertion; disable shared cache, prohibit WAL, and enable foreign keys if a revised schema adds them.
+- [x] 5.8 Prohibit deprecated/process-global SQLite temp-directory settings and stop for an OpenSpec revision if supported-scale memory profiling cannot retain `temp_store=MEMORY`.
+- [x] 5.9 Implement unsigned-64-bit length-prefixed `ChatHistoryAnalysis/dedup/platform-id/v1` SHA-256 identities over decoded 32-byte conversation fingerprint plus UTF-8 raw ID, with `ChatHistoryAnalysis/dedup/platform-id-verifier/v1` 16-byte BLAKE2b verifiers.
+- [x] 5.10 Implement `ChatHistoryAnalysis/dedup/fallback/v1` SHA-256 identities plus `ChatHistoryAnalysis/dedup/fallback-verifier/v1` 16-byte BLAKE2b verifiers over decoded fingerprint, signed-64-bit time, length-prefixed formatted time/sender/type, and cleaned-content SHA-256 without raw content in the encoding.
+- [x] 5.11 Discard raw string `platformMessageId` immediately after digesting and prove it, all other forbidden raw fields, paths, and basenames are absent from SQLite.
+- [x] 5.12 Treat matching kind/SHA/verifier as duplicate, but stop with content-free `CRYPTOGRAPHIC_IDENTITY_COLLISION` when a matching kind/SHA has a different verifier.
+- [x] 5.13 Resolve confirmed duplicates by file rank and original source-array index without using `localId`, timestamp, or source index alone.
+- [x] 5.14 Preserve distinct messages with identical timestamps, order by time/rank/original index, and assign monotonically increasing canonical source indexes.
+- [x] 5.15 Implement overlap-verification comparison without inserting verification records into annual totals or normalized output.
+- [x] 5.16 Implement a separate read-only overlap-verification command and abort combined preprocessing promotion on verification failure.
+- [x] 5.17 Implement marker-based recovery that scans only an explicitly selected output parent, reports ordinal counts/state codes, refuses symlinks or unsafe ownership/permissions/types, and deletes one explicitly confirmed recognized remnant per invocation entry-by-entry.
+- [x] 5.18 Document logical cleanup without claiming forensic or cryptographic erasure.
 
 ## 6. Normalized Schema, Deterministic Output, and Atomicity
 
-- [ ] 6.1 Define the exact normalized record allow-list for time, calendar date, sender scope, cleaned content, file rank, and canonical source index.
-- [ ] 6.2 Define the recursive forbidden-field and forbidden-payload validator for normalized records, chunks, logs, snapshots, and errors.
-- [ ] 6.3 Implement compact canonical UTF-8 NDJSON serialization with fixed field order and LF line endings.
-- [ ] 6.4 Measure actual encoded UTF-8 record bytes including trailing LF; accept exactly 33,554,432 bytes and fatally reject the first byte over before writing an oversized chunk.
-- [ ] 6.5 Split before the next record would exceed the inclusive chunk maximum, accept an exactly full chunk, create the first chunk only for the first record, and never emit empty chunks.
-- [ ] 6.6 Fail zero eligible records with `NO_ELIGIBLE_TEXT_RECORDS`, promote no manifest/chunk, preserve CLI reuse, and report at most aggregate skipped counters.
-- [ ] 6.7 Generate deterministic zero-padded chunk names and preserve canonical record order and boundaries after recoverable skips.
-- [ ] 6.8 Define and implement the canonical manifest schema, stable serialization, versions, roles, hashes, counts, warnings, ranges, sender totals, and privacy result.
-- [ ] 6.9 Exclude raw paths, basenames, identities, messages, identifiers, and wall-clock generation time from the manifest.
-- [ ] 6.10 Enforce the inclusive 1,000,000 normalized-record and 134,217,728-byte aggregate normalized limits before promotion.
-- [ ] 6.11 Compute and re-verify input, chunk, and manifest integrity information before promotion.
-- [ ] 6.12 Run final exact-schema and privacy validation over every candidate chunk and manifest.
-- [ ] 6.13 Refuse an existing destination with `OUTPUT_DESTINATION_EXISTS`; provide no overwrite, merge, deletion, or replacement behavior.
-- [ ] 6.14 Enumerate and remove the database, `-journal`, `-wal`, `-shm`, statement journals, marker, temporary output, and every other non-output entry one explicit path at a time on every handled exit.
-- [ ] 6.15 Before promotion, close SQLite and assert only the validated manifest and referenced non-empty chunks remain, with no database or sidecar.
-- [ ] 6.16 Perform one same-filesystem atomic directory rename to the absent final destination with no cross-filesystem or copy fallback.
-- [ ] 6.17 Handle disk exhaustion, write/flush failure, hash mismatch, interrupted writing, pre-rename cleanup failure, and promotion failure without an apparently valid final dataset.
-- [ ] 6.18 Prove repeated preprocessing of identical synthetic inputs and settings produces byte-identical manifest and chunks.
+- [x] 6.1 Define the exact normalized record allow-list for time, calendar date, sender scope, cleaned content, file rank, and canonical source index.
+- [x] 6.2 Define the recursive forbidden-field and forbidden-payload validator for normalized records, chunks, logs, snapshots, and errors.
+- [x] 6.3 Implement compact canonical UTF-8 NDJSON serialization with fixed field order and LF line endings.
+- [x] 6.4 Measure actual encoded UTF-8 record bytes including trailing LF; accept exactly 33,554,432 bytes and fatally reject the first byte over before writing an oversized chunk.
+- [x] 6.5 Split before the next record would exceed the inclusive chunk maximum, accept an exactly full chunk, create the first chunk only for the first record, and never emit empty chunks.
+- [x] 6.6 Fail zero eligible records with `NO_ELIGIBLE_TEXT_RECORDS`, promote no manifest/chunk, preserve CLI reuse, and report at most aggregate skipped counters.
+- [x] 6.7 Generate deterministic zero-padded chunk names and preserve canonical record order and boundaries after recoverable skips.
+- [x] 6.8 Define and implement the canonical manifest schema, stable serialization, versions, roles, hashes, counts, warnings, ranges, sender totals, and privacy result.
+- [x] 6.9 Exclude raw paths, basenames, identities, messages, identifiers, and wall-clock generation time from the manifest.
+- [x] 6.10 Enforce the inclusive 1,000,000 normalized-record and 134,217,728-byte aggregate normalized limits before promotion.
+- [x] 6.11 Compute and re-verify input, chunk, and manifest integrity information before promotion.
+- [x] 6.12 Run final exact-schema and privacy validation over every candidate chunk and manifest.
+- [x] 6.13 Refuse an existing destination with `OUTPUT_DESTINATION_EXISTS`; provide no overwrite, merge, deletion, or replacement behavior.
+- [x] 6.14 Enumerate and remove the database, `-journal`, `-wal`, `-shm`, statement journals, marker, temporary output, and every other non-output entry one explicit path at a time on every handled exit.
+- [x] 6.15 Before promotion, close SQLite and assert only the validated manifest and referenced non-empty chunks remain, with no database or sidecar.
+- [x] 6.16 Perform one same-filesystem atomic directory rename to the absent final destination with no cross-filesystem or copy fallback.
+- [x] 6.17 Handle disk exhaustion, write/flush failure, hash mismatch, interrupted writing, pre-rename cleanup failure, and promotion failure without an apparently valid final dataset.
+- [x] 6.18 Prove repeated preprocessing of identical synthetic inputs and settings produces byte-identical manifest and chunks.
 
 ## 7. CLI Progress, Cancellation, and Error Model
 

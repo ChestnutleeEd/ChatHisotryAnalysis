@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import stat
 import subprocess
-from typing import Final, Iterable
+from typing import Final, Iterable, NoReturn
 
 from .errors import (
     FailureCategory,
@@ -54,6 +54,22 @@ class PreflightedInputs:
 
 
 @dataclass(frozen=True)
+class OverlapVerificationSelection:
+    """Explicit existing normalized dataset plus raw verification sources."""
+
+    dataset_directory: Path
+    overlap_verifications: tuple[Path, ...]
+
+
+@dataclass(frozen=True)
+class PreflightedOverlapVerification:
+    """Paths approved for the separate read-only verification operation."""
+
+    dataset_directory: Path
+    overlap_verifications: tuple[Path, ...]
+
+
+@dataclass(frozen=True)
 class _SourceMetadata:
     """Trusted, content-free metadata retained only for final revalidation."""
 
@@ -78,6 +94,15 @@ def _reject_output() -> None:
         InputPreflightReasonCode.OUTPUT_IGNORE_POLICY_FAILED,
         FailureCategory.IGNORE_POLICY,
     )
+
+
+def _reclassify_verification_preflight(
+    error: InputPreflightError,
+) -> NoReturn:
+    raise InputPreflightError(
+        error.reason_code,
+        FailureCategory.VERIFICATION,
+    ) from None
 
 
 def _lexical_absolute(
@@ -422,9 +447,13 @@ def preflight_inputs(selection: InputSelection) -> PreflightedInputs:
     annual_source_metadata = tuple(
         _preflight_source(path) for path in selection.annual_sources
     )
-    overlap_verification_metadata = tuple(
-        _preflight_source(path) for path in selection.overlap_verifications
-    )
+    try:
+        overlap_verification_metadata = tuple(
+            _preflight_source(path)
+            for path in selection.overlap_verifications
+        )
+    except InputPreflightError as error:
+        _reclassify_verification_preflight(error)
 
     if len(annual_source_metadata) > MAX_ANNUAL_SOURCES:
         _reject(
@@ -466,3 +495,80 @@ def preflight_inputs(selection: InputSelection) -> PreflightedInputs:
         ),
         output_directory=output_directory,
     )
+
+
+def preflight_overlap_verification(
+    selection: OverlapVerificationSelection,
+) -> PreflightedOverlapVerification:
+    """Preflight one existing ignored dataset and explicit raw sources."""
+
+    if (
+        not isinstance(selection, OverlapVerificationSelection)
+        or not isinstance(selection.dataset_directory, Path)
+        or not isinstance(selection.overlap_verifications, tuple)
+        or not selection.overlap_verifications
+        or not all(
+            isinstance(path, Path)
+            for path in selection.overlap_verifications
+        )
+    ):
+        _reject()
+
+    try:
+        source_metadata = tuple(
+            _preflight_source(path)
+            for path in selection.overlap_verifications
+        )
+    except InputPreflightError as error:
+        _reclassify_verification_preflight(error)
+    if any(
+        source.size_bytes > MAX_RAW_INPUT_BYTES
+        for source in source_metadata
+    ):
+        _reject(
+            InputPreflightReasonCode.RAW_INPUT_FILE_LIMIT_EXCEEDED,
+            FailureCategory.CAPACITY,
+        )
+    if sum(source.size_bytes for source in source_metadata) > (
+        MAX_AGGREGATE_RAW_INPUT_BYTES
+    ):
+        _reject(
+            InputPreflightReasonCode.AGGREGATE_RAW_INPUT_LIMIT_EXCEEDED,
+            FailureCategory.CAPACITY,
+        )
+
+    dataset_directory = _preflight_output_directory(
+        selection.dataset_directory
+    )
+    try:
+        dataset_metadata = os.lstat(dataset_directory)
+    except OSError:
+        _reject_output()
+    if (
+        stat.S_ISLNK(dataset_metadata.st_mode)
+        or not stat.S_ISDIR(dataset_metadata.st_mode)
+    ):
+        _reject_output()
+    for source in source_metadata:
+        _revalidate_source(source)
+    return PreflightedOverlapVerification(
+        dataset_directory=dataset_directory,
+        overlap_verifications=tuple(
+            source.resolved_path for source in source_metadata
+        ),
+    )
+
+
+def preflight_ignored_existing_directory(path: Path) -> Path:
+    """Validate one explicitly selected existing ignored directory."""
+
+    if not isinstance(path, Path):
+        _reject_output()
+    selected = _preflight_output_directory(path)
+    try:
+        metadata = os.lstat(selected)
+    except OSError:
+        _reject_output()
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
+        _reject_output()
+    return selected

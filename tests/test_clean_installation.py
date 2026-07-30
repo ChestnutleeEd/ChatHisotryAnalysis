@@ -558,7 +558,10 @@ class TrustedCleanInstallationTests(unittest.TestCase):
         self.assertEqual(result.stderr, "")
         self._assert_private_output(result)
 
-    def test_real_console_streams_the_public_fixture_without_output(self):
+    def test_real_console_publishes_the_public_fixture_dataset(self):
+        source_sha256 = hashlib.sha256(
+            self.synthetic_source.read_bytes()
+        ).hexdigest()
         result = self._run_console(
             arguments=[
                 "preprocess",
@@ -572,17 +575,32 @@ class TrustedCleanInstallationTests(unittest.TestCase):
             json.loads(result.stdout),
             {
                 "annualSourceCount": 1,
+                "annualRangeOverlapCount": 0,
+                "chunkCount": 1,
+                "duplicateRecordCount": 0,
                 "eligibleTextCount": 4100,
+                "matchedVerificationRecordCount": 0,
+                "normalizedRecordCount": 4100,
                 "overlapVerificationCount": 0,
-                "phase": "source-validation",
+                "phase": "output-promotion",
                 "rawMessageCount": 5000,
                 "skippedRecordCount": 900,
                 "status": "ready",
+                "suspiciousAnnualOverlapCount": 0,
+                "unmatchedVerificationRecordCount": 0,
+                "verificationMatchPercentage": 0,
                 "warningCount": 81,
             },
         )
         self.assertEqual(result.stderr, "")
-        self.assertFalse(self.ignored_output.exists())
+        self.assertTrue((self.ignored_output / "manifest.json").is_file())
+        self.assertTrue(
+            (self.ignored_output / "chunk-0001.ndjson").is_file()
+        )
+        self.assertEqual(
+            hashlib.sha256(self.synthetic_source.read_bytes()).hexdigest(),
+            source_sha256,
+        )
         self._assert_private_output(result)
 
     def test_hostile_python_and_pip_environment_cannot_redirect_bootstrap(self):

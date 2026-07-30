@@ -177,7 +177,7 @@ stable reason code. They do not include retained archive paths, package paths,
 member names, local hashes, URLs, parser excerpts, raw exceptions, or
 tracebacks.
 
-## Stage 2C and Stage 3 streaming boundary
+## Stages 2–6 preprocessing boundary
 
 After startup and metadata-only input preflight, `preprocess` performs these
 bounded passes over each explicitly selected source:
@@ -189,6 +189,9 @@ bounded passes over each explicitly selected source:
    `buf_size=65536`, while recomputing the source hash;
 3. after annual ranges determine final rank, one ranked annual staging stream
    and one separate verification stream, again recomputing the source hash.
+4. immediately before final promotion, one binary digest/UTF-8/file-identity
+   pass over every annual and verification source, compared with pass-one
+   evidence.
 
 The event adapter accepts one object root with object `exportInfo`, object
 `session`, array `messages`, exact `exportInfo.format=detailed-json`, and exact
@@ -217,13 +220,30 @@ time, final annual rank, and a lowercase SHA-256 conversation fingerprint.
 Session serialization uses the versioned
 `ChatHistoryAnalysis/conversation-fingerprint/v1` domain, unsigned 64-bit
 big-endian byte-length prefixes, canonical private status, owner/peer fields,
-and the sorted participant set. Identity components and message objects are
+and the sorted participant set. Identity components and raw message objects are
 discarded; production stdout does not print hashes or fingerprints.
 
-No Stage 4 behavior is present. There is no message classification,
-eligible-text filtering, sender normalization, formatted-time normalization,
-SQLite, deduplication, merge, NDJSON, manifest, or formal output promotion.
-The selected ignored output directory is policy-checked but not created.
+Stage 4 classifies and minimizes one message at a time. Only the exact text
+conjunction enters Stage 5; sender scope and UTC+08:00 time are canonical, URL
+spans are removed from mixed text, and structured/non-text/raw fields never
+cross the staging boundary.
+
+Stage 5 stores eligible annual records in one owner-only, same-filesystem
+SQLite sibling with the exact ten-column schema and verified
+`DELETE`/`MEMORY`/`secure_delete=ON`/zero-timeout policy. It computes
+domain-separated SHA-256 identities plus independent 16-byte BLAKE2b
+verifiers, rejects collisions, keeps the lowest rank/index duplicate survivor,
+and compares overlap-verification records without adding them to output.
+
+Stage 6 streams canonical records from SQLite into bounded compact UTF-8/LF
+NDJSON chunks, writes the deterministic manifest, re-reads and verifies every
+candidate byte, removes all non-output entries, and performs one exclusive
+same-filesystem directory rename. The destination must be absent. Schema,
+limits, permissions, recovery, and standalone verification are specified in
+[Normalized local dataset](NORMALIZED_DATASET.md).
+
+General progress reporting and SIGINT cancellation checkpoints remain Stage 7
+work and are not part of this boundary.
 
 ## Stable CLI failure classification
 
@@ -236,6 +256,8 @@ The single `ExitCode` definition is:
 | `65` | `input-validation` | unreadable source, UTF-8/JSON/schema/session/mutation failure |
 | `66` | `ignore-policy` | unsafe, tracked, unignored, or unverifiable output target |
 | `67` | `capacity` | raw file/count/aggregate byte or aggregate message limit |
+| `68` | `output` | SQLite, write, flush, integrity, cleanup, or promotion failure |
+| `69` | `verification` | invalid or unverifiable overlap input |
 
 Argument, input-validation, ignore-policy, and capacity codes are distinct and
 do not reuse the existing startup status. Every caught internal exception is

@@ -2,11 +2,28 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable, TypeVar
 
 from .backend import BackendEvidence
 from .errors import StartupError, StartupReasonCode
-from .input_preflight import InputSelection, PreflightedInputs, preflight_inputs
+from .dataset_persistence import (
+    DatasetBuildResult,
+    DatasetStagingConsumer,
+    OverlapVerificationResult,
+    RecoveryResult,
+    recover_staging_remnant,
+    verify_overlap_against_dataset,
+)
+from .input_preflight import (
+    InputSelection,
+    OverlapVerificationSelection,
+    PreflightedInputs,
+    preflight_ignored_existing_directory,
+    preflight_inputs,
+    preflight_overlap_verification,
+)
 from .preprocessing_validation import (
     ValidationResult,
     validate_preflighted_inputs,
@@ -17,6 +34,14 @@ from .startup import StartupGate
 T = TypeVar("T")
 _CONSTRUCTION_KEY = object()
 _AUTHORIZATION_KEY = object()
+
+
+@dataclass(frozen=True)
+class PreprocessingResult:
+    """Content-free successful Stage 5/6 outcome."""
+
+    validation: ValidationResult
+    dataset: DatasetBuildResult
 
 
 class _SourceAuthorization:
@@ -103,3 +128,61 @@ def run_preprocessing_validation(
         )
 
     return run_source_operation(validate)
+
+
+def run_preprocessing(selection: InputSelection) -> PreprocessingResult:
+    """Run the complete production pipeline and atomically publish output."""
+
+    def preprocess(authorization: _SourceAuthorization) -> PreprocessingResult:
+        inputs = preflight_inputs(selection)
+        consumer = DatasetStagingConsumer(inputs.output_directory)
+        try:
+            validation = validate_preflighted_inputs(
+                inputs,
+                authorization.trusted_backend(),
+                staging_consumer=consumer,
+            )
+            dataset = consumer.publish(validation)
+            return PreprocessingResult(
+                validation=validation,
+                dataset=dataset,
+            )
+        except BaseException:
+            consumer.abort()
+            raise
+
+    return run_source_operation(preprocess)
+
+
+def run_overlap_verification(
+    selection: OverlapVerificationSelection,
+) -> OverlapVerificationResult:
+    """Run the separate read-only verification command."""
+
+    def verify(authorization: _SourceAuthorization) -> OverlapVerificationResult:
+        inputs = preflight_overlap_verification(selection)
+        return verify_overlap_against_dataset(
+            inputs,
+            authorization.trusted_backend(),
+        )
+
+    return run_source_operation(verify)
+
+
+def run_staging_recovery(
+    output_parent: Path,
+    *,
+    candidate_ordinal: int | None,
+    confirmed: bool,
+) -> RecoveryResult:
+    """Inspect or logically remove one explicitly selected crash remnant."""
+
+    def recover(authorization: _SourceAuthorization) -> RecoveryResult:
+        parent = preflight_ignored_existing_directory(output_parent)
+        return recover_staging_remnant(
+            parent,
+            candidate_ordinal=candidate_ordinal,
+            confirmed=confirmed,
+        )
+
+    return run_source_operation(recover)
