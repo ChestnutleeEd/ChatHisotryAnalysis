@@ -9,10 +9,13 @@ import stat
 import subprocess
 from typing import Final, Iterable
 
-from .errors import InputPreflightError
+from .errors import InputPreflightError, InputPreflightReasonCode
 
 
 GIT_EXECUTABLE: Final = "git"
+MAX_RAW_INPUT_BYTES: Final = 536_870_912
+MAX_ANNUAL_SOURCES: Final = 20
+MAX_AGGREGATE_RAW_INPUT_BYTES: Final = 2_147_483_648
 _GIT_REPOSITORY_ENVIRONMENT: Final = frozenset(
     {
         "GIT_ALTERNATE_OBJECT_DIRECTORIES",
@@ -39,15 +42,30 @@ class InputSelection:
 
 @dataclass(frozen=True)
 class PreflightedInputs:
-    """Normalized local paths that passed the bounded Stage 2A preflight."""
+    """Normalized local paths that passed the immutable metadata preflight."""
 
     annual_sources: tuple[Path, ...]
     overlap_verifications: tuple[Path, ...]
     output_directory: Path
 
 
-def _reject() -> None:
-    raise InputPreflightError
+@dataclass(frozen=True)
+class _SourceMetadata:
+    """Trusted, content-free metadata retained only for final revalidation."""
+
+    lexical_path: Path
+    resolved_path: Path
+    device: int
+    inode: int
+    size_bytes: int
+
+
+def _reject(
+    reason_code: InputPreflightReasonCode = (
+        InputPreflightReasonCode.INPUT_PREFLIGHT_FAILED
+    ),
+) -> None:
+    raise InputPreflightError(reason_code)
 
 
 def _lexical_absolute(path: Path) -> Path:
@@ -78,7 +96,19 @@ def _path_is_readable(path: Path, mode: int) -> bool:
         return False
 
 
-def _preflight_source(path: Path) -> Path:
+def _is_same_regular_file(
+    metadata: os.stat_result,
+    expected: _SourceMetadata,
+) -> bool:
+    return (
+        stat.S_ISREG(metadata.st_mode)
+        and metadata.st_dev == expected.device
+        and metadata.st_ino == expected.inode
+        and metadata.st_size == expected.size_bytes
+    )
+
+
+def _preflight_source(path: Path) -> _SourceMetadata:
     lexical_candidate = _lexical_absolute(path)
     try:
         metadata = os.lstat(lexical_candidate)
@@ -86,8 +116,17 @@ def _preflight_source(path: Path) -> Path:
         _reject()
     if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
         _reject()
+    if not isinstance(metadata.st_size, int) or metadata.st_size < 0:
+        _reject()
     if not _path_is_readable(lexical_candidate, metadata.st_mode):
         _reject()
+    expected = _SourceMetadata(
+        lexical_path=lexical_candidate,
+        resolved_path=lexical_candidate,
+        device=metadata.st_dev,
+        inode=metadata.st_ino,
+        size_bytes=metadata.st_size,
+    )
     try:
         resolved = lexical_candidate.resolve(strict=True)
         final_metadata = os.lstat(lexical_candidate)
@@ -96,15 +135,39 @@ def _preflight_source(path: Path) -> Path:
         _reject()
     if (
         stat.S_ISLNK(final_metadata.st_mode)
-        or not stat.S_ISREG(final_metadata.st_mode)
-        or not stat.S_ISREG(resolved_metadata.st_mode)
-        or (final_metadata.st_dev, final_metadata.st_ino)
-        != (metadata.st_dev, metadata.st_ino)
-        or (resolved_metadata.st_dev, resolved_metadata.st_ino)
-        != (metadata.st_dev, metadata.st_ino)
+        or not _is_same_regular_file(final_metadata, expected)
+        or not _is_same_regular_file(resolved_metadata, expected)
     ):
         _reject()
-    return resolved
+    return _SourceMetadata(
+        lexical_path=lexical_candidate,
+        resolved_path=resolved,
+        device=metadata.st_dev,
+        inode=metadata.st_ino,
+        size_bytes=metadata.st_size,
+    )
+
+
+def _revalidate_source(source: _SourceMetadata) -> None:
+    try:
+        if source.lexical_path.resolve(strict=True) != source.resolved_path:
+            _reject()
+        lexical_metadata = os.lstat(source.lexical_path)
+        resolved_metadata = os.stat(
+            source.resolved_path,
+            follow_symlinks=False,
+        )
+    except InputPreflightError:
+        raise
+    except (OSError, RuntimeError, ValueError):
+        _reject()
+    if (
+        stat.S_ISLNK(lexical_metadata.st_mode)
+        or not _is_same_regular_file(lexical_metadata, source)
+        or not _is_same_regular_file(resolved_metadata, source)
+        or not _path_is_readable(source.lexical_path, lexical_metadata.st_mode)
+    ):
+        _reject()
 
 
 def _nearest_existing_directory(path: Path) -> Path:
@@ -318,18 +381,57 @@ def _preflight_output_directory(path: Path) -> Path:
 def preflight_inputs(selection: InputSelection) -> PreflightedInputs:
     """Validate roles and paths without opening or reading source content."""
 
-    if not selection.annual_sources:
+    if (
+        not isinstance(selection, InputSelection)
+        or not isinstance(selection.annual_sources, tuple)
+        or not isinstance(selection.overlap_verifications, tuple)
+        or not isinstance(selection.output_directory, Path)
+        or not selection.annual_sources
+        or not all(
+            isinstance(path, Path)
+            for path in (
+                *selection.annual_sources,
+                *selection.overlap_verifications,
+            )
+        )
+    ):
         _reject()
 
-    annual_sources = tuple(
+    annual_source_metadata = tuple(
         _preflight_source(path) for path in selection.annual_sources
     )
-    overlap_verifications = tuple(
+    overlap_verification_metadata = tuple(
         _preflight_source(path) for path in selection.overlap_verifications
     )
+
+    if len(annual_source_metadata) > MAX_ANNUAL_SOURCES:
+        _reject(InputPreflightReasonCode.ANNUAL_SOURCE_COUNT_LIMIT_EXCEEDED)
+
+    all_source_metadata = (
+        annual_source_metadata + overlap_verification_metadata
+    )
+    if any(
+        source.size_bytes > MAX_RAW_INPUT_BYTES
+        for source in all_source_metadata
+    ):
+        _reject(InputPreflightReasonCode.RAW_INPUT_FILE_LIMIT_EXCEEDED)
+
+    aggregate_size_bytes = sum(
+        source.size_bytes for source in all_source_metadata
+    )
+    if aggregate_size_bytes > MAX_AGGREGATE_RAW_INPUT_BYTES:
+        _reject(InputPreflightReasonCode.AGGREGATE_RAW_INPUT_LIMIT_EXCEEDED)
+
     output_directory = _preflight_output_directory(selection.output_directory)
+    for source in all_source_metadata:
+        _revalidate_source(source)
+
     return PreflightedInputs(
-        annual_sources=annual_sources,
-        overlap_verifications=overlap_verifications,
+        annual_sources=tuple(
+            source.resolved_path for source in annual_source_metadata
+        ),
+        overlap_verifications=tuple(
+            source.resolved_path for source in overlap_verification_metadata
+        ),
         output_directory=output_directory,
     )

@@ -37,9 +37,16 @@ class StartupError(Exception):
 
 
 class InputPreflightReasonCode(str, Enum):
-    """One bounded Stage 2A category, before task 2.8 exit-code work."""
+    """Content-free preflight reasons before task 2.8 exit-code work."""
 
     INPUT_PREFLIGHT_FAILED = "INPUT_PREFLIGHT_FAILED"
+    RAW_INPUT_FILE_LIMIT_EXCEEDED = "RAW_INPUT_FILE_LIMIT_EXCEEDED"
+    ANNUAL_SOURCE_COUNT_LIMIT_EXCEEDED = (
+        "ANNUAL_SOURCE_COUNT_LIMIT_EXCEEDED"
+    )
+    AGGREGATE_RAW_INPUT_LIMIT_EXCEEDED = (
+        "AGGREGATE_RAW_INPUT_LIMIT_EXCEEDED"
+    )
 
 
 class InputPreflightError(Exception):
