@@ -455,6 +455,20 @@ Browser capacity has a mandatory stop gate before capacity implementation can co
 
 Evidence must select exactly one: token-ID arrays with a shared table, per-record metadata plus token-offset arrays, partitioned caches, or a reduced limit that first revises OpenSpec. Browser termination, persistent main-thread unresponsiveness, incomplete Worker tokenization, unsafe cache retention, unusable cancellation, or an exceeded/unjustified memory envelope leaves the capacity task incomplete and stops subsequent maximum-capacity acceptance. The implementation cannot claim the limits, silently lower them, retain duplicate full-text/tokenized representations, move complete processing to the main thread, or use cloud fallback while the gate fails.
 
+### 18. Separate public automation from two private local validation boundaries
+
+The data policy has three layers:
+
+- **Synthetic public fixtures:** fabricated chat-shaped inputs remain the authoritative source for automated tests, CI, public reproduction, and deliberately constructed missing-field, invalid-time, duplicate-message, malformed-JSON, and other boundary cases.
+- **Private one-year local validation dataset:** after the single-file pipeline and its synthetic privacy/error tests are complete, one user-selected CipherTalk detailed JSON export may validate real structure compatibility, streaming, normalization, eligible-text and sender aggregates, Worker tokenization, frequencies, word-cloud rendering, and local performance/memory. It is private validation data, never a mock or fixture.
+- **Private full final acceptance dataset:** only the final acceptance stage may use the explicitly selected complete-history sources for formal multi-file merge, ordering, deduplication, totals, full-range filtering, and the final word cloud. A one-year export may then serve only as overlap, deduplication, and consistency evidence and never contributes duplicate records to final totals.
+
+Private access is deny-by-default. CLI defaults, browser startup, automated tests, and CI do not discover, enumerate, recursively scan, or open private storage. A private run requires explicit user opt-in and an explicit single-file choice for the one-year checkpoint; absence of that file cannot fail public tests or a normal build. Real exports are read-only and are never copied into mock, fixture, test, source, public, distribution, or other tracked locations.
+
+All private processing stays local and makes no external runtime request. Errors and diagnostics use the existing content-free allow-list and never include message bodies. Raw or normalized body text, paths, basenames, identifiers, private aggregates, and derived tokens never enter logs, errors, snapshots, documentation, Git diffs, or OpenSpec evidence. Local aggregate counts, frequencies, and the word cloud may be displayed to the opted-in user but are not recorded in public tests or documentation.
+
+Private normalized data, caches, manifests, aggregate statistics, and word-cloud exports live only under an explicitly selected Git-ignored local output root. The default one-year checkpoint leaves the original user-selected source unchanged, creates no additional persistent raw-body copy, and logically removes generated normalized body text after the validation session. Before creating any necessary intermediate artifact, the implementation documents its exact user-selected location, applicable ignore rule, session or explicitly approved retention lifetime, and logical cleanup procedure. Cleanup removes one validated explicit entry at a time and then the empty validation directory; no private artifact enters Git and no forensic-erasure claim is made.
+
 ## Risks / Trade-offs
 
 - [Pinned native wheel is unavailable for a supported macOS/Python target] → Verify `ijson==3.5.1` wheel coverage and hashes before implementation; block rather than silently use another backend.

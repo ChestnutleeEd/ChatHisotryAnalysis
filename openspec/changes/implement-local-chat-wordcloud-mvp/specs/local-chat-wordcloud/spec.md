@@ -893,6 +893,73 @@ The public source SHALL contain `frontend/public/THIRD_PARTY_NOTICES.txt` with c
 - **WHEN** Vite creates the production build
 - **THEN** `dist/THIRD_PARTY_NOTICES.txt` exists with the same bytes and hash as the public source and can be opened from loopback without external traffic
 
+### Requirement: Three-tier validation data policy
+The system SHALL keep three distinct data roles. Synthetic public fixtures SHALL remain the authoritative inputs for automated tests, CI, public reproduction, and constructed error or boundary cases. A private one-year local validation dataset SHALL be real user data used only after explicit opt-in for the earliest complete single-file local checkpoint; it SHALL NOT be called or treated as a mock or fixture. A private full final acceptance dataset SHALL be used only during the final local acceptance stage for formal multi-file behavior and totals.
+
+Default CLI operation, browser startup, automated tests, and CI SHALL NOT discover, enumerate, recursively scan, or read private storage. Private validation SHALL require the user to select or specify each input file explicitly; the one-year checkpoint SHALL accept exactly one explicitly selected raw file in read-only mode. A missing private file SHALL have no effect on public tests or normal builds.
+
+Real exports SHALL NOT be copied into mock, fixture, test, application-source, public, distribution, or other tracked locations. Raw or normalized message bodies SHALL NOT appear in logs, errors, snapshots, documentation, Git diffs, or OpenSpec evidence. Private failures SHALL use the existing content-free error allow-list. Local aggregate statistics, frequencies, and word-cloud output MAY be displayed to the opted-in user but SHALL NOT be recorded in public tests, committed documentation, or public evidence.
+
+Private normalized data, caches, manifests, aggregate statistics, and word-cloud exports SHALL remain under an explicitly selected Git-ignored local output root and SHALL NOT enter Git. The default private checkpoint SHALL leave the original selected source unchanged, SHALL NOT create an additional persistent raw-body copy, and SHALL logically remove generated normalized message bodies after the validation session. Any necessary intermediate artifact SHALL have a documented user-selected storage location, applicable ignore rule, session or explicitly approved retention lifetime, logical one-entry-at-a-time deletion procedure, and prohibition on Git inclusion before it is created. All private processing SHALL remain local and SHALL make no external runtime request.
+
+When a private one-year export overlaps the private full final acceptance dataset, it SHALL be used only to validate overlap, deduplication, and consistency. Its overlapping records SHALL NOT be added again to final totals.
+
+#### Scenario: Run public automation with synthetic fixtures
+- **WHEN** automated tests, CI, or public reproduction runs
+- **THEN** it uses only synthetic public fixtures, including fabricated missing-field, invalid-time, duplicate-message, malformed-JSON, and other error or boundary cases
+
+#### Scenario: Start without scanning private storage
+- **WHEN** the CLI uses its defaults or the local web application starts
+- **THEN** neither process discovers, enumerates, recursively scans, or reads private storage
+
+#### Scenario: Decline private validation
+- **WHEN** the user has not explicitly opted in and selected a private input file
+- **THEN** no private file is opened
+
+#### Scenario: Select one private one-year file
+- **WHEN** the user explicitly opts in and selects exactly one private one-year detailed JSON file after the checkpoint prerequisites pass
+- **THEN** the local workflow may open that file read-only for structure, streaming, normalization, analysis, and preview validation
+
+#### Scenario: Omit the private one-year file
+- **WHEN** no private one-year validation file exists or is selected
+- **THEN** public automated tests and normal builds still pass independently
+
+#### Scenario: Reject malformed private input without content
+- **WHEN** the explicitly selected private file has invalid encoding, JSON, schema, or message data
+- **THEN** validation fails using only content-free metadata and no chat body, parser excerpt, path, or basename
+
+#### Scenario: Keep private derived artifacts out of Git
+- **WHEN** private normalization, caching, manifest creation, aggregation, or word-cloud export produces a local artifact
+- **THEN** it remains under the explicitly selected ignored output root and Git ignore checks exclude it
+
+#### Scenario: Preview one-year aggregate results
+- **WHEN** the selected private one-year file passes streaming validation, normalization, Worker tokenization, and frequency calculation
+- **THEN** the user may locally view eligible-text and sender counts, high-frequency words, the word cloud, and performance or memory observations
+
+#### Scenario: Refuse private data as a CI fixture
+- **WHEN** CI or an automated test requires a fixture
+- **THEN** the private one-year and private full datasets are unavailable and only synthetic public fixtures are permitted
+
+#### Scenario: Avoid double-counting one-year overlap
+- **WHEN** the private one-year export overlaps sources selected for private full final acceptance
+- **THEN** it is used only for overlap, deduplication, and consistency checks and its overlapping records do not increase final totals
+
+#### Scenario: Reserve full data for final acceptance
+- **WHEN** implementation has not reached the final local acceptance stage
+- **THEN** the private full final acceptance dataset is not opened or processed
+
+#### Scenario: Keep private processing offline
+- **WHEN** either private validation boundary runs after local dependencies and assets are ready
+- **THEN** preprocessing, analysis, visualization, and export make no external runtime request
+
+#### Scenario: Prevent tracked copies of private data
+- **WHEN** a private input or derived artifact is selected
+- **THEN** it is never copied into mock, fixture, test, source, public, distribution, snapshot, documentation, or other tracked locations
+
+#### Scenario: Apply private artifact lifecycle
+- **WHEN** a private validation run needs an intermediate normalized artifact, cache, manifest, aggregate file, or export
+- **THEN** its location, ignore rule, lifetime, one-entry-at-a-time logical deletion procedure, and Git exclusion are defined before creation; the original selected source remains unchanged, no extra persistent raw-body copy is created, and generated normalized body text is logically removed by default after the session
+
 ### Requirement: Repository and runtime privacy
 Raw CipherTalk exports and data-minimized local analysis datasets SHALL remain only in ignored local locations such as `data/private/` and `data/exports/normalized/<dataset-name>/`. They SHALL NOT be committed, bundled, uploaded, logged, snapshotted, or used as test fixtures. Telemetry SHALL be disabled unless a future policy proves it contains no source names, text, tokens, frequencies, identifiers, or derived private metadata.
 

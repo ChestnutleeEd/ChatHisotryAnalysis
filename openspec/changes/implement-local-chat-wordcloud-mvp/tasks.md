@@ -189,6 +189,7 @@
 - [ ] 13.7 Test keyboard workflow, focus restoration, associated validation, progress announcements, and visible focus.
 - [ ] 13.8 Serve the production build on loopback, reject every non-loopback request, and verify all Worker/WASM/dictionary/chart assets are local.
 - [ ] 13.9 Verify no normalized manifest or chunk enters application source, `public/`, `dist`, snapshots, or test logs.
+- [ ] 13.10 After tasks 12.1–12.16 and 13.1–13.9 pass using only synthetic fixtures, run the explicitly opted-in private one-year local validation checkpoint against exactly one user-selected read-only detailed JSON file: verify real-structure compatibility, single-file streaming, normalization, eligible-text and sender aggregates, Worker tokenization, frequencies, word-cloud preview, and local performance/memory; record only content-free pass/fail and environment metadata, never private aggregate values; do not scan private storage, make external runtime requests, retain generated body text by default after the session, or allow ignored local artifacts into Git.
 
 ## 14. Synthetic Multi-Year and Capacity Validation
 
@@ -216,3 +217,4 @@
 - [ ] 15.7 Verify no cloud service, remote API, FastAPI server, account, public deployment, Electron/Tauri wrapper, or excluded analysis feature entered scope.
 - [ ] 15.8 Run unit, integration, browser, accessibility, privacy, offline, type-check, lint, and production-build suites.
 - [ ] 15.9 Reconcile implementation against every specification scenario and record any explicitly approved deviations before completion.
+- [ ] 15.10 After explicit user opt-in, run private full final acceptance only at this final stage for formal multi-file merge, ordering, deduplication, final totals, full-range filtering, and the final word cloud; use any overlapping one-year export only for overlap, deduplication, and consistency verification, never as an additional contribution to totals, and keep all inputs, artifacts, diagnostics, and evidence within the private local boundary.

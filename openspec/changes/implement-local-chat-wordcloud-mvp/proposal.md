@@ -6,6 +6,8 @@ CipherTalk private-chat history can span multiple large annual exports that the 
 
 - **BREAKING** Replace direct browser import of raw CipherTalk JSON with a local macOS Python CLI that streams one raw annual source at a time, validates a single private conversation, minimizes data, deduplicates across files, merges chronologically, and writes deterministic normalized artifacts.
 - Add explicit `annual source` and optional `overlap verification` input roles; verification exports never contribute records or periods to complete-history totals.
+- Separate data use into authoritative public synthetic fixtures, an explicitly opted-in private one-year local validation dataset, and an explicitly opted-in private full final acceptance dataset; private datasets are never fixtures or CI inputs.
+- Add the earliest private one-year local validation checkpoint only after the single-file preprocessing, privacy/error, Worker tokenization, frequency, and word-cloud workflow has passed its synthetic tests; retain private full multi-file acceptance for the final stage.
 - Replace the former small raw-browser limits with implementation-ready raw-preprocessing and normalized-browser limits sized for the audited scale.
 - Define a data-minimized local analysis dataset as one normalized manifest plus deterministic bounded NDJSON chunks under a Git-ignored output location.
 - Use `chatLabType` as the primary message classifier, `type` as consistency and conservative fallback metadata, and safe-integer `localType` as raw metadata only.
@@ -36,5 +38,6 @@ None.
 - Introduces a future local Python preprocessing CLI and one pinned streaming-parser dependency; it is a local command, not a server or backend API.
 - Introduces deterministic normalized-manifest and NDJSON-chunk contracts plus private, temporary SQLite staging stored only in ignored local output roots.
 - Introduces a React/TypeScript/Vite browser application that accepts normalized artifacts only and performs analysis in a Web Worker using pinned `jieba-wasm@2.4.0`.
-- Adds future synthetic multi-year, overlap, deduplication, capacity, Worker, privacy, accessibility, and offline test coverage while retaining the existing synthetic fixture.
+- Adds future synthetic multi-year, overlap, deduplication, capacity, Worker, privacy, accessibility, and offline test coverage while retaining synthetic fixtures as the authoritative public automation boundary.
+- Permits only explicit, local, read-only private validation; default CLI, browser launch, automated tests, and CI never discover private storage, and all derived private artifacts remain ignored and local.
 - Raw exports and normalized datasets remain outside Git; no cloud upload, remote analysis API, database, telemetry containing private data, or source-file mutation is introduced.
