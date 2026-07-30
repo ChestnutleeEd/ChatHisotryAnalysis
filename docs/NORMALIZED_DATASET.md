@@ -172,6 +172,15 @@ an existing destination, copy fallback, or partial final dataset.
 Identical inputs, roles, argument order, versions, and settings produce
 byte-identical manifest and chunks.
 
+Handled SIGINT uses the same close-and-explicit-cleanup path. Cancellation is
+observed only at bounded safe checkpoints, never by raising from the signal
+handler during SQLite or file writes. A request observed before the atomic
+rename returns `USER_CANCELLED` with exit code `130`, removes staging, and
+leaves the destination absent or preserves a destination that already existed.
+If SIGINT arrives after the exclusive rename commit boundary begins, the one
+validated atomic rename completes and the command reports success. Re-running
+after a pre-commit cancellation can use the same absent destination normally.
+
 ## Explicit recovery
 
 Abrupt process or OS termination can leave a marked private sibling. Recovery

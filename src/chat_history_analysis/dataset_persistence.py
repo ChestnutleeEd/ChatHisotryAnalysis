@@ -43,6 +43,7 @@ from .message_normalization import (
     NormalizedMessage,
     NormalizationSummary,
 )
+from .operation_control import current_operation_control
 from .preprocessing_validation import (
     SourceFingerprint,
     StagingConsumer,
@@ -994,7 +995,9 @@ def validate_manifest(manifest: Any) -> None:
 
 def _read_owned_regular(path: Path, *, maximum: int) -> bytes:
     descriptor = -1
+    control = current_operation_control()
     try:
+        control.checkpoint(OUTPUT_VERIFICATION_PHASE, "disk-read-before")
         flags = os.O_RDONLY
         if hasattr(os, "O_NOFOLLOW"):
             flags |= os.O_NOFOLLOW
@@ -1012,6 +1015,7 @@ def _read_owned_regular(path: Path, *, maximum: int) -> bytes:
             value = handle.read(maximum + 1)
         if len(value) > maximum:
             raise OSError
+        control.checkpoint(OUTPUT_VERIFICATION_PHASE, "disk-read-after")
         return value
     except (OSError, ValueError):
         if descriptor >= 0:
@@ -1085,6 +1089,7 @@ def _iter_dataset_records(
     directory: Path,
     manifest: Mapping[str, Any],
 ) -> Iterator[dict[str, Any]]:
+    control = current_operation_control()
     for chunk in manifest["chunks"]:
         digest = hashlib.sha256()
         count = 0
@@ -1094,6 +1099,10 @@ def _iter_dataset_records(
             chunk["byteSize"],
         ) as handle:
             for raw_line in handle:
+                control.checkpoint(
+                    OUTPUT_VERIFICATION_PHASE,
+                    "disk-verification-line-before",
+                )
                 size += len(raw_line)
                 digest.update(raw_line)
                 if not raw_line.endswith(b"\n") or raw_line == b"\n":
@@ -1119,6 +1128,10 @@ def _iter_dataset_records(
                     )
                 count += 1
                 yield record
+                control.checkpoint(
+                    OUTPUT_VERIFICATION_PHASE,
+                    "disk-verification-line-after",
+                )
         if (
             size != chunk["byteSize"]
             or count != chunk["recordCount"]
@@ -1134,9 +1147,25 @@ def verify_dataset_directory(
     directory: Path,
     *,
     require_exact_entries: bool = True,
+    progress_base: int | None = None,
+    progress_total: int | None = None,
 ) -> VerifiedDataset:
     """Re-read and verify a complete candidate or published dataset."""
 
+    control = current_operation_control()
+    if (progress_base is None) != (progress_total is None):
+        raise ValueError
+    if progress_base is not None and progress_total is not None:
+        control.phase_progress(
+            OUTPUT_VERIFICATION_PHASE,
+            progress_base,
+            progress_total,
+            force=True,
+        )
+    control.checkpoint(
+        OUTPUT_VERIFICATION_PHASE,
+        "disk-verification-before",
+    )
     try:
         metadata = os.lstat(directory)
         if (
@@ -1231,6 +1260,17 @@ def verify_dataset_directory(
         raise _persistence_error(
             DatasetPersistenceReasonCode.OUTPUT_INTEGRITY_FAILED,
             phase=OUTPUT_VERIFICATION_PHASE,
+        )
+    control.checkpoint(
+        OUTPUT_VERIFICATION_PHASE,
+        "disk-verification-complete",
+    )
+    if progress_base is not None and progress_total is not None:
+        control.phase_progress(
+            OUTPUT_VERIFICATION_PHASE,
+            progress_base + 1,
+            progress_total,
+            force=True,
         )
     return VerifiedDataset(manifest=manifest, directory=directory)
 
@@ -1625,6 +1665,10 @@ class DatasetStagingConsumer(StagingConsumer):
         )
         if not inserted:
             self._duplicate_count += 1
+        current_operation_control().checkpoint(
+            DATASET_STAGING_PHASE,
+            "sqlite-record-boundary",
+        )
 
     def observe_verification_record(
         self,
@@ -1692,6 +1736,10 @@ class DatasetStagingConsumer(StagingConsumer):
             self._unmatched_verification += 1
         else:
             self._matched_verification += 1
+        current_operation_control().checkpoint(
+            DATASET_STAGING_PHASE,
+            "sqlite-record-boundary",
+        )
 
     def stage_existing_record(
         self,
@@ -1775,6 +1823,29 @@ class DatasetStagingConsumer(StagingConsumer):
                 phase=OUTPUT_SERIALIZATION_PHASE,
             ) from None
 
+        try:
+            total_records = int(
+                connection.execute(
+                    "SELECT COUNT(*) FROM staging_records"
+                ).fetchone()[0]
+            )
+        except (sqlite3.Error, TypeError, ValueError):
+            raise _persistence_error(
+                DatasetPersistenceReasonCode.OUTPUT_WRITE_FAILED,
+                phase=OUTPUT_SERIALIZATION_PHASE,
+            ) from None
+        progress_total = max(total_records, 1) + 1
+        control = current_operation_control()
+        control.phase_progress(
+            OUTPUT_SERIALIZATION_PHASE,
+            0,
+            progress_total,
+            force=True,
+        )
+        control.checkpoint(
+            OUTPUT_SERIALIZATION_PHASE,
+            "chunk-writing-before",
+        )
         chunks: list[ChunkDescriptor] = []
         stats = _OutputStats()
         handle: BinaryIO | None = None
@@ -1800,6 +1871,10 @@ class DatasetStagingConsumer(StagingConsumer):
 
         try:
             for row in cursor:
+                control.checkpoint(
+                    OUTPUT_SERIALIZATION_PHASE,
+                    "chunk-record-before",
+                )
                 if stats.record_count >= MAX_NORMALIZED_RECORDS:
                     raise _persistence_error(
                         DatasetPersistenceReasonCode.NORMALIZED_RECORD_LIMIT_EXCEEDED,
@@ -1838,6 +1913,15 @@ class DatasetStagingConsumer(StagingConsumer):
                 chunk_count += 1
                 chunk_digest.update(encoded)
                 stats.observe(record, len(encoded))
+                control.phase_progress(
+                    OUTPUT_SERIALIZATION_PHASE,
+                    stats.record_count,
+                    progress_total,
+                )
+                control.checkpoint(
+                    OUTPUT_SERIALIZATION_PHASE,
+                    "chunk-record-after",
+                )
                 if stats.byte_count > MAX_NORMALIZED_DATASET_BYTES:
                     raise _persistence_error(
                         DatasetPersistenceReasonCode.NORMALIZED_DATASET_LIMIT_EXCEEDED,
@@ -2001,10 +2085,15 @@ class DatasetStagingConsumer(StagingConsumer):
         output_names: set[str],
     ) -> None:
         self._close_database()
+        control = current_operation_control()
         try:
             for entry in list(os.scandir(self._stage)):
                 if entry.name in output_names:
                     continue
+                control.checkpoint(
+                    OUTPUT_PROMOTION_PHASE,
+                    "pre-promotion-cleanup-entry",
+                )
                 candidate = self._stage / entry.name
                 metadata = os.lstat(candidate)
                 if (
@@ -2039,6 +2128,7 @@ class DatasetStagingConsumer(StagingConsumer):
                 DatasetPersistenceReasonCode.OUTPUT_STAGING_FAILED,
                 phase=OUTPUT_SERIALIZATION_PHASE,
             )
+        control = current_operation_control()
         chunks, stats = self._write_chunks()
         manifest = self._manifest(result, chunks, stats)
         validate_manifest(manifest)
@@ -2052,11 +2142,27 @@ class DatasetStagingConsumer(StagingConsumer):
                 category=FailureCategory.CAPACITY,
             )
         manifest_handle = _secure_create_file(self._stage / MANIFEST_NAME)
+        control.checkpoint(
+            OUTPUT_SERIALIZATION_PHASE,
+            "manifest-write-before",
+        )
         _write_all(manifest_handle, manifest_bytes)
         _flush_close(manifest_handle)
+        control.checkpoint(
+            OUTPUT_SERIALIZATION_PHASE,
+            "manifest-write-after",
+        )
+        control.phase_progress(
+            OUTPUT_SERIALIZATION_PHASE,
+            stats.record_count + 1,
+            stats.record_count + 1,
+            force=True,
+        )
         candidate = verify_dataset_directory(
             self._stage,
             require_exact_entries=False,
+            progress_base=0,
+            progress_total=4,
         )
         if candidate.manifest != manifest:
             raise _persistence_error(
@@ -2068,13 +2174,37 @@ class DatasetStagingConsumer(StagingConsumer):
             *(chunk.name for chunk in chunks),
         }
         self._remove_non_output_entries(output_names)
-        verified = verify_dataset_directory(self._stage)
+        verified = verify_dataset_directory(
+            self._stage,
+            progress_base=1,
+            progress_total=4,
+        )
         if verified.manifest != manifest:
             raise _persistence_error(
                 DatasetPersistenceReasonCode.OUTPUT_INTEGRITY_FAILED,
                 phase=OUTPUT_VERIFICATION_PHASE,
             )
+        control.phase_progress(
+            OUTPUT_VERIFICATION_PHASE,
+            2,
+            4,
+            force=True,
+        )
+        control.checkpoint(
+            OUTPUT_VERIFICATION_PHASE,
+            "input-reverification-before",
+        )
         _verify_inputs_unchanged(result)
+        control.checkpoint(
+            OUTPUT_VERIFICATION_PHASE,
+            "input-reverification-after",
+        )
+        control.phase_progress(
+            OUTPUT_VERIFICATION_PHASE,
+            3,
+            4,
+            force=True,
+        )
         try:
             os.lstat(self._destination)
         except FileNotFoundError:
@@ -2114,8 +2244,25 @@ class DatasetStagingConsumer(StagingConsumer):
                 os.close(stage_descriptor)
             if parent_descriptor >= 0:
                 os.close(parent_descriptor)
-        _atomic_rename_exclusive(self._stage, self._destination)
-        self._published = True
+        control.checkpoint(
+            OUTPUT_VERIFICATION_PHASE,
+            "promotion-readiness-complete",
+        )
+        control.phase_progress(
+            OUTPUT_VERIFICATION_PHASE,
+            4,
+            4,
+            force=True,
+        )
+        control.phase_progress(
+            OUTPUT_PROMOTION_PHASE,
+            0,
+            1,
+            force=True,
+        )
+        with control.promotion_commit():
+            _atomic_rename_exclusive(self._stage, self._destination)
+            self._published = True
         parent_descriptor = -1
         try:
             parent_descriptor = os.open(
@@ -2131,6 +2278,12 @@ class DatasetStagingConsumer(StagingConsumer):
         finally:
             if parent_descriptor >= 0:
                 os.close(parent_descriptor)
+        control.phase_progress(
+            OUTPUT_PROMOTION_PHASE,
+            1,
+            1,
+            force=True,
+        )
         return DatasetBuildResult(
             normalized_record_count=stats.record_count,
             chunk_count=len(chunks),
@@ -2219,7 +2372,11 @@ def _verify_inputs_unchanged(result: ValidationResult) -> None:
             source_ordinal=descriptor.supplied_ordinal,
             path=descriptor.path,
         )
-        observed = digest_and_validate_utf8(context, aggregate_bytes)
+        observed = digest_and_validate_utf8(
+            context,
+            aggregate_bytes,
+            checkpoint_phase=OUTPUT_VERIFICATION_PHASE,
+        )
         expected = _evidence_for_descriptor(descriptor)
         if observed != expected:
             raise SourceValidationError(

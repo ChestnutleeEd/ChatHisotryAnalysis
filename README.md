@@ -1,6 +1,6 @@
 # ChatHisotryAnalysis
 
-本项目用于开发和验证本地聊天历史分析能力。当前阶段包含可复现的合成数据基线、本地 Python 预处理器的可信启动边界、CipherTalk `detailed-json` 三遍流式验证、消息规范化、私有 SQLite 暂存、跨文件去重/合并、确定性 NDJSON/manifest 和原子发布，以及只使用合成探针的本地前端基础设施；尚不包含浏览器 normalized-file 导入、Worker 分析、完整词云业务应用、Stage 7 通用进度/SIGINT 取消、后端 API、数据库解密或微信/CipherTalk 连接功能。
+本项目用于开发和验证本地聊天历史分析能力。当前阶段包含可复现的合成数据基线、本地 Python 预处理器的可信启动边界、CipherTalk `detailed-json` 三遍流式验证、消息规范化、私有 SQLite 暂存、跨文件去重/合并、确定性 NDJSON/manifest、原子发布、content-free 生产进度和安全 SIGINT 取消，以及只使用合成探针的本地前端基础设施；尚不包含浏览器 normalized-file 导入、Worker 数据集分析、完整词云业务应用、后端 API、数据库解密或微信/CipherTalk 连接功能。
 
 ## 当前阶段：合成数据基线
 
@@ -94,8 +94,18 @@ Recovery 是逐 entry 的逻辑清理，不承诺 forensic 或 cryptographic era
 | `67` | byte/message capacity failure |
 | `68` | output/staging/serialization/cleanup/promotion failure |
 | `69` | overlap verification failure |
+| `130` | safe user cancellation |
 
 失败输出是单行 JSON，只包含固定 category、phase、reason code、role、source/record ordinal 和受控 field；不包含 path、basename、消息值、JSON 片段、hash、内部异常或 traceback。
+
+`preprocess` 运行时在 stdout 输出逐行 JSON progress，在成功时输出最后一行
+result；失败或取消只在 stderr 输出一行 JSON。progress 的固定字段只描述 phase、
+role/source ordinal、aggregate work count、固定 percentage 和 running/completed
+状态，不包含输入/输出名称、路径、参与者、正文、URL、fingerprint 或 hash。
+`Ctrl-C` 返回稳定 exit code `130` 和 `USER_CANCELLED`。SIGINT handler 只记录请求，
+实际停止发生在 parser event、SQLite record、完整 chunk record、磁盘验证或发布前的
+安全检查点；取消会关闭资源并逐项清理 staging。原子 rename 一旦进入 commit
+boundary，就完成一个已验证数据集并按成功结果返回，不会发布有效但不完整的目录。
 
 ## Stage 1B 前端基础设施
 

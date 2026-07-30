@@ -8,6 +8,7 @@ from typing import Any, Protocol
 
 from .backend import BackendEvidence
 from .errors import (
+    DATASET_STAGING_PHASE,
     FailureCategory,
     SESSION_VALIDATION_PHASE,
     SOURCE_STAGING_PHASE,
@@ -15,6 +16,7 @@ from .errors import (
     SourceValidationError,
     SourceValidationReasonCode,
 )
+from .operation_control import ProgressScope, current_operation_control
 from .input_preflight import PreflightedInputs
 from .message_capacity import (
     MAX_AGGREGATE_RAW_MESSAGES,
@@ -303,16 +305,37 @@ def _validate_preflighted_inputs(
     message_counter = AggregateMessageCounter(limit=message_limit)
     evidence_by_context: dict[SourceContext, FirstPassEvidence] = {}
     summaries_by_context: dict[SourceContext, SourcePassSummary] = {}
+    all_contexts = (*annual_contexts, *verification_contexts)
+    input_count = len(all_contexts)
 
-    for context in (*annual_contexts, *verification_contexts):
-        evidence = digest_and_validate_utf8(context, aggregate_bytes)
+    for input_index, context in enumerate(all_contexts, start=1):
+        evidence = digest_and_validate_utf8(
+            context,
+            aggregate_bytes,
+            progress_scope=ProgressScope(
+                phase="source-digest",
+                role=context.role,
+                source_ordinal=context.source_ordinal,
+                input_index=input_index,
+                input_count=input_count,
+            ),
+        )
+        evidence_by_context[context] = evidence
+    for input_index, context in enumerate(all_contexts, start=1):
+        evidence = evidence_by_context[context]
         summary = parse_and_validate_source(
             context,
             evidence,
             backend,
             aggregate_messages=message_counter,
+            progress_scope=ProgressScope(
+                phase="source-validation",
+                role=context.role,
+                source_ordinal=context.source_ordinal,
+                input_index=input_index,
+                input_count=input_count,
+            ),
         )
-        evidence_by_context[context] = evidence
         summaries_by_context[context] = summary
 
     annual_descriptors = tuple(
@@ -331,11 +354,16 @@ def _validate_preflighted_inputs(
         )
         for context in verification_contexts
     )
+    control = current_operation_control()
+    control.phase_progress(SESSION_VALIDATION_PHASE, 0, 1, force=True)
+    control.checkpoint(SESSION_VALIDATION_PHASE, "session-validation-before")
     fingerprint = _validate_conversation_set(
         annual_descriptors,
         verification_descriptors,
     )
     ranked_annual = _rank_annual_sources(annual_descriptors)
+    control.checkpoint(SESSION_VALIDATION_PHASE, "session-validation-after")
+    control.phase_progress(SESSION_VALIDATION_PHASE, 1, 1, force=True)
     consumer = staging_consumer or DiscardingStagingConsumer()
     normalizer = MessageNormalizationConsumer(
         on_annual_eligible=lambda descriptor, record, platform_id, owner, peer: (
@@ -361,50 +389,59 @@ def _validate_preflighted_inputs(
     )
 
     try:
-        for descriptor in ranked_annual:
+        staged_descriptors = (*ranked_annual, *verification_descriptors)
+        for input_index, descriptor in enumerate(
+            staged_descriptors,
+            start=1,
+        ):
             identity = summaries_by_context[
                 _context_for(descriptor)
             ].session_identity
-            summary = parse_and_validate_source(
-                _context_for(descriptor),
-                _evidence_for(descriptor),
-                backend,
-                phase=SOURCE_STAGING_PHASE,
-                on_message=lambda source_index, message, selected=descriptor,
-                expected=identity: (
-                    normalizer.stage_annual_message(
+            if descriptor.role is SourceRole.ANNUAL_SOURCE:
+                callback = (
+                    lambda source_index, message, selected=descriptor,
+                    expected=identity: normalizer.stage_annual_message(
                         selected,
                         source_index,
                         message,
                         owner_identity=expected.owner_identity,
                         peer_identity=expected.peer_identity,
                     )
-                ),
-            )
-            _assert_same_pass(descriptor, summary)
-        for descriptor in verification_descriptors:
-            identity = summaries_by_context[
-                _context_for(descriptor)
-            ].session_identity
+                )
+            else:
+                callback = (
+                    lambda source_index, message, selected=descriptor,
+                    expected=identity: (
+                        normalizer.observe_verification_message(
+                            selected,
+                            source_index,
+                            message,
+                            owner_identity=expected.owner_identity,
+                            peer_identity=expected.peer_identity,
+                        )
+                    )
+                )
             summary = parse_and_validate_source(
                 _context_for(descriptor),
                 _evidence_for(descriptor),
                 backend,
                 phase=SOURCE_STAGING_PHASE,
-                on_message=lambda source_index, message, selected=descriptor,
-                expected=identity: (
-                    normalizer.observe_verification_message(
-                        selected,
-                        source_index,
-                        message,
-                        owner_identity=expected.owner_identity,
-                        peer_identity=expected.peer_identity,
-                    )
+                on_message=callback,
+                progress_scope=ProgressScope(
+                    phase=SOURCE_STAGING_PHASE,
+                    role=descriptor.role,
+                    source_ordinal=descriptor.supplied_ordinal,
+                    input_index=input_index,
+                    input_count=len(staged_descriptors),
                 ),
             )
             _assert_same_pass(descriptor, summary)
         normalizer.complete()
+        control.phase_progress(DATASET_STAGING_PHASE, 0, 1, force=True)
+        control.checkpoint(DATASET_STAGING_PHASE, "sqlite-commit-before")
         consumer.complete()
+        control.checkpoint(DATASET_STAGING_PHASE, "sqlite-commit-after")
+        control.phase_progress(DATASET_STAGING_PHASE, 1, 1, force=True)
     except BaseException:
         try:
             normalizer.abort()

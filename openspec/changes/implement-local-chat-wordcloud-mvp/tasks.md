@@ -96,16 +96,16 @@
 
 ## 7. CLI Progress, Cancellation, and Error Model
 
-- [ ] 7.1 Implement startup, fatal dataset, fatal output, recoverable record, verification failure, and cancellation project error types that discard internal exception messages.
-- [ ] 7.2 Apply the exact presentation allow-list—source ordinal, input role, phase, field, line/record ordinal, reason code, aggregate count, percentage, and non-sensitive capacity value—to every output surface.
-- [ ] 7.3 Prohibit absolute/relative paths, basenames, directory/output/SQLite locations, user-derived labels, participants, message IDs, per-message hashes, content fragments, URLs, and parser excerpts everywhere.
-- [ ] 7.4 Present sources only as fixed role/ordinal labels and output failures only as phase plus reason code.
-- [ ] 7.5 Report aggregate input completion and preprocessing phases within the allow-list.
-- [ ] 7.6 Implement SIGINT cancellation checks between parser events, staging batches, merge reads, and chunk writes.
-- [ ] 7.7 Ensure cancellation closes resources, enumerates temporary cleanup, preserves an absent or prior final destination, and exits distinctly.
-- [ ] 7.8 Ensure recoverable records increment aggregate reason counters and never appear in console details.
-- [ ] 7.9 Add disk, write, flush, hash, privacy, cleanup, and atomic-rename integrity failures as content-free fatal paths.
-- [ ] 7.10 Inject sensitive-looking strings and prove none reaches stdout, stderr, browser errors, progress events, screenshots, snapshots, debug logs, or manifest warnings.
+- [x] 7.1 Implement startup, fatal dataset, fatal output, recoverable record, verification failure, and cancellation project error types that discard internal exception messages.
+- [x] 7.2 Apply the exact presentation allow-list—source ordinal, input role, phase, field, line/record ordinal, reason code, aggregate count, percentage, and non-sensitive capacity value—to every output surface.
+- [x] 7.3 Prohibit absolute/relative paths, basenames, directory/output/SQLite locations, user-derived labels, participants, message IDs, per-message hashes, content fragments, URLs, and parser excerpts everywhere.
+- [x] 7.4 Present sources only as fixed role/ordinal labels and output failures only as phase plus reason code.
+- [x] 7.5 Report aggregate input completion and preprocessing phases within the allow-list.
+- [x] 7.6 Implement SIGINT cancellation checks between parser events, staging batches, merge reads, and chunk writes.
+- [x] 7.7 Ensure cancellation closes resources, enumerates temporary cleanup, preserves an absent or prior final destination, and exits distinctly.
+- [x] 7.8 Ensure recoverable records increment aggregate reason counters and never appear in console details.
+- [x] 7.9 Add disk, write, flush, hash, privacy, cleanup, and atomic-rename integrity failures as content-free fatal paths.
+- [x] 7.10 Inject sensitive-looking strings and prove none reaches stdout, stderr, browser errors, progress events, screenshots, snapshots, debug logs, or manifest warnings.
 
 ## 8. Browser Normalized-File Input
 

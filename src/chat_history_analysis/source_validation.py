@@ -14,6 +14,8 @@ from typing import Any, BinaryIO, Callable, Final, Iterator
 
 from .backend import BackendEvidence
 from .errors import (
+    CancellationError,
+    DatasetPersistenceError,
     FailureCategory,
     SOURCE_DIGEST_PHASE,
     SOURCE_VALIDATION_PHASE,
@@ -21,6 +23,7 @@ from .errors import (
     SourceValidationError,
     SourceValidationReasonCode,
 )
+from .operation_control import ProgressScope, current_operation_control
 from .input_preflight import (
     MAX_AGGREGATE_RAW_INPUT_BYTES,
     MAX_RAW_INPUT_BYTES,
@@ -180,6 +183,9 @@ def _open_source(
 def digest_and_validate_utf8(
     context: SourceContext,
     aggregate_bytes: AggregateRawByteCounter,
+    *,
+    progress_scope: ProgressScope | None = None,
+    checkpoint_phase: str = SOURCE_DIGEST_PHASE,
 ) -> FirstPassEvidence:
     """Hash one binary source and validate UTF-8 without retaining decoded text."""
 
@@ -191,9 +197,24 @@ def digest_and_validate_utf8(
     modified_time_ns = -1
     changed_time_ns = -1
     first_block = True
+    control = current_operation_control()
     try:
         with _open_source(context, phase=SOURCE_DIGEST_PHASE) as handle:
             opened_before = os.fstat(handle.fileno())
+            progress_total = max(opened_before.st_size, 1)
+            if progress_scope is not None:
+                control.source_progress(
+                    progress_scope,
+                    0,
+                    progress_total,
+                    force=True,
+                )
+            control.checkpoint(
+                progress_scope.phase
+                if progress_scope is not None
+                else checkpoint_phase,
+                "source-digest-before-read",
+            )
             device = opened_before.st_dev
             inode = opened_before.st_ino
             modified_time_ns = opened_before.st_mtime_ns
@@ -213,6 +234,18 @@ def digest_and_validate_utf8(
                 digest.update(block)
                 size_bytes += len(block)
                 decoder.decode(block, final=False)
+                if progress_scope is not None:
+                    control.source_progress(
+                        progress_scope,
+                        min(size_bytes, progress_total),
+                        progress_total,
+                    )
+                control.checkpoint(
+                    progress_scope.phase
+                    if progress_scope is not None
+                    else checkpoint_phase,
+                    "source-digest-block",
+                )
             decoder.decode(b"", final=True)
             opened_after = os.fstat(handle.fileno())
             path_after = os.lstat(context.path)
@@ -233,6 +266,19 @@ def digest_and_validate_utf8(
                     SourceValidationReasonCode.SOURCE_MUTATED,
                     phase=SOURCE_DIGEST_PHASE,
                 )
+            if progress_scope is not None:
+                control.source_progress(
+                    progress_scope,
+                    progress_total,
+                    progress_total,
+                    force=True,
+                )
+            control.checkpoint(
+                progress_scope.phase
+                if progress_scope is not None
+                else checkpoint_phase,
+                "source-digest-complete",
+            )
     except UnicodeError:
         raise _error(
             context,
@@ -264,6 +310,7 @@ class _HashingReader:
         "_handle",
         "_maximum",
         "_phase",
+        "_progress_scope",
         "bytes_read",
     )
 
@@ -274,11 +321,13 @@ class _HashingReader:
         context: SourceContext,
         maximum_bytes: int,
         phase: str,
+        progress_scope: ProgressScope | None,
     ) -> None:
         self._handle = handle
         self._context = context
         self._maximum = maximum_bytes
         self._phase = phase
+        self._progress_scope = progress_scope
         self._digest = hashlib.sha256()
         self.bytes_read = 0
 
@@ -293,6 +342,15 @@ class _HashingReader:
             )
         self._digest.update(block)
         self.bytes_read = next_size
+        control = current_operation_control()
+        if self._progress_scope is not None:
+            total = max(self._maximum, 1)
+            control.source_progress(
+                self._progress_scope,
+                min(next_size, total),
+                total,
+            )
+        control.checkpoint(self._phase, "parser-read-boundary")
         return block
 
     def hexdigest(self) -> str:
@@ -305,6 +363,7 @@ def _next_event(
     *,
     phase: str,
 ) -> ParserEvent:
+    current_operation_control().checkpoint(phase, "parser-event-boundary")
     try:
         return next(events)
     except StopIteration:
@@ -792,10 +851,12 @@ def parse_and_validate_source(
     phase: str = SOURCE_VALIDATION_PHASE,
     aggregate_messages: AggregateMessageCounter | None = None,
     on_message: MessageCallback | None = None,
+    progress_scope: ProgressScope | None = None,
 ) -> SourcePassSummary:
     """Parse one source through the exact backend and verify concurrent hash."""
 
     callback = on_message or (lambda source_index, message: None)
+    control = current_operation_control()
     try:
         with _open_source(context, phase=phase) as handle:
             opened_before = os.fstat(handle.fileno())
@@ -812,11 +873,21 @@ def parse_and_validate_source(
                     SourceValidationReasonCode.SOURCE_MUTATED,
                     phase=phase,
                 )
+            progress_total = max(evidence.size_bytes, 1)
+            if progress_scope is not None:
+                control.source_progress(
+                    progress_scope,
+                    0,
+                    progress_total,
+                    force=True,
+                )
+            control.checkpoint(phase, "parser-before-stream")
             reader = _HashingReader(
                 handle,
                 context=context,
                 maximum_bytes=evidence.size_bytes,
                 phase=phase,
+                progress_scope=progress_scope,
             )
             events = iter(
                 backend.parse(
@@ -870,8 +941,16 @@ def parse_and_validate_source(
                     SourceValidationReasonCode.SOURCE_MUTATED,
                     phase=phase,
                 )
+            if progress_scope is not None:
+                control.source_progress(
+                    progress_scope,
+                    progress_total,
+                    progress_total,
+                    force=True,
+                )
+            control.checkpoint(phase, "parser-stream-complete")
             return summary
-    except SourceValidationError:
+    except (SourceValidationError, CancellationError, DatasetPersistenceError):
         raise
     except backend.parser_error_types:
         raise _error(

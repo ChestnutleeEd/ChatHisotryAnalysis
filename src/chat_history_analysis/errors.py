@@ -20,6 +20,35 @@ OUTPUT_VERIFICATION_PHASE: Final = "output-verification"
 OUTPUT_PROMOTION_PHASE: Final = "output-promotion"
 OVERLAP_VERIFICATION_PHASE: Final = "overlap-verification"
 RECOVERY_PHASE: Final = "recovery"
+PRESENTATION_PHASES: Final = frozenset(
+    {
+        STARTUP_PHASE,
+        ARGUMENT_PHASE,
+        INPUT_PREFLIGHT_PHASE,
+        SOURCE_DIGEST_PHASE,
+        SOURCE_VALIDATION_PHASE,
+        SOURCE_STAGING_PHASE,
+        SESSION_VALIDATION_PHASE,
+        MESSAGE_NORMALIZATION_PHASE,
+        DATASET_STAGING_PHASE,
+        OUTPUT_SERIALIZATION_PHASE,
+        OUTPUT_VERIFICATION_PHASE,
+        OUTPUT_PROMOTION_PHASE,
+        OVERLAP_VERIFICATION_PHASE,
+        RECOVERY_PHASE,
+    }
+)
+PRESENTATION_FIELDS: Final = frozenset(
+    {
+        "exportInfo",
+        "exportInfo.format",
+        "messages",
+        "messages.createTime",
+        "messages.localType",
+        "messages.senderUsername",
+        "session",
+    }
+)
 
 
 class ExitCode(IntEnum):
@@ -33,6 +62,7 @@ class ExitCode(IntEnum):
     CAPACITY_FAILURE = 67
     OUTPUT_FAILURE = 68
     VERIFICATION_FAILURE = 69
+    CANCELLATION = 130
 
 
 class FailureCategory(str, Enum):
@@ -45,6 +75,7 @@ class FailureCategory(str, Enum):
     CAPACITY = "capacity"
     OUTPUT = "output"
     VERIFICATION = "verification"
+    CANCELLATION = "cancellation"
 
 
 class StartupReasonCode(str, Enum):
@@ -202,6 +233,18 @@ class DatasetPersistenceError(Exception):
         category: FailureCategory = FailureCategory.OUTPUT,
         aggregate_count: int | None = None,
     ) -> None:
+        if (
+            phase not in PRESENTATION_PHASES
+            or (
+                aggregate_count is not None
+                and (
+                    isinstance(aggregate_count, bool)
+                    or not isinstance(aggregate_count, int)
+                    or aggregate_count < 0
+                )
+            )
+        ):
+            raise ValueError
         self.reason_code = reason_code
         self.phase = phase
         self.category = category
@@ -217,6 +260,31 @@ class DatasetPersistenceError(Exception):
         if self.aggregate_count is not None:
             payload["aggregateCount"] = self.aggregate_count
         return payload
+
+
+class CancellationReasonCode(str, Enum):
+    """Stable cancellation reasons independent of source content."""
+
+    USER_CANCELLED = "USER_CANCELLED"
+
+
+class CancellationError(Exception):
+    """A requested stop observed at a production safe checkpoint."""
+
+    reason_code = CancellationReasonCode.USER_CANCELLED
+
+    def __init__(self, *, phase: str) -> None:
+        if phase not in PRESENTATION_PHASES:
+            raise ValueError
+        self.phase = phase
+        super().__init__(self.reason_code.value)
+
+    def public_payload(self) -> Mapping[str, str]:
+        return {
+            "category": FailureCategory.CANCELLATION.value,
+            "phase": self.phase,
+            "reasonCode": self.reason_code.value,
+        }
 
 
 class SourceRole(str, Enum):
@@ -240,6 +308,23 @@ class SourceValidationError(Exception):
         field: str | None = None,
         record_ordinal: int | None = None,
     ) -> None:
+        if (
+            phase not in PRESENTATION_PHASES
+            or not isinstance(role, SourceRole)
+            or isinstance(source_ordinal, bool)
+            or not isinstance(source_ordinal, int)
+            or source_ordinal < 1
+            or (field is not None and field not in PRESENTATION_FIELDS)
+            or (
+                record_ordinal is not None
+                and (
+                    isinstance(record_ordinal, bool)
+                    or not isinstance(record_ordinal, int)
+                    or record_ordinal < 1
+                )
+            )
+        ):
+            raise ValueError
         self.reason_code = reason_code
         self.phase = phase
         self.role = role

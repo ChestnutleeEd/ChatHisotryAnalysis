@@ -11,6 +11,7 @@ import unittest
 
 from chat_history_analysis.cli import _run_for_test
 from chat_history_analysis.errors import (
+    CancellationError,
     DatasetPersistenceError,
     DatasetPersistenceReasonCode,
     ExitCode,
@@ -95,6 +96,7 @@ class ExitClassificationTests(unittest.TestCase):
             ExitCode.CAPACITY_FAILURE: 67,
             ExitCode.OUTPUT_FAILURE: 68,
             ExitCode.VERIFICATION_FAILURE: 69,
+            ExitCode.CANCELLATION: 130,
         }
         self.assertEqual(
             {member: int(member) for member in expected},
@@ -299,6 +301,30 @@ class ExitClassificationTests(unittest.TestCase):
             payload["reasonCode"],
             "OVERLAP_VERIFICATION_FAILED",
         )
+
+    def test_cancellation_has_distinct_content_free_exit_class(self) -> None:
+        def cancel(selection: object) -> object:
+            raise CancellationError(phase=SOURCE_VALIDATION_PHASE)
+
+        exit_code, stdout, stderr = self.run_cli(
+            [
+                "preprocess",
+                "--annual-source",
+                os.fspath(self.source),
+                "--output-dir",
+                os.fspath(self.ignored_output),
+            ],
+            cancel,
+        )
+        payload = self.assert_private_failure(
+            exit_code,
+            stdout,
+            stderr,
+            expected_exit=ExitCode.CANCELLATION,
+            expected_category=FailureCategory.CANCELLATION,
+        )
+        self.assertEqual(payload["reasonCode"], "USER_CANCELLED")
+        self.assertEqual(payload["phase"], SOURCE_VALIDATION_PHASE)
 
 
 if __name__ == "__main__":

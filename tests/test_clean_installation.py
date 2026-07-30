@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import signal
 import subprocess
 import unittest
 import zipfile
@@ -571,8 +572,51 @@ class TrustedCleanInstallationTests(unittest.TestCase):
                 str(self.ignored_output),
             ]
         )
+        output_lines = [
+            json.loads(line)
+            for line in result.stdout.splitlines()
+            if line
+        ]
+        progress = output_lines[:-1]
+        self.assertTrue(progress)
         self.assertEqual(
-            json.loads(result.stdout),
+            tuple(dict.fromkeys(item["phase"] for item in progress)),
+            (
+                "startup",
+                "input-preflight",
+                "source-digest",
+                "source-validation",
+                "session-validation",
+                "source-staging",
+                "dataset-staging",
+                "output-serialization",
+                "output-verification",
+                "output-promotion",
+            ),
+        )
+        self.assertEqual(
+            [item["percentage"] for item in progress],
+            sorted(item["percentage"] for item in progress),
+        )
+        self.assertEqual(progress[-1]["percentage"], 100)
+        self.assertEqual(progress[-1]["status"], "completed")
+        for item in progress:
+            self.assertEqual(item["event"], "progress")
+            self.assertLessEqual(
+                set(item),
+                {
+                    "aggregateCount",
+                    "capacityValue",
+                    "event",
+                    "percentage",
+                    "phase",
+                    "role",
+                    "sourceOrdinal",
+                    "status",
+                },
+            )
+        self.assertEqual(
+            output_lines[-1],
             {
                 "annualSourceCount": 1,
                 "annualRangeOverlapCount": 0,
@@ -602,6 +646,103 @@ class TrustedCleanInstallationTests(unittest.TestCase):
             source_sha256,
         )
         self._assert_private_output(result)
+
+    def test_real_console_sigint_cancels_and_reruns_without_residue(self):
+        cancelled_output = (
+            self.probe_repository / "ignored" / "cancelled-dataset"
+        )
+        rerun_output = self.probe_repository / "ignored" / "rerun-dataset"
+        cancelled_output.parent.mkdir(exist_ok=True)
+        source_sha256 = hashlib.sha256(
+            self.synthetic_source.read_bytes()
+        ).hexdigest()
+        command = [
+            str(self.console312),
+            "preprocess",
+            "--annual-source",
+            str(self.synthetic_source),
+            "--output-dir",
+            str(cancelled_output),
+        ]
+        process = subprocess.Popen(
+            command,
+            cwd=self.external_root,
+            env=self._clean_environment(),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+        )
+        observed: list[str] = []
+        try:
+            if process.stdout is None:
+                raise AssertionError
+            while True:
+                line = process.stdout.readline()
+                if not line:
+                    raise AssertionError("CANCELLATION_CHECKPOINT_NOT_REACHED")
+                observed.append(line)
+                payload = json.loads(line)
+                if (
+                    payload.get("event") == "progress"
+                    and payload.get("phase") == "source-validation"
+                ):
+                    process.send_signal(signal.SIGINT)
+                    break
+            stdout_tail, stderr = process.communicate(timeout=60)
+        except Exception:
+            process.kill()
+            process.communicate()
+            raise AssertionError("CANCELLATION_PROBE_FAILED") from None
+        result = subprocess.CompletedProcess(
+            command,
+            process.returncode,
+            "".join(observed) + stdout_tail,
+            stderr,
+        )
+        self.assertEqual(result.returncode, 130)
+        self.assertEqual(
+            json.loads(result.stderr),
+            {
+                "category": "cancellation",
+                "phase": "source-validation",
+                "reasonCode": "USER_CANCELLED",
+            },
+        )
+        self.assertNotIn("Traceback", result.stdout + result.stderr)
+        self.assertFalse(cancelled_output.exists())
+        self.assertFalse(
+            any(
+                path.name.startswith(".chathistoryanalysis-stage-v1-")
+                for path in cancelled_output.parent.iterdir()
+            )
+        )
+        self.assertEqual(
+            hashlib.sha256(self.synthetic_source.read_bytes()).hexdigest(),
+            source_sha256,
+        )
+        self._assert_private_output(result)
+
+        rerun = self._run_console(
+            arguments=[
+                "preprocess",
+                "--annual-source",
+                str(self.synthetic_source),
+                "--output-dir",
+                str(rerun_output),
+            ]
+        )
+        rerun_lines = [
+            json.loads(line)
+            for line in rerun.stdout.splitlines()
+            if line
+        ]
+        self.assertEqual(rerun_lines[-1]["status"], "ready")
+        self.assertEqual(rerun_lines[-1]["normalizedRecordCount"], 4100)
+        self.assertTrue((rerun_output / "manifest.json").is_file())
+        self.assertTrue((rerun_output / "chunk-0001.ndjson").is_file())
+        self._assert_private_output(rerun)
 
     def test_hostile_python_and_pip_environment_cannot_redirect_bootstrap(self):
         fake_root = self.external_root / "fake-pip-root"

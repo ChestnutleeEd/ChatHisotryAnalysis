@@ -23,6 +23,7 @@ from .errors import (
     SOURCE_VALIDATION_PHASE,
     STARTUP_PHASE,
     ArgumentError,
+    CancellationError,
     DatasetPersistenceError,
     DatasetPersistenceReasonCode,
     ExitCode,
@@ -33,6 +34,11 @@ from .errors import (
     StartupReasonCode,
 )
 from .input_preflight import InputSelection, OverlapVerificationSelection
+from .operation_control import (
+    OperationControl,
+    install_sigint_handler,
+    use_operation_control,
+)
 from .preprocessing_validation import ValidationResult
 
 
@@ -293,6 +299,9 @@ def _run_for_test(
     except DatasetPersistenceError as error:
         print(json.dumps(error.public_payload(), sort_keys=True), file=sys.stderr)
         return _classified_exit(error.category)
+    except CancellationError as error:
+        print(json.dumps(error.public_payload(), sort_keys=True), file=sys.stderr)
+        return int(ExitCode.CANCELLATION)
     except Exception:
         if arguments.command == "startup-check":
             error = StartupError(
@@ -339,14 +348,24 @@ def _classified_exit(category: FailureCategory) -> int:
         return int(ExitCode.OUTPUT_FAILURE)
     if category is FailureCategory.VERIFICATION:
         return int(ExitCode.VERIFICATION_FAILURE)
+    if category is FailureCategory.CANCELLATION:
+        return int(ExitCode.CANCELLATION)
     return int(ExitCode.INPUT_VALIDATION_FAILURE)
+
+
+def _emit_progress(payload: object) -> None:
+    print(json.dumps(payload, sort_keys=True), flush=True)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the non-injectable production readiness command."""
 
-    return _run_for_test(
-        argv,
-        run_startup_check,
-        run_preprocessing,
-    )
+    supplied = tuple(sys.argv[1:] if argv is None else argv)
+    sink = _emit_progress if supplied[:1] == ("preprocess",) else None
+    control = OperationControl(progress_sink=sink)
+    with use_operation_control(control), install_sigint_handler(control):
+        return _run_for_test(
+            supplied,
+            run_startup_check,
+            run_preprocessing,
+        )

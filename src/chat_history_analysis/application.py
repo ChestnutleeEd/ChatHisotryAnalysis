@@ -7,7 +7,12 @@ from pathlib import Path
 from typing import Callable, TypeVar
 
 from .backend import BackendEvidence
-from .errors import StartupError, StartupReasonCode
+from .errors import (
+    INPUT_PREFLIGHT_PHASE,
+    STARTUP_PHASE,
+    StartupError,
+    StartupReasonCode,
+)
 from .dataset_persistence import (
     DatasetBuildResult,
     DatasetStagingConsumer,
@@ -28,6 +33,7 @@ from .preprocessing_validation import (
     ValidationResult,
     validate_preflighted_inputs,
 )
+from .operation_control import current_operation_control
 from .startup import StartupGate
 
 
@@ -84,7 +90,12 @@ class _PreprocessorApplication:
         self,
         operation: Callable[[_SourceAuthorization], T],
     ) -> T:
+        control = current_operation_control()
+        control.phase_progress(STARTUP_PHASE, 0, 1, force=True)
+        control.checkpoint(STARTUP_PHASE, "startup-before-gate")
         backend = self._gate.verify()
+        control.checkpoint(STARTUP_PHASE, "startup-after-gate")
+        control.phase_progress(STARTUP_PHASE, 1, 1, force=True)
         authorization = _SourceAuthorization(_AUTHORIZATION_KEY, backend)
         return operation(authorization)
 
@@ -121,7 +132,12 @@ def run_preprocessing_validation(
     """Run metadata and all streaming passes behind the production gate."""
 
     def validate(authorization: _SourceAuthorization) -> ValidationResult:
+        control = current_operation_control()
+        control.phase_progress(INPUT_PREFLIGHT_PHASE, 0, 1, force=True)
+        control.checkpoint(INPUT_PREFLIGHT_PHASE, "preflight-before")
         inputs = preflight_inputs(selection)
+        control.checkpoint(INPUT_PREFLIGHT_PHASE, "preflight-after")
+        control.phase_progress(INPUT_PREFLIGHT_PHASE, 1, 1, force=True)
         return validate_preflighted_inputs(
             inputs,
             authorization.trusted_backend(),
@@ -134,7 +150,12 @@ def run_preprocessing(selection: InputSelection) -> PreprocessingResult:
     """Run the complete production pipeline and atomically publish output."""
 
     def preprocess(authorization: _SourceAuthorization) -> PreprocessingResult:
+        control = current_operation_control()
+        control.phase_progress(INPUT_PREFLIGHT_PHASE, 0, 1, force=True)
+        control.checkpoint(INPUT_PREFLIGHT_PHASE, "preflight-before")
         inputs = preflight_inputs(selection)
+        control.checkpoint(INPUT_PREFLIGHT_PHASE, "preflight-after")
+        control.phase_progress(INPUT_PREFLIGHT_PHASE, 1, 1, force=True)
         consumer = DatasetStagingConsumer(inputs.output_directory)
         try:
             validation = validate_preflighted_inputs(

@@ -242,8 +242,32 @@ same-filesystem directory rename. The destination must be absent. Schema,
 limits, permissions, recovery, and standalone verification are specified in
 [Normalized local dataset](NORMALIZED_DATASET.md).
 
-General progress reporting and SIGINT cancellation checkpoints remain Stage 7
-work and are not part of this boundary.
+Stage 7 extends this same production composition with one cooperative operation
+control. It does not add a test-only parser or parallel execution entry.
+`preprocess` stdout is NDJSON: zero or more fixed-shape progress objects followed
+by one success object. stderr remains empty on success; failure or cancellation
+emits exactly one content-free JSON object there. Progress percentages are
+monotonic over fixed ranges for startup, input preflight, source digest, source
+validation, session validation, ranked staging, SQLite commit, serialization,
+disk/input re-verification, and atomic promotion. Source progress contains only
+the fixed role and supplied ordinal. Its counts are aggregate phase work units;
+fixed percentage boundaries avoid encoding message text length or content.
+
+The SIGINT handler only sets an idempotent cancellation flag. Production checks
+it before or after bounded reads, between parser events, after complete SQLite
+statements, between complete normalized-record writes, between disk-validation
+lines, and between explicit pre-promotion cleanup entries. A handled
+cancellation rolls back/closes SQLite, closes open files, removes each staging
+entry explicitly, leaves sources unchanged, leaves an absent destination absent,
+and returns exit code `130` with `USER_CANCELLED`. Repeated SIGINT has the same
+outcome and never injects `KeyboardInterrupt` or a traceback.
+
+The exclusive directory rename has one commit boundary. Cancellation observed
+before that boundary prevents promotion and cleans staging. Once the boundary is
+entered, the already verified atomic rename is allowed to finish and the command
+reports success; it never reports cancellation for a newly published complete
+dataset and never exposes a valid partial dataset. Cleanup failure remains a
+content-free output failure and leaves only recognized recovery state.
 
 ## Stable CLI failure classification
 
@@ -258,6 +282,7 @@ The single `ExitCode` definition is:
 | `67` | `capacity` | raw file/count/aggregate byte or aggregate message limit |
 | `68` | `output` | SQLite, write, flush, integrity, cleanup, or promotion failure |
 | `69` | `verification` | invalid or unverifiable overlap input |
+| `130` | `cancellation` | safe user cancellation |
 
 Argument, input-validation, ignore-policy, and capacity codes are distinct and
 do not reuse the existing startup status. Every caught internal exception is
