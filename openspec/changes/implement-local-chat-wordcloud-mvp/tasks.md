@@ -109,55 +109,55 @@
 
 ## 8. Browser Normalized-File Input
 
-- [ ] 8.1 Implement local selection of one normalized manifest plus all referenced normalized chunks through multi-file File APIs.
-- [ ] 8.2 Add drag-and-drop support and evaluate optional directory selection without making it required.
-- [ ] 8.3 Detect and reject raw CipherTalk detailed JSON with guidance to run preprocessing.
-- [ ] 8.4 Reject missing, extra, duplicate, or ambiguously named normalized chunks.
-- [ ] 8.5 Preflight the inclusive 134,217,728-byte aggregate and 33,554,432-byte per-chunk browser limits before Worker parsing.
-- [ ] 8.6 Stage candidate files atomically so a failed replacement leaves the last accepted dataset and controls usable.
-- [ ] 8.7 Ensure normalized private files are never copied to Vite `public/`, application source, or `dist`.
+- [x] 8.1 Implement local selection of one normalized manifest plus all referenced normalized chunks through multi-file File APIs.
+- [x] 8.2 Add drag-and-drop support and evaluate optional directory selection without making it required.
+- [x] 8.3 Detect and reject raw CipherTalk detailed JSON with guidance to run preprocessing.
+- [x] 8.4 Reject missing, extra, duplicate, or ambiguously named normalized chunks.
+- [x] 8.5 Preflight the inclusive 134,217,728-byte aggregate and 33,554,432-byte per-chunk browser limits before Worker parsing.
+- [x] 8.6 Stage candidate files atomically so a failed replacement leaves the last accepted dataset and controls usable.
+- [x] 8.7 Ensure normalized private files are never copied to Vite `public/`, application source, or `dist`.
 
 ## 9. Web Worker and WASM Lifecycle
 
-- [ ] 9.1 Create a typed Worker protocol for candidate validation, progress, cancellation, settings, aggregate results, and content-free errors.
-- [ ] 9.2 Transfer normalized File/Blob handles to the Worker and release avoidable full-text references on the main thread.
-- [ ] 9.3 Validate manifest schema/version, UTC policy, fingerprint shape, counts, names, and selected file set inside the Worker.
-- [ ] 9.4 Read one bounded chunk buffer at a time, compute SHA-256 with `crypto.subtle.digest`, and reject hash mismatches before tokenization.
-- [ ] 9.5 Fatally decode verified chunks and parse NDJSON incrementally in manifest order with exact allow-list validation.
-- [ ] 9.6 Verify monotonic normalized order, canonical source indexes, aggregate counts, ranges, and forbidden-field absence.
-- [ ] 9.7 Verify Vite development and production packaging of Worker JavaScript plus `jieba-wasm@2.4.0` WASM before building the full pipeline.
-- [ ] 9.8 Implement one lazy Jieba singleton per Worker dataset lifecycle using only `cut(text, false)` and the embedded dictionary.
-- [ ] 9.9 Tokenize every accepted record once, cache only the compact representation selected by the mandatory profiling decision with sender/date metadata, and release each chunk's normalized text and buffer before the next chunk.
-- [ ] 9.10 Implement safe Worker checkpoints for cancellation between chunks, lines, tokenization batches, and aggregation batches.
-- [ ] 9.11 Prohibit any hidden complete-dataset main-thread parsing or tokenization fallback.
-- [ ] 9.12 Handle Worker creation, WASM initialization, allocation, and memory-pressure failures with reusable content-free UI states.
+- [x] 9.1 Create a typed Worker protocol for candidate validation, progress, cancellation, settings, aggregate results, and content-free errors.
+- [x] 9.2 Transfer normalized File/Blob handles to the Worker and release avoidable full-text references on the main thread.
+- [x] 9.3 Validate manifest schema/version, UTC policy, fingerprint shape, counts, names, and selected file set inside the Worker.
+- [x] 9.4 Read one bounded chunk buffer at a time, compute SHA-256 with `crypto.subtle.digest`, and reject hash mismatches before tokenization.
+- [x] 9.5 Fatally decode verified chunks and parse NDJSON incrementally in manifest order with exact allow-list validation.
+- [x] 9.6 Verify monotonic normalized order, canonical source indexes, aggregate counts, ranges, and forbidden-field absence.
+- [x] 9.7 Verify Vite development and production packaging of Worker JavaScript plus `jieba-wasm@2.4.0` WASM before building the full pipeline.
+- [x] 9.8 Implement one lazy Jieba singleton per Worker dataset lifecycle using only `cut(text, false)` and the embedded dictionary.
+- [x] 9.9 Tokenize every accepted record once, cache only the compact representation selected by the mandatory profiling decision with sender/date metadata, and release each chunk's normalized text and buffer before the next chunk.
+- [x] 9.10 Implement safe Worker checkpoints for cancellation between chunks, lines, tokenization batches, and aggregation batches.
+- [x] 9.11 Prohibit any hidden complete-dataset main-thread parsing or tokenization fallback.
+- [x] 9.12 Handle Worker creation, WASM initialization, allocation, and memory-pressure failures with reusable content-free UI states.
 
 ## 10. Text Processing and Frequency Engine
 
-- [ ] 10.1 Implement NFKC, English lowercase, whitespace, punctuation, emoji-separator, and separator-only normalization.
-- [ ] 10.2 Combine fixed Jieba Chinese segmentation with Unicode English alphabetic runs.
-- [ ] 10.3 Add a local versioned stop-word asset with documented provenance, license, version, SHA-256, and exact-match normalization.
-- [ ] 10.4 Apply configurable stop words without mutating the embedded Jieba dictionary.
-- [ ] 10.5 Apply Unicode-code-point minimum token length and numeric-only token exclusion.
-- [ ] 10.6 Implement all, owner-only, and other-only filtering over cached token metadata.
-- [ ] 10.7 Implement full and inclusive custom calendar-date filtering from manifest-derived bounds.
-- [ ] 10.8 Implement deterministic token counts, analyzed-message and unique-token metrics, minimum frequency, and maximum displayed words.
-- [ ] 10.9 Sort equal frequencies by ascending Unicode code-point token order.
-- [ ] 10.10 Return one atomic aggregate result with no normalized message text.
-- [ ] 10.11 Reuse cached tokenization for sender, date, and display-threshold changes.
+- [x] 10.1 Implement NFKC, English lowercase, whitespace, punctuation, emoji-separator, and separator-only normalization.
+- [x] 10.2 Combine fixed Jieba Chinese segmentation with Unicode English alphabetic runs.
+- [x] 10.3 Add a local versioned stop-word asset with documented provenance, license, version, SHA-256, and exact-match normalization.
+- [x] 10.4 Apply configurable stop words without mutating the embedded Jieba dictionary.
+- [x] 10.5 Apply Unicode-code-point minimum token length and numeric-only token exclusion.
+- [x] 10.6 Implement all, owner-only, and other-only filtering over cached token metadata.
+- [x] 10.7 Implement full and inclusive custom calendar-date filtering from manifest-derived bounds.
+- [x] 10.8 Implement deterministic token counts, analyzed-message and unique-token metrics, minimum frequency, and maximum displayed words.
+- [x] 10.9 Sort equal frequencies by ascending Unicode code-point token order.
+- [x] 10.10 Return one atomic aggregate result with no normalized message text.
+- [x] 10.11 Reuse cached tokenization for sender, date, and display-threshold changes.
 
 ## 11. UI, Visualization, Export, and Accessibility
 
-- [ ] 11.1 Build normalized dataset selection with staged replacement, schema guidance, fatal/recoverable feedback, and retry behavior.
-- [ ] 11.2 Display actual data-derived range, normalized record count, aggregate warnings, and pseudonymous dataset status without participant identity.
-- [ ] 11.3 Build sender, inclusive date-range, maximum-word, and minimum-frequency controls with valid defaults and inline validation.
-- [ ] 11.4 Display chunk/phase progress and overall percentage with a cancel action and programmatic busy status.
-- [ ] 11.5 Restore a reusable state and logical focus after cancellation or memory failure.
-- [ ] 11.6 Render an ECharts word cloud and exact accessible ranked-frequency list from the same ordered result.
-- [ ] 11.7 Display analyzed-message count, unique-token count, selected scope/range, warnings, and an explicit empty state.
-- [ ] 11.8 Atomically update cloud, ranking, and metrics after settings changes.
-- [ ] 11.9 Export the current non-empty cloud as a local PNG with a non-sensitive filename and no private metadata.
-- [ ] 11.10 Verify keyboard order, visible focus, programmatic labels, associated errors, status announcements, and non-color-only feedback.
+- [x] 11.1 Build normalized dataset selection with staged replacement, schema guidance, fatal/recoverable feedback, and retry behavior.
+- [x] 11.2 Display actual data-derived range, normalized record count, aggregate warnings, and pseudonymous dataset status without participant identity.
+- [x] 11.3 Build sender, inclusive date-range, maximum-word, and minimum-frequency controls with valid defaults and inline validation.
+- [x] 11.4 Display chunk/phase progress and overall percentage with a cancel action and programmatic busy status.
+- [x] 11.5 Restore a reusable state and logical focus after cancellation or memory failure.
+- [x] 11.6 Render an ECharts word cloud and exact accessible ranked-frequency list from the same ordered result.
+- [x] 11.7 Display analyzed-message count, unique-token count, selected scope/range, warnings, and an explicit empty state.
+- [x] 11.8 Atomically update cloud, ranking, and metrics after settings changes.
+- [x] 11.9 Export the current non-empty cloud as a local PNG with a non-sensitive filename and no private metadata.
+- [x] 11.10 Verify keyboard order, visible focus, programmatic labels, associated errors, status announcements, and non-color-only feedback.
 
 ## 12. Preprocessor Unit and Integration Tests
 

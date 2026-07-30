@@ -1,6 +1,6 @@
 # ChatHisotryAnalysis
 
-本项目用于开发和验证本地聊天历史分析能力。当前阶段包含可复现的合成数据基线、本地 Python 预处理器的可信启动边界、CipherTalk `detailed-json` 三遍流式验证、消息规范化、私有 SQLite 暂存、跨文件去重/合并、确定性 NDJSON/manifest、原子发布、content-free 生产进度和安全 SIGINT 取消，以及只使用合成探针的本地前端基础设施；尚不包含浏览器 normalized-file 导入、Worker 数据集分析、完整词云业务应用、后端 API、数据库解密或微信/CipherTalk 连接功能。
+本项目用于开发和验证本地聊天历史分析能力。当前阶段包含可复现的合成数据基线、本地 Python 预处理器的可信启动边界、CipherTalk `detailed-json` 三遍流式验证、消息规范化、私有 SQLite 暂存、跨文件去重/合并、确定性 NDJSON/manifest、原子发布、content-free 生产进度和安全 SIGINT 取消，以及浏览器端 normalized dataset 导入、Worker 内严格复验、Jieba WASM 分词、compact cache、多条件词频分析和本地 PNG 导出。它不包含后端 API、数据库解密或微信/CipherTalk 连接功能，浏览器也不接受原始 CipherTalk 导出。
 
 ## 当前阶段：合成数据基线
 
@@ -107,11 +107,21 @@ role/source ordinal、aggregate work count、固定 percentage 和 running/compl
 安全检查点；取消会关闭资源并逐项清理 staging。原子 rename 一旦进入 commit
 boundary，就完成一个已验证数据集并按成功结果返回，不会发布有效但不完整的目录。
 
-## Stage 1B 前端基础设施
+## 本地浏览器分析
 
-`frontend/` 目前只验证 React/TypeScript/Vite、Worker 内
-`jieba-wasm@2.4.0` 合成分词、ECharts 词云扩展和本地 PNG 导出。在 Finder
-双击仓库根目录的 `Start Chat Analysis.command` 即可启动；如果
+`frontend/` 提供完整的本地浏览器分析流程。用户显式选择一个
+`manifest.json` 和其中引用的全部 `chunk-NNNN.ndjson` 后，主线程只执行文件名和
+大小预检；独立 Worker 会重新验证 exact schema、版本、文件集合、SHA-256、严格
+UTF-8/NDJSON、record allow-list、顺序、计数、时间范围和 privacy 声明。验证通过后，
+Worker 用 `jieba-wasm@2.4.0` 构建 token-ID arrays + shared token table cache，
+后续发送方、日期、显示词数和最低词频调整只重算聚合，不重新读取或分词。
+
+词云和可访问的排序列表展示同一份确定性结果；“停止”会先请求 cooperative cancel，
+随后终止 Worker 并释放 cache，“重新开始”会用保留的 File handles 完整复验。
+PNG 只在本地由 ECharts canvas 生成。应用运行期间不发起外部请求，也不显示文件名、
+路径、联系人、账号或消息正文。
+
+在 Finder 双击仓库根目录的 `Start Chat Analysis.command` 即可启动；如果
 `frontend/node_modules` 缺失或关键直接依赖不完整，脚本会自动根据权威
 `package-lock.json` 运行项目本地 `npm ci`，成功后继续 build、启动并打开
 浏览器，不需要用户先输入终端命令。依赖首次安装可以访问 npm registry；
@@ -120,6 +130,9 @@ Analysis.command` 可安全停止该项目实例。
 运行时边界、命令和安全模型见
 [Frontend runtime boundary](docs/FRONTEND_RUNTIME.md)，依赖证据见
 [Stage 1B dependency evidence](docs/STAGE_1B_DEPENDENCY_EVIDENCE.md)。
+compact cache 的生产表示选择、合成边界数据和实测阈值见
+[Browser compact-cache profiling](docs/BROWSER_COMPACT_CACHE_PROFILING.md)，
+内置停用词来源、版本和校验值见 [Stop-word asset](docs/STOP_WORDS.md)。
 生产构建随附的完整第三方文本来自
 `frontend/public/THIRD_PARTY_NOTICES.txt`。
 

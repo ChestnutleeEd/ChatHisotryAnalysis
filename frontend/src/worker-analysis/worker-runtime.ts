@@ -1,57 +1,1559 @@
-import type { WorkerFailureCode } from "./protocol";
+import {
+  MANIFEST_FILE_NAME,
+  MANIFEST_SCHEMA_VERSION,
+  MAX_MANIFEST_BYTES,
+  MAX_NORMALIZED_CHUNK_BYTES,
+  MAX_NORMALIZED_DATASET_BYTES,
+  MAX_NORMALIZED_RECORDS,
+  NORMALIZED_RECORD_FIELDS,
+  NORMALIZED_SCHEMA_VERSION,
+  PREPROCESSOR_VERSION,
+  TIME_POLICY,
+  isNormalizedChunkName,
+  type DatasetSummary,
+  type NormalizedChunkDescriptor,
+  type NormalizedTextRecord,
+} from "../normalized/schema";
+import type {
+  AcceptedDatasetResult,
+  AnalysisResult,
+  AnalysisSettings,
+  TokenizerSettings,
+  WorkerFailureCode,
+  WorkerPhase,
+  WorkerProgress,
+} from "./protocol";
+import { parseStrictJson, type JsonValue } from "./strict-json";
+
+const HASH_PATTERN = /^[0-9a-f]{64}$/u;
+const DATE_PATTERN = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/u;
+const TIME_PATTERN =
+  /^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$/u;
+const REASON_PATTERN = /^[A-Z][A-Z0-9_]*$/u;
+const URL_PATTERN =
+  /(?<![A-Za-z0-9_])(?:https?:\/\/|www\.)[^\s<>"']+/giu;
+const XML_PATTERN =
+  /<\s*(?:[!?]|\/?[A-Za-z_][A-Za-z0-9_.:-]*(?:\s|\/?>))/u;
+const TOKEN_RUN_PATTERN = /\p{Script=Han}+|[a-z]+|\p{N}+/gu;
+const SEPARATOR_PATTERN = /[\p{P}\p{S}\s]+/gu;
+const FORBIDDEN_KEYS = new Set(
+  [
+    "rawContent",
+    "source",
+    "senderUsername",
+    "senderDisplayName",
+    "senderAvatar",
+    "nickname",
+    "remark",
+    "displayName",
+    "wxid",
+    "ownerId",
+    "platformMessageId",
+    "localId",
+    "avatar",
+    "url",
+    "chatRecords",
+    "replyToMessageId",
+    "groupNickname",
+    "media",
+    "payload",
+    "path",
+    "basename",
+  ].map((value) => value.toLocaleLowerCase("en")),
+);
+
+const MANIFEST_FIELDS = [
+  "aggregates",
+  "chunks",
+  "conversationFingerprint",
+  "inputs",
+  "normalizedSchemaVersion",
+  "preprocessorVersion",
+  "privacyValidation",
+  "schemaVersion",
+  "timePolicy",
+  "timeRange",
+] as const;
+const AGGREGATE_FIELDS = [
+  "annualSourceCount",
+  "duplicateRecordCount",
+  "eligibleTextRecordCount",
+  "normalizedRecordCount",
+  "overlap",
+  "overlapVerificationCount",
+  "rawMessageCount",
+  "senderCounts",
+  "skippedByReason",
+  "skippedRecordCount",
+  "sourceCount",
+  "warningCount",
+  "warningsByReason",
+] as const;
+const OVERLAP_FIELDS = [
+  "annualRangeOverlapCount",
+  "matchedEligibleRecordCount",
+  "suspiciousAnnualOverlapCount",
+  "unmatchedEligibleRecordCount",
+  "verificationSourceCount",
+] as const;
+const TIME_RANGE_FIELDS = [
+  "maximumCalendarDate",
+  "maximumCreateTime",
+  "maximumFormattedTime",
+  "minimumCalendarDate",
+  "minimumCreateTime",
+  "minimumFormattedTime",
+] as const;
+
+export const MAXIMUM_DISPLAYED_WORDS = 500;
+export const MAXIMUM_MINIMUM_FREQUENCY = 1_000_000;
 
 export interface TokenizerDependencies {
   initialize(): Promise<void>;
   cutWithoutHmm(text: string): readonly string[];
 }
 
-export class WorkerProbeError extends Error {
-  readonly code: WorkerFailureCode;
+export interface RuntimeFile {
+  readonly name: string;
+  readonly size: number;
+  arrayBuffer(): Promise<ArrayBuffer>;
+  stream(): ReadableStream<Uint8Array>;
+  slice(start?: number, end?: number): Blob;
+}
 
-  constructor(code: WorkerFailureCode) {
+export class WorkerAnalysisError extends Error {
+  readonly code: WorkerFailureCode;
+  readonly phase: WorkerPhase;
+  readonly chunkOrdinal?: number;
+  readonly lineOrdinal?: number;
+
+  constructor(
+    code: WorkerFailureCode,
+    phase: WorkerPhase,
+    details: {
+      readonly chunkOrdinal?: number;
+      readonly lineOrdinal?: number;
+    } = {},
+  ) {
     super(code);
-    this.name = "WorkerProbeError";
+    this.name = "WorkerAnalysisError";
     this.code = code;
+    this.phase = phase;
+    this.chunkOrdinal = details.chunkOrdinal;
+    this.lineOrdinal = details.lineOrdinal;
   }
 }
 
-export interface TokenizerProbeRuntime {
-  initialize(): Promise<void>;
-  segmentSyntheticProbe(text: string): readonly string[];
+export class WorkerCancellation extends Error {
+  constructor() {
+    super("WORKER_OPERATION_CANCELLED");
+    this.name = "WorkerCancellation";
+  }
 }
 
-export function createTokenizerProbeRuntime(
-  dependencies: TokenizerDependencies,
-): TokenizerProbeRuntime {
-  let initialized = false;
+interface ManifestInput {
+  readonly role: "annual-source" | "overlap-verification";
+  readonly suppliedOrdinal: number;
+  readonly fileRank: number | null;
+  readonly byteSize: number;
+  readonly sha256: string;
+}
 
+interface ValidatedManifest {
+  readonly chunks: readonly NormalizedChunkDescriptor[];
+  readonly inputs: readonly ManifestInput[];
+  readonly normalizedRecordCount: number;
+  readonly annualSourceCount: number;
+  readonly overlapVerificationCount: number;
+  readonly senderCounts: {
+    readonly owner: number;
+    readonly other: number;
+  };
+  readonly warningCount: number;
+  readonly warningsByReason: Readonly<Record<string, number>>;
+  readonly minimumCreateTime: number;
+  readonly maximumCreateTime: number;
+  readonly minimumFormattedTime: string;
+  readonly maximumFormattedTime: string;
+  readonly minimumCalendarDate: string;
+  readonly maximumCalendarDate: string;
+}
+
+interface TokenCache {
+  readonly tokenIds: Uint32Array;
+  readonly recordOffsets: Uint32Array;
+  readonly senderScopes: Uint8Array;
+  readonly calendarDates: Uint32Array;
+  readonly tokenTable: readonly string[];
+  readonly summary: DatasetSummary;
+  readonly generation: number;
+}
+
+class GrowableUint32 {
+  private storage = new Uint32Array(1024);
+  private lengthValue = 0;
+
+  get length(): number {
+    return this.lengthValue;
+  }
+
+  push(value: number): void {
+    if (this.lengthValue === this.storage.length) {
+      const next = new Uint32Array(this.storage.length * 2);
+      next.set(this.storage);
+      this.storage = next;
+    }
+    this.storage[this.lengthValue] = value;
+    this.lengthValue += 1;
+  }
+
+  finish(): Uint32Array {
+    return this.storage.slice(0, this.lengthValue);
+  }
+}
+
+class CompactCacheBuilder {
+  private readonly tokenIds = new GrowableUint32();
+  private tokenMap: Map<string, number> | undefined = new Map();
+  private readonly tokenTable: string[] = [];
+  private readonly recordOffsets: Uint32Array;
+  private readonly senderScopes: Uint8Array;
+  private readonly calendarDates: Uint32Array;
+  private records = 0;
+
+  constructor(private readonly expectedRecords: number) {
+    this.recordOffsets = new Uint32Array(expectedRecords + 1);
+    this.senderScopes = new Uint8Array(expectedRecords);
+    this.calendarDates = new Uint32Array(expectedRecords);
+  }
+
+  append(record: NormalizedTextRecord, tokens: readonly string[]): void {
+    if (this.records >= this.expectedRecords) {
+      throw new WorkerAnalysisError("COUNT_MISMATCH", "records");
+    }
+    const tokenMap = this.tokenMap;
+    if (tokenMap === undefined) {
+      throw new WorkerAnalysisError("WORKER_RUNTIME_FAILED", "records");
+    }
+    this.recordOffsets[this.records] = this.tokenIds.length;
+    this.senderScopes[this.records] = record.senderScope === "owner" ? 0 : 1;
+    this.calendarDates[this.records] = calendarDateCode(record.calendarDate);
+    for (const token of tokens) {
+      let tokenId = tokenMap.get(token);
+      if (tokenId === undefined) {
+        tokenId = this.tokenTable.length;
+        this.tokenTable.push(token);
+        tokenMap.set(token, tokenId);
+      }
+      this.tokenIds.push(tokenId);
+    }
+    this.records += 1;
+  }
+
+  finish(summary: DatasetSummary, generation: number): TokenCache {
+    if (this.records !== this.expectedRecords) {
+      throw new WorkerAnalysisError("COUNT_MISMATCH", "records");
+    }
+    this.recordOffsets[this.records] = this.tokenIds.length;
+    this.tokenMap = undefined;
+    return {
+      tokenIds: this.tokenIds.finish(),
+      recordOffsets: this.recordOffsets,
+      senderScopes: this.senderScopes,
+      calendarDates: this.calendarDates,
+      tokenTable: this.tokenTable,
+      summary,
+      generation,
+    };
+  }
+}
+
+function isObject(
+  value: JsonValue | undefined,
+): value is { readonly [key: string]: JsonValue } {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function exactObject<const Key extends string>(
+  value: JsonValue | undefined,
+  fields: readonly Key[],
+): Record<Key, JsonValue> {
+  if (!isObject(value)) {
+    throw new Error("INVALID_OBJECT");
+  }
+  const observed = Object.keys(value).sort();
+  const expected = [...fields].sort();
+  if (
+    observed.length !== expected.length ||
+    observed.some((key, index) => key !== expected[index])
+  ) {
+    throw new Error("INVALID_FIELDS");
+  }
+  return value as Record<Key, JsonValue>;
+}
+
+function integer(value: JsonValue, minimum = 0): number {
+  if (!Number.isSafeInteger(value) || (value as number) < minimum) {
+    throw new Error("INVALID_INTEGER");
+  }
+  return value as number;
+}
+
+function stringValue(value: JsonValue): string {
+  if (typeof value !== "string") {
+    throw new Error("INVALID_STRING");
+  }
+  return value;
+}
+
+function hashValue(value: JsonValue): string {
+  const result = stringValue(value);
+  if (!HASH_PATTERN.test(result)) {
+    throw new Error("INVALID_HASH");
+  }
+  return result;
+}
+
+function validateCountMap(value: JsonValue): Readonly<Record<string, number>> {
+  if (!isObject(value)) {
+    throw new Error("INVALID_COUNT_MAP");
+  }
+  const result: Record<string, number> = Object.create(null) as Record<
+    string,
+    number
+  >;
+  for (const [key, count] of Object.entries(value)) {
+    if (!REASON_PATTERN.test(key)) {
+      throw new Error("INVALID_REASON");
+    }
+    result[key] = integer(count);
+  }
+  return result;
+}
+
+function sum(values: Iterable<number>): number {
+  let result = 0;
+  for (const value of values) {
+    result += value;
+  }
+  return result;
+}
+
+function expectedTime(createTime: number): {
+  readonly formatted: string;
+  readonly calendar: string;
+} {
+  const milliseconds = createTime * 1000 + 8 * 60 * 60 * 1000;
+  const date = new Date(milliseconds);
+  if (!Number.isFinite(date.getTime())) {
+    throw new Error("INVALID_TIME");
+  }
+  const year = String(date.getUTCFullYear()).padStart(4, "0");
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  const hour = String(date.getUTCHours()).padStart(2, "0");
+  const minute = String(date.getUTCMinutes()).padStart(2, "0");
+  const second = String(date.getUTCSeconds()).padStart(2, "0");
+  const calendar = `${year}-${month}-${day}`;
   return {
-    async initialize(): Promise<void> {
-      try {
-        await dependencies.initialize();
-        initialized = true;
-      } catch {
-        initialized = false;
-        throw new WorkerProbeError("WASM_INITIALIZATION_FAILED");
-      }
-    },
-
-    segmentSyntheticProbe(text: string): readonly string[] {
-      if (!initialized) {
-        throw new WorkerProbeError("WASM_NOT_INITIALIZED");
-      }
-
-      try {
-        return dependencies.cutWithoutHmm(text);
-      } catch {
-        throw new WorkerProbeError("SEGMENTATION_FAILED");
-      }
-    },
+    formatted: `${calendar} ${hour}:${minute}:${second}`,
+    calendar,
   };
 }
 
-export function toWorkerFailureCode(error: unknown): WorkerFailureCode {
-  return error instanceof WorkerProbeError
-    ? error.code
-    : "WORKER_RUNTIME_FAILED";
+function calendarDateCode(value: string): number {
+  if (!DATE_PATTERN.test(value)) {
+    throw new Error("INVALID_DATE");
+  }
+  const year = Number(value.slice(0, 4));
+  const month = Number(value.slice(5, 7));
+  const day = Number(value.slice(8, 10));
+  const leap =
+    year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [
+    31,
+    leap ? 29 : 28,
+    31,
+    30,
+    31,
+    30,
+    31,
+    31,
+    30,
+    31,
+    30,
+    31,
+  ];
+  if (
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > days[month - 1]
+  ) {
+    throw new Error("INVALID_DATE");
+  }
+  return year * 372 + month * 31 + day;
+}
+
+function validateForbidden(value: JsonValue): void {
+  if (isObject(value)) {
+    for (const [key, child] of Object.entries(value)) {
+      if (FORBIDDEN_KEYS.has(key.toLocaleLowerCase("en"))) {
+        throw new WorkerAnalysisError(
+          "PRIVACY_VALIDATION_FAILED",
+          "manifest",
+        );
+      }
+      validateForbidden(child);
+    }
+  } else if (Array.isArray(value)) {
+    for (const child of value) {
+      validateForbidden(child);
+    }
+  } else if (typeof value === "string" && value.includes("\0")) {
+    throw new WorkerAnalysisError(
+      "PRIVACY_VALIDATION_FAILED",
+      "manifest",
+    );
+  }
+}
+
+function validateManifest(
+  value: JsonValue,
+  selectedFiles: ReadonlyMap<string, RuntimeFile>,
+): ValidatedManifest {
+  if (
+    isObject(value) &&
+    Object.hasOwn(value, "exportInfo") &&
+    Object.hasOwn(value, "session") &&
+    Object.hasOwn(value, "messages")
+  ) {
+    throw new WorkerAnalysisError("RAW_EXPORT_UNSUPPORTED", "manifest");
+  }
+
+  try {
+    const root = exactObject(value, MANIFEST_FIELDS);
+    if (
+      root.schemaVersion !== MANIFEST_SCHEMA_VERSION ||
+      root.normalizedSchemaVersion !== NORMALIZED_SCHEMA_VERSION ||
+      root.preprocessorVersion !== PREPROCESSOR_VERSION
+    ) {
+      throw new WorkerAnalysisError(
+        "MANIFEST_VERSION_UNSUPPORTED",
+        "manifest",
+      );
+    }
+    if (
+      root.timePolicy !== TIME_POLICY ||
+      !HASH_PATTERN.test(stringValue(root.conversationFingerprint))
+    ) {
+      throw new Error("INVALID_IDENTITY");
+    }
+
+    if (!Array.isArray(root.inputs) || root.inputs.length === 0) {
+      throw new Error("INVALID_INPUTS");
+    }
+    const inputs: ManifestInput[] = [];
+    const roleOrdinals = {
+      "annual-source": new Set<number>(),
+      "overlap-verification": new Set<number>(),
+    };
+    const ranks = new Set<number>();
+    for (const descriptor of root.inputs) {
+      const item = exactObject(descriptor, [
+        "byteSize",
+        "fileRank",
+        "role",
+        "sha256",
+        "suppliedOrdinal",
+      ]);
+      const role = stringValue(item.role);
+      if (role !== "annual-source" && role !== "overlap-verification") {
+        throw new Error("INVALID_ROLE");
+      }
+      const suppliedOrdinal = integer(item.suppliedOrdinal, 1);
+      if (roleOrdinals[role].has(suppliedOrdinal)) {
+        throw new Error("DUPLICATE_ORDINAL");
+      }
+      roleOrdinals[role].add(suppliedOrdinal);
+      let fileRank: number | null;
+      if (role === "annual-source") {
+        fileRank = integer(item.fileRank);
+        if (ranks.has(fileRank)) {
+          throw new Error("DUPLICATE_RANK");
+        }
+        ranks.add(fileRank);
+      } else {
+        if (item.fileRank !== null) {
+          throw new Error("INVALID_RANK");
+        }
+        fileRank = null;
+      }
+      inputs.push({
+        role,
+        suppliedOrdinal,
+        fileRank,
+        byteSize: integer(item.byteSize),
+        sha256: hashValue(item.sha256),
+      });
+    }
+    const annualCount = roleOrdinals["annual-source"].size;
+    const verificationCount =
+      roleOrdinals["overlap-verification"].size;
+    if (
+      ranks.size !== annualCount ||
+      [...ranks].some((rank) => rank >= annualCount)
+    ) {
+      throw new Error("INVALID_RANK_SET");
+    }
+    const expectedInputOrder = [
+      ...Array.from(
+        { length: annualCount },
+        (_, index) => `annual-source:${index + 1}`,
+      ),
+      ...Array.from(
+        { length: verificationCount },
+        (_, index) => `overlap-verification:${index + 1}`,
+      ),
+    ];
+    if (
+      inputs.some(
+        (input, index) =>
+          `${input.role}:${input.suppliedOrdinal}` !==
+          expectedInputOrder[index],
+      )
+    ) {
+      throw new Error("INVALID_INPUT_ORDER");
+    }
+
+    if (!Array.isArray(root.chunks) || root.chunks.length === 0) {
+      throw new Error("INVALID_CHUNKS");
+    }
+    const chunks: NormalizedChunkDescriptor[] = [];
+    for (const [index, descriptor] of root.chunks.entries()) {
+      const item = exactObject(descriptor, [
+        "byteSize",
+        "name",
+        "recordCount",
+        "sha256",
+      ]);
+      const name = stringValue(item.name);
+      if (
+        name !== `chunk-${String(index + 1).padStart(4, "0")}.ndjson` ||
+        !isNormalizedChunkName(name) ||
+        name.includes("/") ||
+        name.includes("\\") ||
+        name.includes("..")
+      ) {
+        throw new WorkerAnalysisError("FILE_NAME_INVALID", "manifest");
+      }
+      const byteSize = integer(item.byteSize, 1);
+      if (byteSize > MAX_NORMALIZED_CHUNK_BYTES) {
+        throw new WorkerAnalysisError(
+          "CHUNK_LIMIT_EXCEEDED",
+          "manifest",
+        );
+      }
+      const selected = selectedFiles.get(name);
+      if (selected === undefined || selected.size !== byteSize) {
+        throw new WorkerAnalysisError("FILE_SET_INVALID", "manifest");
+      }
+      chunks.push({
+        name,
+        byteSize,
+        recordCount: integer(item.recordCount, 1),
+        sha256: hashValue(item.sha256),
+      });
+    }
+
+    const expectedNames = new Set([
+      MANIFEST_FILE_NAME,
+      ...chunks.map((chunk) => chunk.name),
+    ]);
+    if (
+      expectedNames.size !== selectedFiles.size ||
+      [...selectedFiles.keys()].some((name) => !expectedNames.has(name))
+    ) {
+      throw new WorkerAnalysisError("FILE_SET_INVALID", "manifest");
+    }
+
+    const aggregates = exactObject(root.aggregates, AGGREGATE_FIELDS);
+    const sourceCount = integer(aggregates.sourceCount);
+    const manifestAnnualCount = integer(aggregates.annualSourceCount);
+    const manifestVerificationCount = integer(
+      aggregates.overlapVerificationCount,
+    );
+    const rawMessageCount = integer(aggregates.rawMessageCount);
+    const eligibleTextRecordCount = integer(
+      aggregates.eligibleTextRecordCount,
+    );
+    const normalizedRecordCount = integer(
+      aggregates.normalizedRecordCount,
+      1,
+    );
+    const skippedRecordCount = integer(aggregates.skippedRecordCount);
+    const duplicateRecordCount = integer(
+      aggregates.duplicateRecordCount,
+    );
+    const warningCount = integer(aggregates.warningCount);
+    if (
+      manifestAnnualCount !== annualCount ||
+      manifestVerificationCount !== verificationCount ||
+      sourceCount !== inputs.length ||
+      normalizedRecordCount > MAX_NORMALIZED_RECORDS ||
+      normalizedRecordCount !==
+        sum(chunks.map((chunk) => chunk.recordCount)) ||
+      eligibleTextRecordCount !==
+        normalizedRecordCount + duplicateRecordCount ||
+      eligibleTextRecordCount + skippedRecordCount > rawMessageCount
+    ) {
+      throw new Error("INVALID_AGGREGATES");
+    }
+
+    const senderCountsObject = exactObject(aggregates.senderCounts, [
+      "other",
+      "owner",
+    ]);
+    const senderCounts = {
+      owner: integer(senderCountsObject.owner),
+      other: integer(senderCountsObject.other),
+    };
+    if (
+      senderCounts.owner + senderCounts.other !== normalizedRecordCount
+    ) {
+      throw new Error("INVALID_SENDERS");
+    }
+    const skippedByReason = validateCountMap(aggregates.skippedByReason);
+    const warningsByReason = validateCountMap(aggregates.warningsByReason);
+    if (
+      sum(Object.values(skippedByReason)) !== skippedRecordCount ||
+      sum(Object.values(warningsByReason)) !== warningCount
+    ) {
+      throw new Error("INVALID_REASON_COUNTS");
+    }
+    const overlap = exactObject(aggregates.overlap, OVERLAP_FIELDS);
+    const annualRangeOverlapCount = integer(
+      overlap.annualRangeOverlapCount,
+    );
+    const suspiciousAnnualOverlapCount = integer(
+      overlap.suspiciousAnnualOverlapCount,
+    );
+    const verificationSourceCount = integer(
+      overlap.verificationSourceCount,
+    );
+    const matchedEligibleRecordCount = integer(
+      overlap.matchedEligibleRecordCount,
+    );
+    const unmatchedEligibleRecordCount = integer(
+      overlap.unmatchedEligibleRecordCount,
+    );
+    if (
+      verificationSourceCount !== verificationCount ||
+      suspiciousAnnualOverlapCount > annualRangeOverlapCount ||
+      annualRangeOverlapCount >
+        (annualCount * (annualCount - 1)) / 2 ||
+      matchedEligibleRecordCount + unmatchedEligibleRecordCount >
+        rawMessageCount ||
+      (warningsByReason.SUSPICIOUS_ANNUAL_OVERLAP ?? 0) !==
+        suspiciousAnnualOverlapCount
+    ) {
+      throw new Error("INVALID_OVERLAP");
+    }
+
+    const timeRange = exactObject(root.timeRange, TIME_RANGE_FIELDS);
+    const minimumCreateTime = integer(
+      timeRange.minimumCreateTime,
+      Number.MIN_SAFE_INTEGER,
+    );
+    const maximumCreateTime = integer(
+      timeRange.maximumCreateTime,
+      Number.MIN_SAFE_INTEGER,
+    );
+    const minimumFormattedTime = stringValue(
+      timeRange.minimumFormattedTime,
+    );
+    const maximumFormattedTime = stringValue(
+      timeRange.maximumFormattedTime,
+    );
+    const minimumCalendarDate = stringValue(
+      timeRange.minimumCalendarDate,
+    );
+    const maximumCalendarDate = stringValue(
+      timeRange.maximumCalendarDate,
+    );
+    const expectedMinimum = expectedTime(minimumCreateTime);
+    const expectedMaximum = expectedTime(maximumCreateTime);
+    if (
+      minimumCreateTime > maximumCreateTime ||
+      minimumFormattedTime !== expectedMinimum.formatted ||
+      minimumCalendarDate !== expectedMinimum.calendar ||
+      maximumFormattedTime !== expectedMaximum.formatted ||
+      maximumCalendarDate !== expectedMaximum.calendar
+    ) {
+      throw new Error("INVALID_RANGE");
+    }
+
+    const privacy = exactObject(root.privacyValidation, [
+      "forbiddenFieldCount",
+      "status",
+    ]);
+    if (
+      privacy.forbiddenFieldCount !== 0 ||
+      privacy.status !== "passed"
+    ) {
+      throw new WorkerAnalysisError(
+        "PRIVACY_VALIDATION_FAILED",
+        "manifest",
+      );
+    }
+    validateForbidden(value);
+    return {
+      chunks,
+      inputs,
+      normalizedRecordCount,
+      annualSourceCount: annualCount,
+      overlapVerificationCount: verificationCount,
+      senderCounts,
+      warningCount,
+      warningsByReason,
+      minimumCreateTime,
+      maximumCreateTime,
+      minimumFormattedTime,
+      maximumFormattedTime,
+      minimumCalendarDate,
+      maximumCalendarDate,
+    };
+  } catch (error) {
+    if (error instanceof WorkerAnalysisError) {
+      throw error;
+    }
+    throw new WorkerAnalysisError("MANIFEST_INVALID", "manifest");
+  }
+}
+
+function validateRecord(
+  value: JsonValue,
+  lineOrdinal: number,
+  chunkOrdinal: number,
+): NormalizedTextRecord {
+  try {
+    if (!isObject(value)) {
+      throw new Error("INVALID_RECORD");
+    }
+    const keys = Object.keys(value);
+    if (
+      keys.length !== NORMALIZED_RECORD_FIELDS.length ||
+      keys.some((key, index) => key !== NORMALIZED_RECORD_FIELDS[index])
+    ) {
+      throw new Error("INVALID_RECORD_FIELDS");
+    }
+    const createTime = integer(
+      value.createTime,
+      Number.MIN_SAFE_INTEGER,
+    );
+    const formattedTime = stringValue(value.formattedTime);
+    const calendarDate = stringValue(value.calendarDate);
+    const senderScope = value.senderScope;
+    const content = stringValue(value.content);
+    const fileRank = integer(value.fileRank);
+    const sourceIndex = integer(value.sourceIndex);
+    const expected = expectedTime(createTime);
+    if (
+      !TIME_PATTERN.test(formattedTime) ||
+      !DATE_PATTERN.test(calendarDate) ||
+      formattedTime !== expected.formatted ||
+      calendarDate !== expected.calendar ||
+      (senderScope !== "owner" && senderScope !== "other") ||
+      content.length === 0 ||
+      content.includes("\0") ||
+      URL_PATTERN.test(content) ||
+      XML_PATTERN.test(content)
+    ) {
+      throw new Error("INVALID_RECORD_VALUE");
+    }
+    URL_PATTERN.lastIndex = 0;
+    validateForbidden(value);
+    return {
+      createTime,
+      formattedTime,
+      calendarDate,
+      senderScope,
+      content,
+      fileRank,
+      sourceIndex,
+    };
+  } catch (error) {
+    URL_PATTERN.lastIndex = 0;
+    if (
+      error instanceof WorkerAnalysisError &&
+      error.code === "PRIVACY_VALIDATION_FAILED"
+    ) {
+      throw new WorkerAnalysisError(
+        "PRIVACY_VALIDATION_FAILED",
+        "records",
+        { chunkOrdinal, lineOrdinal },
+      );
+    }
+    throw new WorkerAnalysisError("RECORD_SCHEMA_INVALID", "records", {
+      chunkOrdinal,
+      lineOrdinal,
+    });
+  }
+}
+
+function normalizeStopWord(value: string): string {
+  return value.normalize("NFKC").toLowerCase().trim();
+}
+
+export function buildStopWordSet(
+  asset: string,
+  additional: readonly string[],
+): ReadonlySet<string> {
+  const result = new Set(
+    asset
+      .split("\n")
+      .map(normalizeStopWord)
+      .filter((value) => value !== ""),
+  );
+  for (const value of additional) {
+    const normalized = normalizeStopWord(value);
+    if (normalized === "" || normalized.includes("\0")) {
+      throw new WorkerAnalysisError("SETTINGS_INVALID", "manifest");
+    }
+    result.add(normalized);
+  }
+  return result;
+}
+
+export function tokenizeNormalizedContent(
+  content: string,
+  cutWithoutHmm: (text: string) => readonly string[],
+  stopWords: ReadonlySet<string>,
+  minimumTokenLength: number,
+): readonly string[] {
+  const normalized = content
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(URL_PATTERN, " ")
+    .replace(SEPARATOR_PATTERN, " ")
+    .trim();
+  URL_PATTERN.lastIndex = 0;
+  if (normalized === "") {
+    return [];
+  }
+  const result: string[] = [];
+  for (const piece of cutWithoutHmm(normalized)) {
+    for (const match of piece.matchAll(TOKEN_RUN_PATTERN)) {
+      const token = match[0];
+      if (
+        /^\p{N}+$/u.test(token) ||
+        [...token].length < minimumTokenLength ||
+        stopWords.has(token)
+      ) {
+        continue;
+      }
+      result.push(token);
+    }
+  }
+  return result;
+}
+
+function compareCodePoints(left: string, right: string): number {
+  const leftPoints = [...left].map((value) => value.codePointAt(0) ?? 0);
+  const rightPoints = [...right].map((value) => value.codePointAt(0) ?? 0);
+  const length = Math.min(leftPoints.length, rightPoints.length);
+  for (let index = 0; index < length; index += 1) {
+    if (leftPoints[index] !== rightPoints[index]) {
+      return leftPoints[index] - rightPoints[index];
+    }
+  }
+  return leftPoints.length - rightPoints.length;
+}
+
+function bytesToHex(bytes: ArrayBuffer): string {
+  return [...new Uint8Array(bytes)]
+    .map((value) => value.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function decodeUtf8(
+  buffer: ArrayBuffer,
+  phase: WorkerPhase,
+  chunkOrdinal?: number,
+): string {
+  const bytes = new Uint8Array(buffer);
+  if (
+    bytes.length >= 3 &&
+    bytes[0] === 0xef &&
+    bytes[1] === 0xbb &&
+    bytes[2] === 0xbf
+  ) {
+    throw new WorkerAnalysisError("UTF8_INVALID", phase, {
+      chunkOrdinal,
+    });
+  }
+  try {
+    return new TextDecoder("utf-8", {
+      fatal: true,
+      ignoreBOM: true,
+    }).decode(bytes);
+  } catch {
+    throw new WorkerAnalysisError("UTF8_INVALID", phase, {
+      chunkOrdinal,
+    });
+  }
+}
+
+function looksLikeRawExportPrefix(value: string): boolean {
+  return (
+    /"exportInfo"\s*:/u.test(value) &&
+    /"session"\s*:/u.test(value) &&
+    /"messages"\s*:/u.test(value)
+  );
+}
+
+export class AnalysisWorkerRuntime {
+  private activeOperationId = 0;
+  private readonly cancelled = new Set<number>();
+  private initialized = false;
+  private initializationPromise: Promise<void> | undefined;
+  private acceptedCache: TokenCache | undefined;
+  private cacheGeneration = 0;
+
+  constructor(
+    private readonly tokenizer: TokenizerDependencies,
+    private readonly stopWordAsset: string,
+    private readonly reportProgress: (progress: WorkerProgress) => void,
+  ) {}
+
+  cancel(operationId: number): void {
+    this.cancelled.add(operationId);
+  }
+
+  dispose(): void {
+    this.activeOperationId += 1;
+    this.cancelled.clear();
+    this.acceptedCache = undefined;
+    this.initialized = false;
+    this.initializationPromise = undefined;
+  }
+
+  async loadDataset(
+    operationId: number,
+    files: readonly RuntimeFile[],
+    tokenizerSettings: TokenizerSettings,
+  ): Promise<AcceptedDatasetResult> {
+    this.begin(operationId);
+    try {
+      if (
+        !Number.isSafeInteger(tokenizerSettings.minimumTokenLength) ||
+        tokenizerSettings.minimumTokenLength < 1 ||
+        tokenizerSettings.minimumTokenLength > 32 ||
+        !Array.isArray(tokenizerSettings.additionalStopWords) ||
+        tokenizerSettings.additionalStopWords.some(
+          (value) => typeof value !== "string",
+        )
+      ) {
+        throw new WorkerAnalysisError("SETTINGS_INVALID", "manifest");
+      }
+      const stopWords = buildStopWordSet(
+        this.stopWordAsset,
+        tokenizerSettings.additionalStopWords,
+      );
+      const selectedFiles = this.validateSelectedFiles(files);
+      const manifestFile = selectedFiles.get(MANIFEST_FILE_NAME);
+      if (manifestFile === undefined) {
+        throw new WorkerAnalysisError("FILE_SET_INVALID", "manifest");
+      }
+      this.progress(operationId, "manifest", 0, 1, 1);
+
+      if (manifestFile.size > MAX_MANIFEST_BYTES) {
+        const prefix = await manifestFile.slice(0, 65_536).text();
+        if (looksLikeRawExportPrefix(prefix)) {
+          throw new WorkerAnalysisError(
+            "RAW_EXPORT_UNSUPPORTED",
+            "manifest",
+          );
+        }
+        throw new WorkerAnalysisError(
+          "DATASET_LIMIT_EXCEEDED",
+          "manifest",
+        );
+      }
+      const manifestPrefix = await manifestFile.slice(0, 65_536).text();
+      await this.checkpoint(operationId, false);
+      if (looksLikeRawExportPrefix(manifestPrefix)) {
+        throw new WorkerAnalysisError(
+          "RAW_EXPORT_UNSUPPORTED",
+          "manifest",
+        );
+      }
+      const manifestBuffer = await this.readFileBuffer(
+        operationId,
+        manifestFile,
+        "manifest",
+      );
+      const manifestBytes = new Uint8Array(manifestBuffer);
+      if (
+        manifestBytes.length === 0 ||
+        manifestBytes[manifestBytes.length - 1] !== 0x0a
+      ) {
+        throw new WorkerAnalysisError("MANIFEST_INVALID", "manifest");
+      }
+      const manifestText = decodeUtf8(manifestBuffer, "manifest");
+      let manifestJson: JsonValue;
+      try {
+        manifestJson = parseStrictJson(manifestText);
+      } catch {
+        throw new WorkerAnalysisError("MANIFEST_INVALID", "manifest");
+      }
+      const manifest = validateManifest(manifestJson, selectedFiles);
+      this.progress(operationId, "manifest", 1, 1, 4);
+      await this.checkpoint(operationId, true);
+
+      const builder = new CompactCacheBuilder(
+        manifest.normalizedRecordCount,
+      );
+      let globalRecordCount = 0;
+      let ownerCount = 0;
+      let otherCount = 0;
+      let minimumRecord: NormalizedTextRecord | undefined;
+      let maximumRecord: NormalizedTextRecord | undefined;
+      let previousOrder: readonly [number, number] | undefined;
+      let initializedForCandidate = false;
+
+      for (const [chunkIndex, chunk] of manifest.chunks.entries()) {
+        const chunkOrdinal = chunkIndex + 1;
+        const file = selectedFiles.get(chunk.name);
+        if (file === undefined) {
+          throw new WorkerAnalysisError("FILE_SET_INVALID", "hash");
+        }
+        const buffer = await this.readFileBuffer(
+          operationId,
+          file,
+          "hash",
+          chunkOrdinal,
+        );
+        await this.checkpoint(operationId, false);
+        const digest = bytesToHex(
+          await crypto.subtle.digest("SHA-256", buffer),
+        );
+        if (digest !== chunk.sha256) {
+          throw new WorkerAnalysisError("HASH_MISMATCH", "hash", {
+            chunkOrdinal,
+          });
+        }
+        this.progress(
+          operationId,
+          "hash",
+          chunkOrdinal,
+          manifest.chunks.length,
+          5 + Math.floor((chunkOrdinal / manifest.chunks.length) * 20),
+          chunkOrdinal,
+          manifest.chunks.length,
+        );
+
+        if (!initializedForCandidate) {
+          await this.initializeTokenizer(operationId);
+          initializedForCandidate = true;
+        }
+
+        const bytes = new Uint8Array(buffer);
+        if (
+          bytes.length === 0 ||
+          bytes[bytes.length - 1] !== 0x0a
+        ) {
+          throw new WorkerAnalysisError("NDJSON_INVALID", "records", {
+            chunkOrdinal,
+          });
+        }
+        const text = decodeUtf8(buffer, "records", chunkOrdinal);
+        let start = 0;
+        let lineOrdinal = 0;
+        let chunkRecordCount = 0;
+        while (start < text.length) {
+          const end = text.indexOf("\n", start);
+          if (end < 0) {
+            throw new WorkerAnalysisError(
+              "NDJSON_INVALID",
+              "records",
+              { chunkOrdinal, lineOrdinal: lineOrdinal + 1 },
+            );
+          }
+          lineOrdinal += 1;
+          const line = text.slice(start, end);
+          start = end + 1;
+          if (line === "" || line.endsWith("\r")) {
+            throw new WorkerAnalysisError(
+              "NDJSON_INVALID",
+              "records",
+              { chunkOrdinal, lineOrdinal },
+            );
+          }
+          let parsed: JsonValue;
+          try {
+            parsed = parseStrictJson(line);
+          } catch {
+            throw new WorkerAnalysisError(
+              "NDJSON_INVALID",
+              "records",
+              { chunkOrdinal, lineOrdinal },
+            );
+          }
+          const record = validateRecord(
+            parsed,
+            lineOrdinal,
+            chunkOrdinal,
+          );
+          if (
+            record.sourceIndex !== globalRecordCount ||
+            record.fileRank >= manifest.annualSourceCount
+          ) {
+            throw new WorkerAnalysisError(
+              "RECORD_ORDER_INVALID",
+              "records",
+              { chunkOrdinal, lineOrdinal },
+            );
+          }
+          const order: readonly [number, number] = [
+            record.createTime,
+            record.fileRank,
+          ];
+          if (
+            previousOrder !== undefined &&
+            (order[0] < previousOrder[0] ||
+              (order[0] === previousOrder[0] &&
+                order[1] < previousOrder[1]))
+          ) {
+            throw new WorkerAnalysisError(
+              "RECORD_ORDER_INVALID",
+              "records",
+              { chunkOrdinal, lineOrdinal },
+            );
+          }
+          previousOrder = order;
+          minimumRecord ??= record;
+          maximumRecord = record;
+          if (record.senderScope === "owner") {
+            ownerCount += 1;
+          } else {
+            otherCount += 1;
+          }
+          const tokens = tokenizeNormalizedContent(
+            record.content,
+            (value) => this.tokenizer.cutWithoutHmm(value),
+            stopWords,
+            tokenizerSettings.minimumTokenLength,
+          );
+          builder.append(record, tokens);
+          globalRecordCount += 1;
+          chunkRecordCount += 1;
+
+          if (globalRecordCount % 2048 === 0) {
+            this.progress(
+              operationId,
+              "tokenization",
+              globalRecordCount,
+              manifest.normalizedRecordCount,
+              25 +
+                Math.floor(
+                  (globalRecordCount /
+                    manifest.normalizedRecordCount) *
+                    60,
+                ),
+              chunkOrdinal,
+              manifest.chunks.length,
+            );
+            await this.checkpoint(operationId, true);
+          }
+        }
+        if (chunkRecordCount !== chunk.recordCount) {
+          throw new WorkerAnalysisError(
+            "COUNT_MISMATCH",
+            "records",
+            { chunkOrdinal },
+          );
+        }
+        await this.checkpoint(operationId, true);
+      }
+
+      if (
+        minimumRecord === undefined ||
+        maximumRecord === undefined ||
+        globalRecordCount !== manifest.normalizedRecordCount ||
+        ownerCount !== manifest.senderCounts.owner ||
+        otherCount !== manifest.senderCounts.other
+      ) {
+        throw new WorkerAnalysisError("COUNT_MISMATCH", "records");
+      }
+      if (
+        minimumRecord.createTime !== manifest.minimumCreateTime ||
+        minimumRecord.formattedTime !== manifest.minimumFormattedTime ||
+        minimumRecord.calendarDate !== manifest.minimumCalendarDate ||
+        maximumRecord.createTime !== manifest.maximumCreateTime ||
+        maximumRecord.formattedTime !== manifest.maximumFormattedTime ||
+        maximumRecord.calendarDate !== manifest.maximumCalendarDate
+      ) {
+        throw new WorkerAnalysisError("RANGE_MISMATCH", "records");
+      }
+
+      const summary: DatasetSummary = {
+        normalizedRecordCount: manifest.normalizedRecordCount,
+        minimumCalendarDate: manifest.minimumCalendarDate,
+        maximumCalendarDate: manifest.maximumCalendarDate,
+        warningCount: manifest.warningCount,
+        warningsByReason: manifest.warningsByReason,
+        chunkCount: manifest.chunks.length,
+        pseudonymous: true,
+      };
+      const generation = this.cacheGeneration + 1;
+      const candidateCache = builder.finish(summary, generation);
+      const defaultSettings: AnalysisSettings = {
+        sender: "all",
+        startDate: summary.minimumCalendarDate,
+        endDate: summary.maximumCalendarDate,
+        maximumWords: 100,
+        minimumFrequency: 1,
+      };
+      const result = await this.aggregate(
+        operationId,
+        candidateCache,
+        defaultSettings,
+      );
+      await this.checkpoint(operationId, false);
+      this.acceptedCache = candidateCache;
+      this.cacheGeneration = generation;
+      this.cancelled.delete(operationId);
+      return { summary, result };
+    } catch (error) {
+      this.cancelled.delete(operationId);
+      if (
+        error instanceof WorkerAnalysisError ||
+        error instanceof WorkerCancellation
+      ) {
+        throw error;
+      }
+      if (
+        error instanceof RangeError ||
+        (error instanceof DOMException &&
+          error.name === "QuotaExceededError")
+      ) {
+        throw new WorkerAnalysisError("MEMORY_PRESSURE", "records");
+      }
+      throw new WorkerAnalysisError("WORKER_RUNTIME_FAILED", "records");
+    }
+  }
+
+  async analyze(
+    operationId: number,
+    settings: AnalysisSettings,
+  ): Promise<AnalysisResult> {
+    this.begin(operationId);
+    const cache = this.acceptedCache;
+    if (cache === undefined) {
+      throw new WorkerAnalysisError(
+        "NO_ACCEPTED_DATASET",
+        "aggregation",
+      );
+    }
+    try {
+      const result = await this.aggregate(operationId, cache, settings);
+      this.cancelled.delete(operationId);
+      return result;
+    } catch (error) {
+      this.cancelled.delete(operationId);
+      if (
+        error instanceof WorkerAnalysisError ||
+        error instanceof WorkerCancellation
+      ) {
+        throw error;
+      }
+      if (error instanceof RangeError) {
+        throw new WorkerAnalysisError(
+          "MEMORY_PRESSURE",
+          "aggregation",
+        );
+      }
+      throw new WorkerAnalysisError(
+        "WORKER_RUNTIME_FAILED",
+        "aggregation",
+      );
+    }
+  }
+
+  private validateSelectedFiles(
+    files: readonly RuntimeFile[],
+  ): ReadonlyMap<string, RuntimeFile> {
+    if (files.length < 2) {
+      throw new WorkerAnalysisError("FILE_SET_INVALID", "manifest");
+    }
+    const result = new Map<string, RuntimeFile>();
+    let total = 0n;
+    for (const file of files) {
+      if (
+        file.name !== MANIFEST_FILE_NAME &&
+        !isNormalizedChunkName(file.name)
+      ) {
+        throw new WorkerAnalysisError("FILE_NAME_INVALID", "manifest");
+      }
+      if (
+        file.name.includes("/") ||
+        file.name.includes("\\") ||
+        file.name.includes("..") ||
+        result.has(file.name)
+      ) {
+        throw new WorkerAnalysisError("FILE_SET_INVALID", "manifest");
+      }
+      if (
+        isNormalizedChunkName(file.name) &&
+        file.size > MAX_NORMALIZED_CHUNK_BYTES
+      ) {
+        throw new WorkerAnalysisError(
+          "CHUNK_LIMIT_EXCEEDED",
+          "manifest",
+        );
+      }
+      result.set(file.name, file);
+      total += BigInt(file.size);
+      if (total > BigInt(MAX_NORMALIZED_DATASET_BYTES)) {
+        throw new WorkerAnalysisError(
+          "DATASET_LIMIT_EXCEEDED",
+          "manifest",
+        );
+      }
+    }
+    return result;
+  }
+
+  private async readFileBuffer(
+    operationId: number,
+    file: RuntimeFile,
+    phase: WorkerPhase,
+    chunkOrdinal?: number,
+  ): Promise<ArrayBuffer> {
+    const reader = file.stream().getReader();
+    const bytes = new Uint8Array(file.size);
+    let offset = 0;
+    try {
+      while (true) {
+        const part = await reader.read();
+        await this.checkpoint(operationId, false);
+        if (part.done) {
+          break;
+        }
+        if (offset + part.value.byteLength > bytes.byteLength) {
+          throw new WorkerAnalysisError("FILE_SET_INVALID", phase, {
+            chunkOrdinal,
+          });
+        }
+        bytes.set(part.value, offset);
+        offset += part.value.byteLength;
+      }
+      if (offset !== bytes.byteLength) {
+        throw new WorkerAnalysisError("FILE_SET_INVALID", phase, {
+          chunkOrdinal,
+        });
+      }
+      return bytes.buffer;
+    } catch (error) {
+      try {
+        await reader.cancel();
+      } catch {
+        // The public failure remains content-free and is determined below.
+      }
+      throw error;
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
+  private begin(operationId: number): void {
+    this.activeOperationId = operationId;
+    for (const stale of this.cancelled) {
+      if (stale < operationId) {
+        this.cancelled.delete(stale);
+      }
+    }
+  }
+
+  private async initializeTokenizer(operationId: number): Promise<void> {
+    if (this.initialized) {
+      return;
+    }
+    this.progress(operationId, "wasm", 0, 1, 25);
+    if (this.initializationPromise !== undefined) {
+      try {
+        await this.initializationPromise;
+        return;
+      } catch {
+        throw new WorkerAnalysisError(
+          "WASM_INITIALIZATION_FAILED",
+          "wasm",
+        );
+      }
+    }
+    try {
+      this.initializationPromise = this.tokenizer.initialize();
+      await this.initializationPromise;
+      this.initialized = true;
+      this.progress(operationId, "wasm", 1, 1, 25);
+    } catch {
+      this.initialized = false;
+      throw new WorkerAnalysisError(
+        "WASM_INITIALIZATION_FAILED",
+        "wasm",
+      );
+    } finally {
+      this.initializationPromise = undefined;
+    }
+  }
+
+  private async aggregate(
+    operationId: number,
+    cache: TokenCache,
+    settings: AnalysisSettings,
+  ): Promise<AnalysisResult> {
+    this.validateAnalysisSettings(cache.summary, settings);
+    const start = calendarDateCode(settings.startDate);
+    const end = calendarDateCode(settings.endDate);
+    const frequencies = new Uint32Array(cache.tokenTable.length);
+    let analyzedMessageCount = 0;
+    let totalTokenCount = 0;
+    const recordCount = cache.senderScopes.length;
+    for (let record = 0; record < recordCount; record += 1) {
+      const senderMatches =
+        settings.sender === "all" ||
+        (settings.sender === "owner" &&
+          cache.senderScopes[record] === 0) ||
+        (settings.sender === "other" &&
+          cache.senderScopes[record] === 1);
+      const date = cache.calendarDates[record];
+      if (senderMatches && date >= start && date <= end) {
+        analyzedMessageCount += 1;
+        for (
+          let cursor = cache.recordOffsets[record];
+          cursor < cache.recordOffsets[record + 1];
+          cursor += 1
+        ) {
+          frequencies[cache.tokenIds[cursor]] += 1;
+          totalTokenCount += 1;
+        }
+      }
+      if ((record + 1) % 8192 === 0) {
+        this.progress(
+          operationId,
+          "aggregation",
+          record + 1,
+          recordCount,
+          85 + Math.floor(((record + 1) / recordCount) * 15),
+        );
+        await this.checkpoint(operationId, true);
+      }
+    }
+    const ranked = cache.tokenTable
+      .map((token, tokenId) => ({
+        token,
+        frequency: frequencies[tokenId],
+      }))
+      .filter((item) => item.frequency > 0)
+      .sort(
+        (left, right) =>
+          right.frequency - left.frequency ||
+          compareCodePoints(left.token, right.token),
+      );
+    const uniqueTokenCount = ranked.length;
+    const words = ranked
+      .filter((item) => item.frequency >= settings.minimumFrequency)
+      .slice(0, settings.maximumWords);
+    this.progress(
+      operationId,
+      "aggregation",
+      recordCount,
+      recordCount,
+      100,
+    );
+    return {
+      words,
+      analyzedMessageCount,
+      uniqueTokenCount,
+      totalTokenCount,
+      sender: settings.sender,
+      startDate: settings.startDate,
+      endDate: settings.endDate,
+      maximumWords: settings.maximumWords,
+      minimumFrequency: settings.minimumFrequency,
+      cacheGeneration: cache.generation,
+    };
+  }
+
+  private validateAnalysisSettings(
+    summary: DatasetSummary,
+    settings: AnalysisSettings,
+  ): void {
+    let calendarDatesValid = true;
+    try {
+      calendarDateCode(settings.startDate);
+      calendarDateCode(settings.endDate);
+    } catch {
+      calendarDatesValid = false;
+    }
+    if (
+      !["all", "owner", "other"].includes(settings.sender) ||
+      !calendarDatesValid ||
+      !DATE_PATTERN.test(settings.startDate) ||
+      !DATE_PATTERN.test(settings.endDate) ||
+      settings.startDate < summary.minimumCalendarDate ||
+      settings.endDate > summary.maximumCalendarDate ||
+      settings.startDate > settings.endDate ||
+      !Number.isSafeInteger(settings.maximumWords) ||
+      settings.maximumWords < 1 ||
+      settings.maximumWords > MAXIMUM_DISPLAYED_WORDS ||
+      !Number.isSafeInteger(settings.minimumFrequency) ||
+      settings.minimumFrequency < 1 ||
+      settings.minimumFrequency > MAXIMUM_MINIMUM_FREQUENCY
+    ) {
+      throw new WorkerAnalysisError(
+        "SETTINGS_INVALID",
+        "aggregation",
+      );
+    }
+  }
+
+  private progress(
+    operationId: number,
+    phase: WorkerPhase,
+    completed: number,
+    total: number,
+    percentage: number,
+    chunkOrdinal?: number,
+    chunkCount?: number,
+  ): void {
+    this.reportProgress({
+      type: "progress",
+      operationId,
+      phase,
+      completed,
+      total,
+      percentage: Math.max(0, Math.min(100, percentage)),
+      ...(chunkOrdinal === undefined ? {} : { chunkOrdinal }),
+      ...(chunkCount === undefined ? {} : { chunkCount }),
+    });
+  }
+
+  private async checkpoint(
+    operationId: number,
+    yieldToMessages: boolean,
+  ): Promise<void> {
+    if (yieldToMessages) {
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      });
+    }
+    if (
+      this.activeOperationId !== operationId ||
+      this.cancelled.has(operationId)
+    ) {
+      throw new WorkerCancellation();
+    }
+  }
 }

@@ -1,44 +1,140 @@
-export const SYNTHETIC_SEGMENTATION_PROBE = "本地隐私分析测试";
+import type {
+  DatasetSummary,
+  SenderFilter,
+} from "../normalized/schema";
+
+export const STOP_WORDS_VERSION =
+  "chat-history-analysis.stopwords.zh-en.v1";
+export const STOP_WORDS_SHA256 =
+  "a967184c888afe1fe52a430ba7bf838b39390c1902e6c5b35951a6633068e54b";
+
+export type WorkerPhase =
+  | "manifest"
+  | "hash"
+  | "wasm"
+  | "records"
+  | "tokenization"
+  | "aggregation";
 
 export type WorkerFailureCode =
   | "WORKER_CREATION_FAILED"
   | "WORKER_RUNTIME_FAILED"
+  | "WORKER_TERMINATED"
   | "WORKER_TIMEOUT"
   | "WASM_INITIALIZATION_FAILED"
-  | "WASM_NOT_INITIALIZED"
-  | "SEGMENTATION_FAILED";
+  | "MEMORY_PRESSURE"
+  | "RAW_EXPORT_UNSUPPORTED"
+  | "MANIFEST_INVALID"
+  | "MANIFEST_VERSION_UNSUPPORTED"
+  | "FILE_SET_INVALID"
+  | "FILE_NAME_INVALID"
+  | "DATASET_LIMIT_EXCEEDED"
+  | "CHUNK_LIMIT_EXCEEDED"
+  | "HASH_MISMATCH"
+  | "UTF8_INVALID"
+  | "NDJSON_INVALID"
+  | "RECORD_SCHEMA_INVALID"
+  | "RECORD_ORDER_INVALID"
+  | "COUNT_MISMATCH"
+  | "RANGE_MISMATCH"
+  | "PRIVACY_VALIDATION_FAILED"
+  | "SETTINGS_INVALID"
+  | "NO_ACCEPTED_DATASET";
+
+export interface TokenizerSettings {
+  readonly minimumTokenLength: number;
+  readonly additionalStopWords: readonly string[];
+}
+
+export const DEFAULT_TOKENIZER_SETTINGS: TokenizerSettings = {
+  minimumTokenLength: 2,
+  additionalStopWords: [],
+};
+
+export interface AnalysisSettings {
+  readonly sender: SenderFilter;
+  readonly startDate: string;
+  readonly endDate: string;
+  readonly maximumWords: number;
+  readonly minimumFrequency: number;
+}
+
+export interface RankedToken {
+  readonly token: string;
+  readonly frequency: number;
+}
+
+export interface AnalysisResult {
+  readonly words: readonly RankedToken[];
+  readonly analyzedMessageCount: number;
+  readonly uniqueTokenCount: number;
+  readonly totalTokenCount: number;
+  readonly sender: SenderFilter;
+  readonly startDate: string;
+  readonly endDate: string;
+  readonly maximumWords: number;
+  readonly minimumFrequency: number;
+  readonly cacheGeneration: number;
+}
+
+export interface WorkerProgress {
+  readonly type: "progress";
+  readonly operationId: number;
+  readonly phase: WorkerPhase;
+  readonly completed: number;
+  readonly total: number;
+  readonly percentage: number;
+  readonly chunkOrdinal?: number;
+  readonly chunkCount?: number;
+}
 
 export type WorkerRequest =
   | {
-      readonly type: "initialize";
-      readonly id: number;
+      readonly type: "load-dataset";
+      readonly operationId: number;
+      readonly files: readonly File[];
+      readonly tokenizerSettings: TokenizerSettings;
     }
   | {
-      readonly type: "segment-probe";
-      readonly id: number;
-      readonly text: typeof SYNTHETIC_SEGMENTATION_PROBE;
+      readonly type: "analyze";
+      readonly operationId: number;
+      readonly settings: AnalysisSettings;
+    }
+  | {
+      readonly type: "cancel";
+      readonly operationId: number;
     }
   | {
       readonly type: "dispose";
-      readonly id: number;
     };
 
 export type WorkerResponse =
+  | WorkerProgress
   | {
-      readonly type: "ready";
-      readonly id: number;
+      readonly type: "accepted";
+      readonly operationId: number;
+      readonly summary: DatasetSummary;
+      readonly result: AnalysisResult;
     }
   | {
-      readonly type: "probe-result";
-      readonly id: number;
-      readonly tokens: readonly string[];
+      readonly type: "result";
+      readonly operationId: number;
+      readonly result: AnalysisResult;
+    }
+  | {
+      readonly type: "cancelled";
+      readonly operationId: number;
     }
   | {
       readonly type: "error";
-      readonly id: number;
+      readonly operationId: number;
       readonly code: WorkerFailureCode;
+      readonly phase: WorkerPhase;
+      readonly chunkOrdinal?: number;
+      readonly lineOrdinal?: number;
     };
 
-export interface WorkerProbeResult {
-  readonly tokens: readonly string[];
+export interface AcceptedDatasetResult {
+  readonly summary: DatasetSummary;
+  readonly result: AnalysisResult;
 }

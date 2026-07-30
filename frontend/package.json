@@ -16,8 +16,8 @@
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run tests/*.test.ts",
     "test:browser:install": "playwright install chromium",
-    "test:browser:dev": "playwright test --config=playwright.dev.config.ts",
-    "test:browser:preview": "npm run build && playwright test --config=playwright.preview.config.ts"
+    "test:browser:dev": "node scripts/run-browser-tests.mjs development",
+    "test:browser:preview": "npm run build && node scripts/run-browser-tests.mjs production"
   },
   "dependencies": {
     "echarts": "5.6.0",

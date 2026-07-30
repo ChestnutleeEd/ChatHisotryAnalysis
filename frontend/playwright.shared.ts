@@ -1,9 +1,13 @@
 import { defineConfig, devices } from "@playwright/test";
 
 export function createBrowserConfig(
-  baseURL: string,
-  command: string,
+  mode: "development" | "production",
 ) {
+  const port = Number(process.env.CHA_BROWSER_TEST_PORT);
+  if (!Number.isSafeInteger(port) || port < 1024 || port > 65_535) {
+    throw new Error("BROWSER_TEST_PORT_MISSING");
+  }
+  const baseURL = `http://127.0.0.1:${port}`;
   return defineConfig({
     testDir: "./tests/browser",
     fullyParallel: false,
@@ -21,7 +25,7 @@ export function createBrowserConfig(
       video: "off",
     },
     webServer: {
-      command,
+      command: `node scripts/browser-test-server.mjs ${mode} ${port}`,
       url: baseURL,
       reuseExistingServer: false,
       timeout: 60_000,

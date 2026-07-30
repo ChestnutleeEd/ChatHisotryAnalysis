@@ -21,11 +21,10 @@ function sourceFiles(root: string): string[] {
 describe("module dependency direction", () => {
   const sourceRoot = fileURLToPath(new URL("../src", import.meta.url));
 
-  it("keeps contract-only boundaries dependency-free", () => {
+  it("keeps foundational contracts dependency-free", () => {
     for (const boundary of [
       "preprocessing",
       "normalized",
-      "browser-input",
       "privacy",
     ]) {
       for (const file of sourceFiles(join(sourceRoot, boundary))) {

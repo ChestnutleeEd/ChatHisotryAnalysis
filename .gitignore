@@ -30,6 +30,7 @@ frontend/*.tsbuildinfo
 frontend/coverage/
 frontend/playwright-report/
 frontend/test-results/
+frontend/.playwright-cli/
 frontend/.cache/ms-playwright/
 frontend/.npm-cache/
 .npm-cache/

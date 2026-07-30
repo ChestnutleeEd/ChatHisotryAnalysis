@@ -172,6 +172,21 @@ an existing destination, copy fallback, or partial final dataset.
 Identical inputs, roles, argument order, versions, and settings produce
 byte-identical manifest and chunks.
 
+## Browser consumer
+
+The local browser application consumes this exact manifest/chunk contract; it
+does not accept a CipherTalk `detailed-json` export. Select `manifest.json` and
+every referenced chunk together (or select their directory). The browser
+Worker repeats schema, version, size, hash, UTF-8, NDJSON, record, count,
+ordering, range, and privacy checks before replacing the current accepted
+dataset. Sender and inclusive date filters operate on an in-memory compact
+token cache, and Stop terminates the Worker and releases that cache.
+
+The application does not normalize raw exports and does not display source
+names, paths, identities, or retained message content. “Pseudonymous” remains
+the correct description: the conversation fingerprint and minimized text do
+not make a dataset anonymous.
+
 Handled SIGINT uses the same close-and-explicit-cleanup path. Cancellation is
 observed only at bounded safe checkpoints, never by raising from the signal
 handler during SQLite or file writes. A request observed before the atomic
