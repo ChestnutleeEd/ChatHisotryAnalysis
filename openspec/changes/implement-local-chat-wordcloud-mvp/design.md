@@ -1,211 +1,479 @@
 ## Context
 
-The repository currently provides a deterministic 5000-message synthetic CipherTalk `detailed-json` fixture, a Python fixture generator, tests for that generator, and `docs/CIPHERTALK_EXPORT_SCHEMA.md`. It has no application scaffold or runtime analysis code. The documented export shape is a development baseline, not a stable CipherTalk API; timestamps, type mappings, optional fields, and malformed-record representations must be revalidated when an authorized and properly de-identified real export becomes available.
+The repository contains a deterministic synthetic CipherTalk `detailed-json` fixture, its generator and tests, and provisional schema documentation, but no application or runtime analysis code. A privacy-preserving read-only audit established that a complete private-chat history can span multiple annual sources beyond the former raw-browser limits and that an overlap-verification export cannot be counted as another analysis period. No private audit counts, sizes, hashes, paths, names, identifiers, or date ranges belong in committed documentation.
 
-The first product increment must load one private-chat export, calculate Chinese word frequencies, render a word cloud and ranking, and export the cloud as PNG without transferring chat content. The solution must be small enough to establish the core workflow while keeping parsing and filtering replaceable as the provisional schema evolves.
+The audit also confirmed that raw payload fields dominate source size and can contain XML, URLs, and embedded private metadata; `localId` is not unique; decimal-looking platform identifiers must remain strings; `localType` may exceed signed 32-bit range; `chatLabType` is the most stable classifier; timestamps use Unix seconds and fixed UTC+08:00 wall time; and identical timestamps require stable source ordering. These aggregate conclusions are safe to document publicly, but raw and normalized datasets remain private local artifacts.
 
-Read-only baseline profiling measured the committed fixture at 2,634,343 bytes (2.512 MiB) and 5000 messages. On the current development machine, Node decoded it with fatal UTF-8 behavior in about 1.2 ms and parsed it in an average 2.8 ms across 20 runs. A temporary in-memory 50,000-message expansion serialized to 20,634,553 bytes (19.679 MiB) and parsed in about 29.8 ms. These measurements justify headroom for the selected MVP limits but are not browser performance guarantees.
+The former browser-only raw-import architecture is therefore replaced before implementation. The local Python component is a CLI preprocessor, not an HTTP service, server backend, database service, upload path, or cloud boundary. The browser receives only a data-minimized local analysis dataset.
 
 ## Goals / Non-Goals
 
 **Goals:**
 
-- Provide one end-to-end local workflow from file selection through PNG export.
-- Keep source parsing, normalization, filtering, tokenization, counting, and presentation as explicit boundaries that can be tested independently.
-- Reliably process the current 5000-message fixture without UI failure.
-- Reject files beyond explicit 32 MiB or 50,000-message MVP support limits without partial analysis.
-- Make frequency results deterministic for fixed input, settings, tokenizer, and dictionary.
-- Preserve privacy by avoiding a backend, online analysis services, and chat-content telemetry.
-- Keep schema assumptions and validation warnings visible and revisable.
+- Analyze the complete private-chat history across explicitly selected annual CipherTalk exports.
+- Stream large raw sources sequentially with bounded memory and no source mutation or network access.
+- Validate one private conversation, minimize fields, deduplicate, merge deterministically, and emit atomic reproducible local artifacts.
+- Keep raw identifiers and structured payloads out of normalized chunks, browser state, logs, snapshots, and errors.
+- Load normalized artifacts in a browser Worker, tokenize each record once, cache tokens, and keep the UI responsive.
+- Preserve deterministic sender/date filtering, frequencies, ranking, progress, cancellation, accessibility, and PNG export.
+- Keep all private data under Git-ignored local paths.
 
 **Non-Goals:**
 
-- Annual report generation, sentiment analysis, AI summarization, relationship scoring, topic modeling, timeline charts, or heatmaps.
-- Group-chat analysis, direct WeChat database access, CipherTalk database decryption, or media-file analysis.
-- Public-server deployment, desktop-wrapper packaging, user accounts, cloud storage, multi-file merging, or persistence of uploaded chat data.
-- Treating the provisional synthetic schema as a permanent or complete CipherTalk contract.
-
-These exclusions are possible subjects for separate future changes; they are not hidden implementation tasks for this MVP.
+- Sentiment analysis, AI summarization, relationship scoring, annual relationship reports, topic modeling, timelines, or heatmaps.
+- Group-chat analysis, media transcription, image recognition, direct WeChat database access, or CipherTalk database decryption.
+- FastAPI or another local HTTP API, cloud upload or storage, public deployment, user accounts, or telemetry containing private data.
+- Electron/Tauri packaging, direct `file://` execution, or copying normalized data into the application build.
+- Treating a data-minimized text dataset as anonymous.
 
 ## Decisions
 
-### 1. Use a browser-only React and TypeScript architecture
+### 1. Split raw preprocessing from browser analysis
 
-The MVP will use React, TypeScript, and Vite. Parsing, normalization, filtering, segmentation, counting, and export will run in browser-side TypeScript modules. No FastAPI service will be introduced.
-
-| Consideration | Browser-only TypeScript | React plus local Python/FastAPI |
-| --- | --- | --- |
-| Privacy | The file can remain in browser memory; no application-layer upload or listening service is needed. | Can remain on the same machine, but still introduces browser-to-server transfer, a listening process, and more places where sensitive content may be logged. |
-| Chinese segmentation | Requires a browser-compatible deterministic tokenizer and fixed dictionary, potentially backed by WASM. | Python offers mature segmentation packages and straightforward custom dictionaries. |
-| Development complexity | One language, one process, one test/build toolchain, and direct in-memory flow. | Two runtimes, an API contract, CORS/process lifecycle, error mapping, and integration tests are required. |
-| Packaging | A static local build or lightweight desktop wrapper remains possible; runtime does not require Python. | Distribution must install and launch Python, dependencies, a local port, and the frontend. |
-| Future extensibility | Pure analysis modules can later move into a Web Worker, desktop shell, or service boundary. | Better suited if later features require Python-only NLP or heavy native libraries. |
-
-Browser-only TypeScript is chosen because it satisfies this frequency-analysis increment with the smallest privacy and packaging surface. Python/FastAPI becomes worth reconsidering only if a separately measured requirement cannot be met by the fixed browser tokenizer, or a later offline NLP feature requires a Python-only model.
-
-#### Fixed Chinese tokenizer
-
-The MVP will use exactly `jieba-wasm@2.4.0` (MIT), resolved with an exact dependency entry rather than a semver range and pinned by the future package lockfile. The verified npm tarball integrity is `sha512-ZvQdS+FGifrFXZIXSgOyOgEz+1wdy1P4vSvwe37FVtku9ycSdHTZbHqF5i9tMN1JucoAmeiLBeI6/YaqcGD+KA==`. The package publishes a browser export with TypeScript declarations. Browser usage is:
-
-```ts
-import init, { cut } from "jieba-wasm";
-
-await init();
-const tokens = cut(text, false);
-```
-
-`cut` is the default accurate mode. The second argument is fixed to `false`, disabling HMM. The MVP will not use `cut_all`, `cut_for_search`, `tokenize` search mode, `add_word`, or `with_dict`. It will not expose custom dictionary controls. Configurable stop words remain a separate exact-match post-segmentation filter and do not mutate the tokenizer.
-
-The binding constructs one process-wide Jieba instance with `Jieba::new()`. Its default dictionary is compiled into the WASM binary through the dependency's embedded `jieba-rs` dictionary; there is no separately fetched or copied dictionary asset to checksum. Therefore the reproducibility boundary is the exact `jieba-wasm@2.4.0` package, its lockfile integrity, the embedded WASM, `cut` mode, and `hmm=false`. Contract tests will pin representative segmentation outputs. `Intl.Segmenter` is not a fallback because its behavior can vary by browser engine and version.
-
-A local tokenizer adapter will cache a module-level initialization promise and call `init()` lazily on the first analysis request, yielding one initialization lifecycle per page load. Concurrent requests share that promise. If local WASM loading or initialization fails, the adapter clears the failed promise for an explicit retry, returns a non-content-bearing initialization error, retains the successfully loaded normalized dataset, and produces no partial frequencies, cloud, ranking, or export. It never falls back to an online tokenizer.
-
-Vite resolves the package's browser export and emits its WASM as either an inlined build asset or a hashed static asset requested from the same local origin. Both forms are part of the local build output and require no external request. Compatibility task 1.3 verifies this exact configuration; it does not select another tokenizer or architecture.
-
-Dependency facts were verified against the official [`jieba-wasm` npm metadata](https://www.npmjs.com/package/jieba-wasm), [package README](https://github.com/fengkx/jieba-wasm), [binding source](https://github.com/fengkx/jieba-wasm/blob/master/src/lib.rs), and [Vite WebAssembly guidance](https://vite.dev/guide/features.html#webassembly).
-
-### 2. Use a staged, immutable analysis pipeline
-
-The application will keep the following boundaries:
+The architecture is:
 
 ```text
-File
-  -> 32 MiB File.size preflight
-  -> fatal UTF-8 decode
-  -> JSON parse
-  -> private detailed-json and 50,000-message validation
-  -> immutable normalized messages
-  -> sender/date selection
-  -> extensible message filters
-  -> text cleanup and segmentation
-  -> stop-word/minimum-length filters
-  -> frequency map and stable ranking
-  -> cloud, ranking, metrics, PNG
+CipherTalk annual detailed-JSON files
+  -> local Python preprocessing CLI on macOS
+  -> strict streaming source and same-session validation
+  -> message classification and eligible-text filtering
+  -> privacy minimization
+  -> transient identity calculation and cross-file deduplication
+  -> chronological merge
+  -> deterministic manifest plus bounded NDJSON chunks
+  -> local React/TypeScript application
+  -> browser analysis Worker
+  -> Jieba initialization, one-time tokenization, cached filtering and frequencies
+  -> word cloud, ranked list, metrics, and PNG export
 ```
 
-Each stage consumes typed values and returns a new value plus structured issues. The parsed source object is never changed. UI components do not inspect raw message shapes and the counter does not know CipherTalk type codes. This isolation allows later schema adapters and filter rules to change without rewriting visualization logic.
+Raw browser import is deliberately unsupported. The split prevents hundreds of MiB of unnecessary structured fields from entering browser memory and makes privacy minimization an inspectable precondition rather than a UI convention.
 
-Validation has two levels:
+Alternatives considered:
 
-- File-level errors reject a non-`.json` name; `File.size` above 33,554,432 bytes; invalid UTF-8; malformed JSON; a non-object root; non-object `exportInfo` or `session`; `exportInfo.format` other than `detailed-json`; non-array `messages`; `messages.length` above 50,000; or a session whose `isGroup` is not exactly `false` or whose `type` is not exactly `私聊`. A group or ambiguous session is unsupported even when the top-level field names look correct.
-- Record-level issues skip only unusable messages and report array positions and issue codes without echoing chat content. A recoverable message must be an object with integer `localType`, string `type`, string-or-null `content`, numeric integer `isSend` equal to `0` or `1`, and at least one valid time field. Missing optional sender identity fields normalize to null.
+- **Whole-file parsing one annual source at a time:** simpler, but a several-hundred-MiB JSON string plus object graph has an unsafe and implementation-dependent memory multiplier.
+- **Browser streaming of raw exports:** keeps one runtime but still exposes raw structured payloads to browser state and makes cross-file validation, atomic output, and reproducibility harder.
+- **Python/FastAPI:** unnecessary listening process and request/logging surface. The selected Python component is an invoked local CLI only.
 
-The byte check runs against `File.size` before `arrayBuffer()` and decoding; a file exactly at the limit proceeds. Decoding uses `new TextDecoder("utf-8", { fatal: true })`, so invalid sequences fail instead of becoming `U+FFFD`. The message-count check runs immediately after JSON and top-level validation and before per-message normalization; exactly 50,000 proceeds. A candidate exceeding either limit is rejected as a whole and is never partially analyzed. Candidate state is staged and replaces the last successful dataset only after all file-level checks pass, so a failed replacement leaves the last successful dataset intact and the selector usable.
+### 2. Use pinned `ijson==3.5.1` with a fixed streaming mode
 
-Unknown fields are tolerated to avoid unnecessary breakage while the schema is provisional. `exportInfo.version`, generator values beyond the required format discriminator, and supported-record extra fields do not cause failure. A schema-validation library may be used, but it must support safe parsing, useful paths, and inclusion in the local build without network access.
+The MVP supports one explicit runtime row: CPython `>=3.12.0,<3.13.0` on macOS `arm64`. Before opening any raw source, a startup gate verifies the interpreter implementation, Python minor, operating system, and architecture; installed `ijson` version exactly `3.5.1`; an installed-distribution SHA-256 from the approved list for that exact runtime/platform tuple; backend identity exactly `yajl2_c`; and a minimal in-memory parser event self-check. The gate maps failure to `UNSUPPORTED_PYTHON_RUNTIME`, `IJSON_DISTRIBUTION_UNVERIFIED`, `IJSON_BACKEND_UNAVAILABLE`, `IJSON_BACKEND_MISMATCH`, or `IJSON_PARSER_INITIALIZATION_FAILED`. It discards underlying exception text before presentation.
 
-### 3. Define canonical normalized data and time behavior
+After that gate, the selected API is `ijson.backends.yajl2_c.parse` over a binary file with:
 
-The normalized message will include:
+- `use_float=False`, preserving JSON integers as Python integers;
+- `multiple_values=False`, requiring exactly one top-level value;
+- `allow_comments=False`, requiring standard JSON;
+- a fixed 65,536-byte buffer unless implementation profiling documents and tests a different fixed value;
+- no automatic backend selection or pure-Python fallback.
 
-- integer Unix-second chronological value plus whether it was derived;
-- strict `YYYY-MM-DD HH:mm:ss` wall-clock `formattedTime`, its `YYYY-MM-DD` calendar-date key, and whether they were derived;
-- numeric `localType`, normalized `type`, nullable normalized `content`;
-- boolean owner-sent state derived from `isSend`;
-- nullable normalized `senderUsername` and `senderDisplayName`;
-- original array index for stable diagnostics.
+The event state machine collects the small top-level `exportInfo` and `session` objects and constructs at most one `messages.item` object at a time. Large fields may exist in that one object but are discarded immediately after safe aggregate checks. Annual sources are opened and processed sequentially; all source object graphs are never resident together.
 
-Sender controls use only raw JSON numbers: integer `1` means owner and integer `0` means the other participant. Strings, booleans, null, missing values, non-integers, and other numbers are not coerced; the record is skipped with an issue code. This matches the current private-chat schema and intentionally does not generalize to group chats.
+Each source receives three bounded passes so final `fileRank` is known before any eligible row enters the exact ten-column table:
 
-`session.ownerId` is optional consistency metadata, not a scope discriminator. A missing or unusable value yields a session warning but does not prevent analysis. When it is present, an owner-sent record whose `senderUsername` differs from it, or an other-participant record whose `senderUsername` equals it, keeps its `isSend`-derived role and emits a warning. Missing or unknown sender names normalize to null and never alter role assignment. Since group sessions are rejected, all valid `isSend=0` records belong to the single other-participant scope.
+1. Stream bytes to SHA-256 and Python's strict incremental UTF-8 decoder without correction or replacement.
+2. Reopen in binary mode, stream parser events for contract/session/participant/message-count/time-range validation, discard each message, and verify a concurrently recomputed source hash still matches pass one.
+3. After every annual range and rank is known, reopen annual sources in deterministic rank order, stream/classify/minimize/digest/stage eligible records with final `file_rank`, and again verify the source hash. Verification inputs stream against staged identities without entering the table.
 
-Time normalization uses these fixed rules:
+This extra pass avoids adding a forbidden source identifier or provisional rank to SQLite. It also detects source mutation between passes. Parse errors, incomplete JSON, trailing values, comments, invalid UTF-8, changed bytes, and unsupported structures are fatal and content-free.
 
-1. `formattedTime` is valid only when it exactly matches `YYYY-MM-DD HH:mm:ss` and represents a real proleptic-Gregorian calendar value. It is the canonical wall-clock display value and supplies calendar-date bounds and inclusive date filtering.
-2. `createTime` is valid only as a finite integer Unix-seconds number. It is the canonical chronological ordering value. Ties use the lower original source-array index first.
-3. When both are valid, each retains its role. They are compared by interpreting `formattedTime` with the provisional fixed UTC+08:00 offset documented for the fixture. A disagreement emits a warning but does not replace either canonical value.
-4. When `formattedTime` is invalid or missing but `createTime` is valid, derive the wall-clock string and date key at fixed UTC+08:00 and mark the record fallback-normalized.
-5. When `createTime` is invalid or missing but `formattedTime` is valid, derive an ordering timestamp by interpreting the wall-clock value at fixed UTC+08:00 and mark the record fallback-normalized.
-6. When neither is valid, skip the record with a warning.
+The future preprocessing dependency file must pin exactly `ijson==3.5.1` and the supported runtime tuple. A generated lock file must include SHA-256 hashes for every approved distribution in that tuple, and installation must enforce hashes. Runtime verification remains mandatory even after hash-locked installation. There is no automatic backend choice, pure-Python parser, other native backend, or unsupported-runtime fallback. The committed lock file, interpreter boundary, exact backend, options, and parser contract are the reproducibility boundary. Implementation must verify official distribution hashes and licenses before installation; this documentation task creates no manifest and installs nothing.
 
-All parsing and conversion use explicit UTC arithmetic plus a fixed eight-hour offset, never the host timezone or locale. Midnight boundaries therefore follow canonical wall-clock dates. UTC+08:00 and Unix-second precision remain provisional until a real export establishes the actual rules.
+### 3. Enforce separate raw and normalized limits
 
-The loaded summary derives normalized-record count, first/last chronological wall-clock values, and available date bounds from the normalized model. Conflicting `session.messageCount`, `firstTimestamp`, or `lastTimestamp` values are shown as non-fatal warnings rather than silently trusted.
+Raw preprocessing supports:
 
-### 4. Make filtering data-driven and text-safe
+| Limit | Inclusive maximum |
+| --- | ---: |
+| One raw input | 536,870,912 bytes (512 MiB) |
+| Annual-source files | 20 |
+| Aggregate raw inputs across both roles | 2,147,483,648 bytes (2 GiB) |
+| Aggregate raw message entries across both roles | 2,000,000 |
 
-Message-type exclusions will be represented as composable predicates and type-code sets, initially covering documented `localType` values for images (`3`), voice (`34`), video (`43`), animation emoji (`47`), and system/call content (`50`, with `10000` recognized provisionally). Readable `localType=1` messages are the primary MVP input. `localType=49` records enter analysis only when their normalized content is demonstrably human-readable rather than XML, a file/link placeholder, or an unsupported structured payload.
+Browser normalized input supports:
 
-Content cleaning uses ordered pure functions:
+| Limit | Inclusive maximum |
+| --- | ---: |
+| Aggregate eligible text records | 1,000,000 |
+| Aggregate normalized dataset | 134,217,728 bytes (128 MiB) |
+| One normalized NDJSON chunk | 33,554,432 bytes (32 MiB) |
 
-1. reject null, non-string, empty, media-placeholder, and XML-like content;
-2. remove URL spans, with URL-only messages becoming empty;
-3. normalize Unicode with NFKC and lowercase English;
-4. convert emojis, repeated punctuation, and whitespace to separators;
-5. reject punctuation/separator-only content before tokenization;
-6. tokenize Chinese with lazy-singleton `jieba-wasm@2.4.0` `cut(text, false)` and English as Unicode alphabetic runs;
-7. apply a normalized configurable stop-word set and a Unicode-code-point minimum length;
-8. reject numeric-only tokens.
+These are supported MVP limits, not hardware claims. Counts include overlap-verification sources for raw resource protection even though they never contribute normalized records. Every limit is checked at the earliest reliable point. Crossing a limit aborts the candidate, deletes temporary output, and never silently emits a truncated dataset.
 
-Emoji are excluded as words for the MVP; nearby text remains. Malformed records and fragments are skipped, summarized by non-sensitive issue code, and never allowed to abort the full analysis. The default stop-word list is a local, UTF-8, versioned asset whose source, license, version, and SHA-256 are documented when created. Both the asset and any caller-provided replacement set are NFKC-normalized, trimmed, lowercased for English, de-duplicated, and passed to the pure analysis engine. This makes stop words configurable for tests and future callers without requiring a stop-word editor in the first UI. Stop words never call `add_word` or `with_dict`.
+### 4. Make input roles explicit
 
-### 5. Produce one canonical result for every presentation
+The CLI exposes repeated role arguments equivalent to:
 
-The analysis engine returns a single result containing the full frequency map, stable ranked tokens, analyzed text-message count, unique-token count, sender scope, and inclusive date range. The analyzed text-message counter increments exactly when a normalized message survives sender, date, message-type, and content-level exclusions and is submitted to tokenization. Stop-word-only input still counts; punctuation-only, URL-only, placeholder, excluded-type, and malformed messages rejected before tokenization do not. A submitted message continues to count even when token length, stop words, aggregate minimum frequency, or maximum display count leaves no displayed token. Counts sort descending, then ties sort by ascending Unicode code-point order. The maximum-word and minimum-frequency settings derive the display list from that canonical result.
+```text
+--annual-source <path>
+--overlap-verification <path>
+--output-dir <ignored-local-path>
+```
 
-The word cloud and ranked list consume the same display list, and regeneration atomically replaces the full result to avoid mismatched metrics. Invalid settings block generation. A valid analysis with no remaining tokens produces an explicit empty state.
+At least one annual source and an output directory are required. Directory and filename conventions never imply roles.
 
-### 6. Render and export with ECharts plus a word-cloud extension
+- **Annual source:** contributes eligible records, participates in same-session checks, ranking, deduplication, merge, and totals.
+- **Overlap verification:** optional; validates repeat-export consistency, never contributes a record, count, or date period.
 
-ECharts with a browser-compatible word-cloud extension is the preferred visualization because it provides a TypeScript-friendly canvas rendering path, responsive sizing, and image export without a server. Dependency compatibility, maintenance, licensing, deterministic input ordering, and accessible fallback behavior must be confirmed during scaffolding. If that check fails, a small canvas/SVG word-cloud library may replace it without changing the analysis contract.
+If verification is included in a preprocessing run and fails, no final output is promoted. A separate read-only `verify-overlap` operation may compare a verification source against an existing manifest without modifying it. This avoids a dangerous “warning but silently continue” path; the user can explicitly rerun without verification if desired.
 
-Only placement and decoration may vary with canvas layout; frequency values and ranking remain deterministic. If the visualization library supports a random seed, use a fixed seed. Otherwise PNG pixels are not claimed to be byte-for-byte deterministic.
+### 5. Validate one private conversation pseudonymously
 
-PNG export will use the current chart canvas/data URL or blob, assign a non-sensitive filename derived from the source base name and selected range, and trigger a browser download. It will not embed raw messages or participant identifiers as PNG metadata.
+For every annual source, the preprocessor transiently compares:
 
-The ranked list is the accessible, exact textual representation of cloud data. File and analysis controls use native inputs where practical, explicit labels, keyboard focus, associated errors, a programmatic busy state, and non-color-only feedback.
+- exact `detailed-json` format;
+- platform;
+- private/group status;
+- owner identity;
+- peer identity;
+- participant set derived from message sender identities.
 
-### 7. Keep processing responsive at fixture scale
+Canonical identity serialization is versioned and length-prefixed, for example a fixed domain tag followed by UTF-8 byte length and bytes for each normalized component and the sorted participant set. SHA-256 of that representation becomes the lowercase hexadecimal conversation fingerprint. Length prefixes prevent delimiter ambiguity.
 
-Acceptance is based on completing the existing 2,634,343-byte, 5000-message fixture in a current desktop browser with no crash, uncaught exception, permanently blocked UI, or unusable controls. The UI commits a programmatic busy state before starting perceptible work and yields so it can paint. No arbitrary time budget is imposed beyond successful fixture-scale usability.
+The fingerprint is pseudonymous, not anonymous: anyone possessing candidate identifiers could recompute it. The local manifest may contain the fingerprint, but no raw identity, participant name, or identifier may accompany it. A different-session annual source is fatal. Missing identity fields that prevent deterministic comparison are also fatal for complete-history preprocessing rather than being guessed.
 
-The supported input ceilings are 33,554,432 bytes and 50,000 message entries. The byte limit is checked before reading or decoding; the message limit is checked after top-level parsing and before normalization. The fixture has approximately 12.7× byte headroom and 10× message headroom, while the temporary 50,000-message profile remained under 20 MiB serialized. Both ceilings are independent and inclusive. Exceeding either rejects the complete candidate with a specific limit error and leaves the prior successful state and controls usable.
+### 6. Classify with `chatLabType`, corroborate with `type`, preserve `localType` transiently
 
-Streaming JSON parsing and Web Workers are not requirements or hidden conditional tasks in this change. Analysis modules remain serializable and side-effect-free so a separately reviewed future change can introduce a worker if browser profiling later demonstrates a need. If the 5000-message acceptance case cannot remain usable without one, implementation must stop and revise this design rather than silently expand scope.
+The primary normalized mappings are:
 
-### 8. Enforce local privacy and repository hygiene
+| `chatLabType` | Category |
+| ---: | --- |
+| 0 | text |
+| 1 | image |
+| 2 | voice |
+| 3 | video |
+| 4 | file |
+| 5 | animated emoji |
+| 7 | structured/link/other application content |
+| 8 | location |
+| 23 | call |
+| 24 | mini-program/share |
+| 25 | reply |
+| 27 | contact card |
+| 80 | system |
+| 99 | other/special transaction content |
 
-Loading and analysis must not invoke remote APIs. Application startup should not depend on a CDN; production assets, tokenizer data, dictionaries, stop words, and visualization code are bundled locally. Telemetry is disabled unless a future change defines a content-safe policy; under no circumstances may it include message text, tokens, frequencies, participant identifiers, source filenames, or derived chat metadata.
+String `type` corroborates this mapping. Any disagreement that might turn media or structured content into text is conservatively non-text and increments an aggregate warning. Unknown primary codes are also non-text rather than guessed.
 
-The implementation must verify that `data/private/` and user export locations such as `data/exports/` remain Git-ignored. Only synthetic datasets may be committed, and the existing fixture remains the sole committed chat dataset for this MVP.
+`localType` is accepted only when it is a Python integer other than `bool` and lies between `-Number.MAX_SAFE_INTEGER` and `Number.MAX_SAFE_INTEGER`. In TypeScript it must pass `Number.isSafeInteger`. No implementation may use bitwise operators, signed 32-bit casts, `Int32Array`, or a 32-bit database column. Unknown safe values are retained only long enough for validation and diagnostics. Stable simple examples include 1 text, 3 image, 34 voice, 43 video, 47 animated emoji, 50 call, and 10000 system; structured records may use much larger values. `localType=49` is not canonical.
 
-### 9. Use an explicit local same-origin launch model
+### 7. Require exact text agreement and minimize content
 
-Development uses the Vite development server bound to loopback. Production-artifact verification runs `npm run build` and then the documented `npm run preview -- --host 127.0.0.1` command, which serves the built `dist/` application from one local HTTP origin. This preview command validates the production build; it is not a public deployment.
+A record is eligible only if:
 
-Direct `file://` execution is unsupported. ES modules and a WASM asset emitted by Vite rely on HTTP-origin URL resolution and fetch semantics that are not reliably available from a local file origin. An Electron or Tauri wrapper is also outside this change.
+```text
+chatLabType === 0
+type === "文本消息"
+localType === 1
+content is a non-empty string
+```
 
-The future Vite configuration and lockfile must ensure all JavaScript, CSS, fonts, ECharts code, `jieba-wasm` JavaScript/WASM, its embedded dictionary, stop words, and other runtime assets are present in the local source/build graph. Vite may inline the WASM or emit it as a hashed file; either is acceptable after task 1.3 verifies that the resulting URL stays on the application origin.
+Then pure filters:
 
-“Offline” means external network access is unnecessary and no third-party content request is made. Requests from the browser to its loopback application origin for packaged assets are allowed. Browser acceptance tests will abort any non-loopback request, load the local build, wait for local assets and tokenizer initialization, then analyze the fixture, regenerate, and export PNG. The request log must contain no non-loopback origin and no chat data.
+1. reject known bracketed media/system placeholders;
+2. reject XML-like content without parsing it;
+3. remove URL spans;
+4. reject URL-only or now-empty content;
+5. retain the remaining human-readable text exactly enough for later deterministic Unicode cleanup.
 
-### 10. Test at module and workflow boundaries
+Classification and content failures produce only aggregate reason codes. Non-text content never enters staging output. Mixed text remains after URL removal.
 
-Unit tests use small inline synthetic records to cover fatal UTF-8 errors; both inclusive input limits; every fatal schema discriminator; recoverable records; exact `isSend` semantics; owner metadata conflicts; time fallback, conflict, midnight, tie, and host-timezone behavior; every default content exclusion; mixed-language processing; stop words; token length; date/sender scopes; exact frequencies; analyzed-message counting; and tie ordering. Tokenizer fixtures pin exact `cut(text, false)` outputs against `jieba-wasm@2.4.0`.
+The normalized browser allow-list is:
 
-An integration test reads `data/mock/ciphertalk_detailed_chat_2025.json`, asserts its 2,634,343-byte and 5000-message load succeeds, exercises the default analysis flow, and verifies the file checksum is unchanged. Component or browser-level tests cover file selection, both oversized errors and recovery, understandable validation, controls, regeneration, result summaries, empty state, keyboard operation, local WASM failure, PNG-export availability, production-build launch, and external-network denial. Tests must not require external network access.
+```json
+{
+  "createTime": 0,
+  "formattedTime": "YYYY-MM-DD HH:mm:ss",
+  "calendarDate": "YYYY-MM-DD",
+  "senderScope": "owner",
+  "content": "synthetic example only",
+  "fileRank": 0,
+  "sourceIndex": 0
+}
+```
+
+This is conceptual and synthetic. `sourceIndex` is the post-dedup canonical index; original raw array index is transient. The record contains no raw classification codes because eligibility has already been decided.
+
+The deny-list includes `rawContent`, `source`, raw sender fields, avatars, all session names and identifiers, platform and local message identifiers, URLs, XML, application payloads, `chatRecords`, reply/group fields, media metadata, and non-text content. A final privacy validator recursively rejects unknown keys, forbidden keys, XML-like content, and URL spans before promotion. The result is called a **data-minimized local analysis dataset** because retained message text can still contain personal information.
+
+### 8. Normalize time, rank files from data, and retain stable source order
+
+`createTime` must be integer Unix seconds. `formattedTime` must be a real calendar value matching exact `YYYY-MM-DD HH:mm:ss` and equal the UTC+08:00 rendering of `createTime`. The preprocessor uses explicit UTC arithmetic, never host timezone or locale. A candidate text record with missing, invalid, or conflicting canonical time is skipped with an aggregate reason; source-level absence of enough valid timestamps to derive a range is fatal.
+
+Filename dates are ignored. Each annual source's actual range comes from validated message timestamps. File rank sorts by:
+
+1. minimum valid `createTime`;
+2. maximum valid `createTime`;
+3. explicit annual-source argument order.
+
+Annual gaps are allowed. Annual overlaps are deduplicated; an overlap beyond a documented synthetic-test threshold produces an aggregate warning but is not itself fatal when the conversation matches.
+
+The original source-array index is recorded transiently for every staged message. It remains the final tie-breaker for distinct messages with identical timestamps.
+
+### 9. Deduplicate with transient cryptographic identities
+
+Identity encoding uses fixed UTF-8 domains, unsigned 64-bit big-endian length prefixes for every variable-length byte field, and signed 64-bit big-endian fixed-width integers. Length prefixes include byte lengths, not character counts. Conversation-fingerprint bytes are the exact 32 bytes decoded from the validated 64-character lowercase hexadecimal fingerprint.
+
+For a valid string `platformMessageId`, the primary input is:
+
+```text
+domain = ChatHistoryAnalysis/dedup/platform-id/v1
+length(conversationFingerprintBytes) || conversationFingerprintBytes
+length(platformMessageIdUtf8) || platformMessageIdUtf8
+```
+
+The identity key is SHA-256 of that encoding. An independent BLAKE2b verifier with a 16-byte digest uses the same fields under `ChatHistoryAnalysis/dedup/platform-id-verifier/v1`. The raw platform ID remains a string only while streaming, is never parsed as a number or logged, and is discarded immediately after both digests are computed.
+
+If the platform ID is absent, empty, or non-string, the fallback input is:
+
+```text
+domain = ChatHistoryAnalysis/dedup/fallback/v1
+length(conversationFingerprintBytes) || conversationFingerprintBytes
+int64(createTime)
+length(formattedTimeUtf8) || formattedTimeUtf8
+length(senderScopeUtf8) || senderScopeUtf8
+length(normalizedMessageTypeUtf8) || normalizedMessageTypeUtf8
+length(contentSha256Bytes) || contentSha256Bytes
+```
+
+Its key is SHA-256. Its 16-byte BLAKE2b verifier uses `ChatHistoryAnalysis/dedup/fallback-verifier/v1`. The content component is the 32-byte SHA-256 of cleaned content, never the content itself. Primary and fallback domains are deliberately distinct. `localId`, timestamp, or source-array index alone are prohibited identities.
+
+The SQLite store contains one staging-record table and exactly ten columns:
+
+| Column | Boundary |
+| --- | --- |
+| `identity_kind` | non-null text, `platform-id-v1` or `fallback-v1` |
+| `identity_digest` | non-null 32-byte SHA-256 blob |
+| `identity_verifier` | non-null 16-byte BLAKE2b blob |
+| `create_time` | non-null canonical integer seconds |
+| `formatted_time` | non-null canonical fixed-zone text |
+| `calendar_date` | non-null canonical date text |
+| `sender_scope` | non-null text, `owner` or `other` |
+| `content` | non-null cleaned eligible text |
+| `file_rank` | non-null non-negative deterministic integer rank |
+| `source_array_index` | non-null non-negative original per-source ordinal |
+
+The unique constraint is `(identity_kind, identity_digest, identity_verifier)`. A separate `(identity_kind, identity_digest)` lookup detects a primary-digest match before duplicate resolution, and `(create_time, file_rank, source_array_index)` supports canonical output. No raw identifier is hidden in a table, index, constraint, or auxiliary metadata. In particular SQLite never stores raw platform/local IDs, raw/session/sender fields, URLs, XML, application/media payloads, source paths, or basenames.
+
+Matching kind, SHA-256, and verifier means a duplicate. The deterministic survivor has lowest file rank and then lowest source-array index. Matching kind and SHA-256 with a different verifier is not a duplicate: it stops preprocessing as `CRYPTOGRAPHIC_IDENTITY_COLLISION`, promotes nothing, and reveals no identifier, content, digest, or location. Keeping both records or silently selecting one is prohibited.
+
+After deduplication, surviving records sort by `createTime`, file rank, and original source-array index. The writer assigns zero-based monotonically increasing canonical `sourceIndex`.
+
+The staging directory is a unique sibling of the requested final directory inside the selected Git-ignored normalized-output parent, which also guarantees the same filesystem for atomic promotion. The process sets an umask equivalent to `0077`, creates the directory as `0700`, and creates the database and regular files as `0600`. It never prints the staging directory or database location and never uses a global database directory or generic shared temporary directory.
+
+Before private insertion, the connection sets and verifies:
+
+```text
+PRAGMA journal_mode=DELETE
+PRAGMA temp_store=MEMORY
+PRAGMA secure_delete=ON
+PRAGMA busy_timeout=0
+```
+
+The connection uses no shared cache. WAL is prohibited. The MVP table has no foreign keys; any future foreign-key schema must also set and verify `PRAGMA foreign_keys=ON`. Memory temp storage prevents SQLite sort/index spill into system temporary directories and must survive supported-maximum profiling. If it does not, work stops for an OpenSpec revision instead of silently enabling disk spill. Deprecated or process-global temporary-directory configuration is prohibited. `secure_delete=ON` reduces ordinary deleted-page remnants but cannot promise forensic or cryptographic erasure, especially on SSDs.
+
+### 10. Emit deterministic bounded NDJSON and a canonical manifest
+
+Output is conceptually:
+
+```text
+data/exports/normalized/<dataset-name>/
+  manifest.json
+  chunk-0001.ndjson
+  chunk-0002.ndjson
+  ...
+```
+
+The actual output directory is explicit and must be Git-ignored. Chunks are created in canonical record order. Each line is one compact JSON object with fixed allow-list field order, UTF-8 without BOM, no insignificant whitespace, and one LF. Actual encoded UTF-8 bytes, including that LF, determine boundaries. An exactly 33,554,432-byte record or chunk is valid. A 33,554,433-byte record is fatal `NORMALIZED_RECORD_TOO_LARGE`, is never written, and prevents promotion. If adding an otherwise valid record would make a non-empty chunk exceed the inclusive limit, the writer closes that chunk and writes the complete record as the first line of the next deterministic chunk. The first record creates the first chunk; empty chunks are never emitted.
+
+The canonical manifest contains:
+
+- normalized schema and preprocessor tool versions;
+- pseudonymous conversation fingerprint;
+- explicit UTC+08:00 policy;
+- ordered input descriptors containing role, supplied ordinal, byte size, and SHA-256 but no raw path or basename;
+- ordered chunk names, byte sizes, record counts, and SHA-256;
+- aggregate source and normalized record counts;
+- aggregate skipped-record counts by non-sensitive reason;
+- duplicate, overlap, verification, and warning counts;
+- actual data-derived minimum and maximum time;
+- owner/other scope counts;
+- forbidden-field privacy-validation result.
+
+It contains no raw identity, raw identifier, message value, source path, or current wall-clock generation time.
+
+Manifest serialization uses UTF-8, LF, stable integer formatting, sorted object keys, and compact separators. Identical inputs, roles, order, tool/schema versions, and settings must produce byte-identical chunks and manifest. Input order intentionally affects the final tie-breaker when actual ranges are identical.
+
+Zero eligible records is fatal `NO_ELIGIBLE_TEXT_RECORDS`. No zero-record dataset, manifest, or empty chunk is promoted. The CLI remains reusable and may report aggregate skipped counters through the error allow-list.
+
+### 11. Promote output atomically and classify failures
+
+The final destination must not exist as a file, directory, or symbolic link. Collision is fatal `OUTPUT_DESTINATION_EXISTS`; this MVP never overwrites, merges, deletes, or replaces it. The private staging sibling lives in the same parent and filesystem. The CLI:
+
+1. streams and validates all sources;
+2. validates same-session and verification rules;
+3. enforces all limits;
+4. writes and closes chunks;
+5. computes and re-verifies manifest and chunk hashes;
+6. runs recursive normalized-schema and privacy validation;
+7. writes and re-reads the canonical manifest;
+8. closes SQLite;
+9. enumerates and removes the main database, `-journal`, `-wal`, `-shm`, every statement journal, temporary manifest/chunk files, fixed staging marker, and every other non-output entry one explicit path at a time;
+10. asserts that only the validated manifest and referenced non-empty chunks remain;
+11. rechecks that the final destination is absent and its parent is on the same filesystem;
+12. atomically renames the directory once.
+
+There is no cross-filesystem or copy-based fallback. Disk exhaustion, write/flush failure, hash mismatch, interrupted writing, pre-rename cleanup/assertion failure, or rename failure cannot expose an apparently valid final dataset. A handled failure closes resources and enumerates cleanup after validation, parsing, capacity, output, cancellation, and handled-interruption exits. A rename either publishes the entire validated directory or leaves the destination absent; a remaining private sibling is cleanup/recovery state, never a final dataset. Source files are always read-only.
+
+Abrupt process termination, OS crash, or power failure can leave a private sibling. Recovery is an explicit CLI mode, not an automatic broad cleanup:
+
+- scan only the normalized-output parent explicitly selected by the user;
+- recognize a candidate using the fixed staging-name prefix and `.chathistoryanalysis-private-stage-v1` marker;
+- reject symbolic links, ownership other than the current user, directory permissions other than `0700`, regular-file permissions other than `0600`, unexpected entry types, or containment outside the parent;
+- report only candidate ordinals, counts, and stable state codes;
+- require explicit confirmation and delete exactly one selected candidate per invocation, one entry at a time;
+- never print a path, basename, directory name, filename, or content and never claim forensic erasure.
+
+Error classes:
+
+- **Startup:** unsupported runtime, unverified distribution, unavailable/mismatched backend, or parser initialization failure before raw input opens.
+- **Fatal dataset:** invalid UTF-8/JSON/contract, group chat, different conversation, unusable session identity, cryptographic identity collision, unsafe `localType`, zero eligible records, oversized record, raw/normalized limit, or deterministic time/range failure.
+- **Fatal output:** write, flush, hash, privacy validation, manifest, cleanup, or atomic rename failure.
+- **Recoverable record:** malformed record, unsupported non-text type, missing optional data, valid-`isSend` metadata conflict, classification conflict, or ineligible content.
+- **Verification failure:** invalid or inconsistent overlap-verification input; aborts promotion only when included in the preprocessing run.
+
+All presentation surfaces share one allow-list: source ordinal, input role, processing phase, field name, line/record ordinal, stable reason code, aggregate count, percentage, and non-sensitive capacity value. The deny-list includes absolute/relative paths, basenames, directory/output/SQLite locations, user-derived dataset labels, participant values, message IDs, per-message hashes, content fragments, URLs, and raw parser excerpts. Sources appear only as fixed labels such as `annual-source #1` or `overlap-verification #1`; output errors expose only phase and reason code. Exception messages never pass through: adapters map them to content-free project categories before stdout, stderr, browser errors, progress events, screenshots, snapshots, debug logs, or manifest warnings.
+
+SIGINT/cancellation sets a flag checked between parser events, SQLite batches, merge reads, and chunk writes. It exits distinctly after cleanup. Per-file progress uses bytes read where the streaming API exposes it plus message counts; aggregate progress uses completed input count and named phases. Percentages are described as estimates until totals are known.
+
+### 12. Accept only normalized artifacts in the browser
+
+The React/TypeScript application stages one `manifest.json` plus all referenced chunks through local File APIs. Multi-file selection and drag/drop are required; directory selection is an optional enhancement where supported. Matching is by exact manifest chunk name, size, and hash. Extra, missing, duplicate, or oversized files reject the candidate.
+
+The application detects the raw CipherTalk top-level shape and rejects it with guidance to run the local preprocessor. It never reads raw messages.
+
+Normalized files remain wherever the user generated them. They are not copied to source control, Vite `public/`, or `dist`. The Vite app itself runs on loopback, but File API reads are not HTTP uploads.
+
+The main thread preflights selected file count and aggregate `File.size`, then transfers file handles/blobs to one Worker. It does not call `.text()` or retain the full normalized dataset.
+
+### 13. Validate and analyze in one Web Worker
+
+The Worker lifecycle is:
+
+1. parse and validate the small manifest;
+2. verify selected names, sizes, aggregate limits, and compatible schema;
+3. for each chunk in manifest order, read at most one 32 MiB `ArrayBuffer`, compute SHA-256 using `crypto.subtle.digest`, and compare the manifest;
+4. initialize `jieba-wasm` lazily once;
+5. fatally decode the verified chunk and parse NDJSON line by line;
+6. validate each exact allow-list record and monotonic order;
+7. tokenize each record once and retain only the evidence-selected compact cache plus sender/date/index metadata;
+8. discard the chunk text and release its buffer before the next chunk;
+9. report phase, chunk, and overall progress;
+10. apply controls to cached tokens;
+11. calculate frequencies and stable ranking;
+12. return only aggregate results to the main thread.
+
+The chunk size bound makes one-shot browser SHA-256 digesting bounded. Malformed lines report chunk and line ordinals only.
+
+Settings changes never re-segment text. The Worker filters cached token records by sender scope and inclusive calendar date, counts tokens, sorts descending frequency then ascending Unicode code-point order, and applies minimum frequency and maximum word count. A new dataset or explicit tokenizer-setting change invalidates the cache; normal sender/date/display changes do not.
+
+Cancellation messages are checked between chunks, NDJSON records, tokenization batches, and aggregation batches. A cancelled candidate/cache is discarded and the UI becomes reusable. There is no hidden complete-dataset main-thread fallback. Memory/allocation failure produces a content-free local error and clears staged state.
+
+### 14. Keep fixed local Jieba behavior inside the Worker
+
+The Worker uses exactly `jieba-wasm@2.4.0`, exact lockfile integrity, its embedded dictionary, lazy singleton `init()`, and `cut(text, false)`. HMM is disabled. Full/search modes, `add_word`, `with_dict`, custom dictionaries, `Intl.Segmenter` fallback, and online fallback are forbidden.
+
+Content processing order is:
+
+1. NFKC normalization;
+2. lowercase English;
+3. turn emoji, punctuation, and whitespace into separators;
+4. reject separator-only input;
+5. segment Chinese with fixed Jieba behavior and extract Unicode English alphabetic runs;
+6. apply the local versioned stop-word set;
+7. apply Unicode-code-point minimum length;
+8. remove numeric-only tokens.
+
+The future Vite compatibility spike must prove that Worker JavaScript can initialize the package's WASM from the same loopback origin in development and production preview. Failure blocks implementation rather than moving segmentation to the main thread or substituting a tokenizer.
+
+### 15. Keep presentation local, deterministic, and accessible
+
+The main thread owns only:
+
+- normalized file selection;
+- sender/date and threshold controls;
+- progress, cancellation, and errors;
+- aggregate result state;
+- word-cloud and ranked-list rendering;
+- PNG export.
+
+The canonical Worker result contains full frequencies, stable ranked tokens, analyzed-message count, unique-token count before display thresholds, selected scope/range, and aggregate diagnostics. Cloud and ranked list consume the same ordered display list. Frequency values and ranking are deterministic; pixel placement is not unless the selected ECharts word-cloud extension supports and is configured with a stable seed.
+
+The ranked list is the exact accessible representation. Controls use labels, logical keyboard order, visible focus, associated errors, status announcements, non-color-only feedback, and a painted busy state. Cancellation restores focus to a useful control.
+
+PNG export uses only the current visualization and a non-sensitive filename. No message text, identity, normalized source name, or private metadata is embedded.
+
+### 16. Preserve the loopback and offline runtime model
+
+Development uses Vite bound to loopback. Production verification builds the static application and serves `dist` from a loopback same-origin HTTP server. Direct `file://`, public hosting, Electron/Tauri, and remote runtime assets are unsupported.
+
+All JavaScript, Worker code, WASM, embedded dictionary, stop words, fonts, ECharts code, and word-cloud extension are packaged locally. Browser tests abort every non-loopback request. Preprocessing has no networking code path. There is no local API server, FastAPI process, account, cloud service, or telemetry containing private data.
+
+`data/private/`, `data/exports/`, and normalized output locations remain Git-ignored. Only synthetic chat-shaped data may be committed.
+
+### 17. Test at privacy, determinism, and supported-scale boundaries
+
+Unit and integration tests use only synthetic data and cover:
+
+- every raw and normalized inclusive limit and first-over-limit rejection;
+- startup rejection for unsupported runtime, wrong `ijson` version/hash, missing or mismatched backend, parser self-check failure, and the successful gate before any raw open;
+- strict UTF-8, one top-level JSON, comments/trailing data, top-level contract, private session, and same-session fingerprints;
+- multiple annual files, explicit roles, full overlap verification, verification failure, gaps, overlap, and filename/range mismatch;
+- primary/fallback domain and length encoding, duplicate identities, simulated SHA collision with a different verifier, raw-ID absence from SQLite, duplicated `localId`, identical timestamps, file ranking, and canonical indexing;
+- safe integers above 32-bit, unsafe values, complete `chatLabType` mappings, type conflicts, and conservative image/media exclusion;
+- exact eligible-text agreement, URL removal, placeholders, XML, multilingual text, emoji, malformed content, sender conflicts, and fixed UTC+08:00;
+- exact SQLite columns/indexes, privacy PRAGMAs, permissions, every handled cleanup exit, sidecar absence, and safe one-at-a-time crash recovery;
+- exact/first-over record and chunk boundaries, first chunk, zero eligible records, byte-identical output after skips, disk exhaustion, destination collision, hash mismatch, interrupted pre-rename cleanup, promotion failure, and same-filesystem enforcement;
+- allow-list serialization, every forbidden field, canonical chunks/manifest, byte-identical repeated output, and sensitive-string injection across every error/output surface;
+- normalized File API selection, hash and NDJSON validation, Worker cancellation, progress, memory errors, token caching, and no main-thread fallback;
+- fixed `jieba-wasm@2.4.0` output, retry behavior, stop words, frequency ties, sender/date controls, word cloud, accessibility, and PNG export;
+- no external requests and no private files in source or build output.
+
+The existing 5000-message fixture remains an integration baseline through preprocessing. Future implementation also adds a purely synthetic multi-year normalized dataset representing hundreds of thousands of text records and all audited edge shapes, without copying real values, hashes, URLs, or exact private distributions.
+
+Browser capacity has a mandatory stop gate before capacity implementation can complete. Purely synthetic profiles must run at or near all three maxima: record count, aggregate normalized bytes, and per-chunk bytes. Each result records browser/version, OS, architecture, loaded bytes, records, peak Worker memory where measurable, main-thread responsiveness, cancellation, cache representation, and pass/fail without private data.
+
+Evidence must select exactly one: token-ID arrays with a shared table, per-record metadata plus token-offset arrays, partitioned caches, or a reduced limit that first revises OpenSpec. Browser termination, persistent main-thread unresponsiveness, incomplete Worker tokenization, unsafe cache retention, unusable cancellation, or an exceeded/unjustified memory envelope leaves the capacity task incomplete and stops subsequent maximum-capacity acceptance. The implementation cannot claim the limits, silently lower them, retain duplicate full-text/tokenized representations, move complete processing to the main thread, or use cloud fallback while the gate fails.
 
 ## Risks / Trade-offs
 
-- [Provisional export schema differs from real CipherTalk data] → Keep parsing behind an adapter, tolerate unknown fields, emit structured issues, and revise the adapter only after an authorized de-identified sample is available.
-- [`jieba-wasm@2.4.0` fails browser or Vite verification] → Treat task 1.3 as an implementation blocker and revise this design explicitly; do not silently substitute a tokenizer, enable HMM, or introduce a backend.
-- [Local WASM initialization fails at runtime] → Keep the accepted normalized dataset, show a safe retryable error, clear the failed singleton promise, and never send text to a fallback service.
-- [Main-thread segmentation causes unacceptable fixture-scale blocking] → Stop implementation and propose an explicit worker architecture revision; a worker is not a hidden task in this MVP.
-- [Word-cloud placement varies despite deterministic counts] → Treat the ranked list as canonical, use stable input ordering and a fixed layout seed when supported, and scope determinism acceptance to frequencies and ranking.
-- [Filters remove legitimate content or admit placeholders] → Keep rules composable, cover each with focused tests, show aggregate exclusions, and make later rule additions isolated.
-- [Schema time fields have unknown timezone semantics] → Apply the explicit fixed-UTC+08:00 fallback and split canonical roles, surface every fallback/conflict, and revisit only after real-export validation.
-- [Large local files consume browser memory] → Enforce the inclusive 32 MiB pre-read and 50,000-message pre-normalization limits and reject the complete candidate beyond either boundary.
-- [`file://` or external assets undermine offline behavior] → Support loopback HTTP only, keep every runtime asset in the Vite build graph, and fail tests on any non-loopback request.
+- [Pinned native wheel is unavailable for a supported macOS/Python target] → Verify `ijson==3.5.1` wheel coverage and hashes before implementation; block rather than silently use another backend.
+- [Temporary SQLite contains minimized text before promotion] → Apply `0077`/`0700`/`0600`, fixed privacy PRAGMAs, an exact minimized schema, exhaustive explicit cleanup, and marker-based recovery without claiming forensic erasure.
+- [SHA-256 conversation fingerprint is reversible by guessing identifiers] → Label it pseudonymous, store no raw identity beside it, and keep the manifest private and ignored.
+- [Verification failure blocks combined preprocessing] → Provide a separate read-only verification command and require the user to explicitly rerun without verification.
+- [Unknown future CipherTalk types appear] → Default to non-text, count aggregate warnings, and update mappings only through reviewed evidence.
+- [Text filtering removes legitimate text] → Prefer false negatives over admitting media/structured payloads; keep aggregate diagnostics and synthetic regression tests.
+- [One 32 MiB chunk buffer plus token cache exceeds browser memory on constrained devices] → Enforce aggregate limits, release buffers between chunks, profile supported targets, and fail clearly without main-thread fallback.
+- [Token cache remains sizable] → Use the mandatory maximum-boundary decision gate to select an evidence-backed compact or partitioned representation before accepting capacity.
+- [`jieba-wasm` cannot initialize inside Vite Worker] → Treat compatibility verification as an implementation blocker; do not move full processing to the main thread.
+- [Canvas layout is nondeterministic] → Keep frequencies and ranked list canonical; claim pixel determinism only if verified.
+- [Atomic directory rename semantics differ across filesystems] → Require temporary and final directories to share a filesystem and test supported macOS filesystems.
 
 ## Migration Plan
 
-1. Add the frontend scaffold and local dependencies without changing the synthetic fixture.
-2. Verify exact `jieba-wasm@2.4.0` Vite packaging and implement pure parsing and analysis modules before connecting UI.
-3. Add visualization, controls, export, and accessibility behavior behind the validated analysis result.
-4. Build and serve the production artifact on loopback, block external requests, and run automated plus manual fixture workflows before declaring the MVP complete.
+1. Revise documentation and schema assumptions before any Apply work.
+2. During implementation, add the hash-locked Python preprocessor dependency boundary and verify `ijson` backend compatibility.
+3. Implement and test streaming validation, staging, minimization, deduplication, deterministic output, and atomic cleanup before using private data.
+4. Add the React/Vite shell and verify Worker plus `jieba-wasm` packaging before the complete analysis pipeline.
+5. Implement normalized selection, Worker loading/token cache, controls, visualization, PNG export, accessibility, and offline checks.
+6. Run the mandatory synthetic SQLite and Worker maximum-boundary gates; stop and revise OpenSpec on failure.
+7. Implement later maximum-capacity acceptance only after the gates pass.
+8. Run privacy and Git-hygiene review before declaring the MVP complete.
 
-There is no production data migration or deployed service. Rollback consists of reverting the new application and analysis files; the existing generator, fixture, and schema documentation remain usable independently.
+There is no production deployment or data migration. Rollback removes the future application and preprocessor code while leaving raw exports and any previously generated ignored local datasets untouched.
 
 ## Open Questions
 
-- What timestamp precision, timezone, private-session discriminators, sender semantics, optional fields, and message-type variants occur in a real CipherTalk export? Keep these explicitly provisional until an authorized de-identified sample is available.
+- What peak Worker memory is observed at the 1,000,000-record and 128 MiB supported boundaries on target browsers?
+- Does the selected ECharts word-cloud extension provide a verified fixed layout seed, or will PNG placement remain explicitly nondeterministic?
+- What synthetic overlap size should trigger the “suspiciously large annual overlap” warning without making valid repeat exports fatal?
