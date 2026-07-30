@@ -160,7 +160,9 @@ startup gate -> authorization capability -> source-operation continuation
 
 Authorization cannot be constructed by an ordinary caller. A continuation is
 called exactly once after every gate succeeds and never from an error or
-`finally` path. Stage 1 implements no raw-source parsing.
+`finally` path. The verified `BackendEvidence` is carried through that
+authorization into the sole production streaming composition; raw parsing
+cannot select a second backend or bypass the gate.
 
 Stable startup failures are:
 
@@ -170,9 +172,76 @@ Stable startup failures are:
 - `IJSON_BACKEND_MISMATCH`
 - `IJSON_PARSER_INITIALIZATION_FAILED`
 
-User-visible failures contain only the phase and stable reason code. They do
-not include retained archive paths, package paths, member names, local hashes,
-URLs, parser excerpts, raw exceptions, or tracebacks.
+User-visible startup failures contain only the fixed category, phase, and
+stable reason code. They do not include retained archive paths, package paths,
+member names, local hashes, URLs, parser excerpts, raw exceptions, or
+tracebacks.
+
+## Stage 2C and Stage 3 streaming boundary
+
+After startup and metadata-only input preflight, `preprocess` performs these
+bounded passes over each explicitly selected source:
+
+1. binary SHA-256 plus strict incremental UTF-8 validation in 65,536-byte
+   blocks; a UTF-8 BOM is outside the supported export boundary and is rejected;
+2. one `ijson.backends.yajl2_c.parse` validation/range stream with
+   `use_float=False`, `multiple_values=False`, `allow_comments=False`, and
+   `buf_size=65536`, while recomputing the source hash;
+3. after annual ranges determine final rank, one ranked annual staging stream
+   and one separate verification stream, again recomputing the source hash.
+
+The event adapter accepts one object root with object `exportInfo`, object
+`session`, array `messages`, exact `exportInfo.format=detailed-json`, and exact
+private discriminators. It retains selected small metadata and only one
+message object at a time. Every message must provide a signed-64-bit integer
+`createTime` and a bounded non-empty `senderUsername`; the observed participant
+set must equal the session owner/peer set. File names never define time range
+or order.
+
+The first pass records content SHA-256, byte size, device, and inode. Every
+later pass checks the opened descriptor and post-pass path identity plus byte
+count and SHA-256. A changed, replaced, truncated, or extended source fails
+closed. The staging consumer has distinct annual and verification methods, so
+verification records cannot enter annual staging. Any staging-pass failure
+calls `abort` before returning.
+
+The aggregate raw-message counter is shared across annual and verification
+validation streams. It accepts exactly 2,000,000 entries and raises before
+advancing beyond the event that starts entry 2,000,001. Production always uses
+that fixed limit; tests exercise the same counter with synthetic iterators and
+smaller limits.
+
+The Stage 3 result contains only validated/ranked descriptors: fixed role and
+ordinal, byte size, source SHA-256, raw message count, actual minimum/maximum
+time, final annual rank, and a lowercase SHA-256 conversation fingerprint.
+Session serialization uses the versioned
+`ChatHistoryAnalysis/conversation-fingerprint/v1` domain, unsigned 64-bit
+big-endian byte-length prefixes, canonical private status, owner/peer fields,
+and the sorted participant set. Identity components and message objects are
+discarded; production stdout does not print hashes or fingerprints.
+
+No Stage 4 behavior is present. There is no message classification,
+eligible-text filtering, sender normalization, formatted-time normalization,
+SQLite, deduplication, merge, NDJSON, manifest, or formal output promotion.
+The selected ignored output directory is policy-checked but not created.
+
+## Stable CLI failure classification
+
+The single `ExitCode` definition is:
+
+| Code | Category | Examples |
+| ---: | --- | --- |
+| `2` | `startup` | runtime, distribution, backend, parser self-check |
+| `64` | `argument` | missing/unknown CLI arguments |
+| `65` | `input-validation` | unreadable source, UTF-8/JSON/schema/session/mutation failure |
+| `66` | `ignore-policy` | unsafe, tracked, unignored, or unverifiable output target |
+| `67` | `capacity` | raw file/count/aggregate byte or aggregate message limit |
+
+Argument, input-validation, ignore-policy, and capacity codes are distinct and
+do not reuse the existing startup status. Every caught internal exception is
+translated to a fixed project reason. Failure JSON never contains a source or
+output path, basename, participant value, message body, JSON fragment, URL,
+individual hash, injected exception text, or traceback.
 
 ## Full integration validation
 

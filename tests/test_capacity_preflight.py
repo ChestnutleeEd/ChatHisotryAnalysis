@@ -91,6 +91,12 @@ class CapacityPreflightTests(unittest.TestCase):
         self.assertEqual(
             raised.exception.public_payload(),
             {
+                "category": (
+                    "input-validation"
+                    if reason_code
+                    is InputPreflightReasonCode.INPUT_PREFLIGHT_FAILED
+                    else "capacity"
+                ),
                 "phase": "input-preflight",
                 "reasonCode": reason_code.value,
             },
@@ -157,11 +163,12 @@ class CapacityPreflightTests(unittest.TestCase):
                 lambda: None,
                 preflight_inputs,
             )
-        self.assertEqual(exit_code, 2)
+        self.assertEqual(exit_code, 67)
         self.assertEqual(stdout.getvalue(), "")
         self.assertEqual(
             json.loads(stderr.getvalue()),
             {
+                "category": "capacity",
                 "phase": "input-preflight",
                 "reasonCode": "RAW_INPUT_FILE_LIMIT_EXCEEDED",
             },
@@ -492,16 +499,16 @@ class CapacityPreflightTests(unittest.TestCase):
     def test_cli_argument_failure_does_not_call_preflight(self) -> None:
         runner = Mock()
         with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
-            with self.assertRaises(SystemExit):
-                _run_for_test(
-                    [
-                        "preprocess",
-                        "--output-dir",
-                        os.fspath(self.output_directory),
-                    ],
-                    lambda: None,
-                    runner,
-                )
+            exit_code = _run_for_test(
+                [
+                    "preprocess",
+                    "--output-dir",
+                    os.fspath(self.output_directory),
+                ],
+                lambda: None,
+                runner,
+            )
+        self.assertEqual(exit_code, 64)
         runner.assert_not_called()
 
 

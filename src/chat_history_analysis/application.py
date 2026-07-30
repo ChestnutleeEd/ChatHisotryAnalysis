@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from typing import Callable, TypeVar
 
+from .backend import BackendEvidence
+from .errors import StartupError, StartupReasonCode
 from .input_preflight import InputSelection, PreflightedInputs, preflight_inputs
+from .preprocessing_validation import (
+    ValidationResult,
+    validate_preflighted_inputs,
+)
 from .startup import StartupGate
 
 
@@ -16,12 +22,27 @@ _AUTHORIZATION_KEY = object()
 class _SourceAuthorization:
     """Unforgeable-by-construction capability passed only after readiness."""
 
-    __slots__ = ()
+    __slots__ = ("_backend",)
 
-    def __new__(cls, key: object) -> "_SourceAuthorization":
+    def __new__(
+        cls,
+        key: object,
+        backend: BackendEvidence | None = None,
+    ) -> "_SourceAuthorization":
         if key is not _AUTHORIZATION_KEY:
             raise TypeError
-        return super().__new__(cls)
+        instance = super().__new__(cls)
+        instance._backend = backend
+        return instance
+
+    def trusted_backend(self) -> BackendEvidence:
+        """Return only backend evidence produced by the completed gate."""
+
+        if not isinstance(self._backend, BackendEvidence):
+            raise StartupError(
+                StartupReasonCode.IJSON_PARSER_INITIALIZATION_FAILED
+            )
+        return self._backend
 
 
 class _PreprocessorApplication:
@@ -38,8 +59,8 @@ class _PreprocessorApplication:
         self,
         operation: Callable[[_SourceAuthorization], T],
     ) -> T:
-        self._gate.verify()
-        authorization = _SourceAuthorization(_AUTHORIZATION_KEY)
+        backend = self._gate.verify()
+        authorization = _SourceAuthorization(_AUTHORIZATION_KEY, backend)
         return operation(authorization)
 
 
@@ -67,3 +88,18 @@ def run_input_preflight(selection: InputSelection) -> PreflightedInputs:
     return run_source_operation(
         lambda authorization: preflight_inputs(selection),
     )
+
+
+def run_preprocessing_validation(
+    selection: InputSelection,
+) -> ValidationResult:
+    """Run metadata and all streaming passes behind the production gate."""
+
+    def validate(authorization: _SourceAuthorization) -> ValidationResult:
+        inputs = preflight_inputs(selection)
+        return validate_preflighted_inputs(
+            inputs,
+            authorization.trusted_backend(),
+        )
+
+    return run_source_operation(validate)

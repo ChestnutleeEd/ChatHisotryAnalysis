@@ -26,7 +26,11 @@ def _runtime_is_supported():
 def _emit_failure(reason_code):
     print(
         json.dumps(
-            {"phase": _STARTUP_PHASE, "reasonCode": reason_code},
+            {
+                "category": "startup",
+                "phase": _STARTUP_PHASE,
+                "reasonCode": reason_code,
+            },
             sort_keys=True,
         ),
         file=sys.stderr,

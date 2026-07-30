@@ -75,6 +75,34 @@ class TrustedCleanInstallationTests(unittest.TestCase):
             cls._create_venv(cls.python313, cls.venv313)
             cls._install_project(cls.venv39 / "bin" / "python")
             cls._install_project(cls.venv313 / "bin" / "python")
+            cls.probe_repository = cls.external_root / "probe-repository"
+            cls.probe_repository.mkdir()
+            cls._run(
+                [
+                    "git",
+                    "-C",
+                    str(cls.probe_repository),
+                    "init",
+                    "--quiet",
+                ]
+            )
+            (cls.probe_repository / ".gitignore").write_text(
+                "ignored/\n",
+                encoding="utf-8",
+            )
+            cls.synthetic_source = (
+                cls.probe_repository / "synthetic-source.json"
+            )
+            shutil.copy2(
+                cls.repository
+                / "data"
+                / "mock"
+                / "ciphertalk_detailed_chat_2025.json",
+                cls.synthetic_source,
+            )
+            cls.ignored_output = (
+                cls.probe_repository / "ignored" / "validated-dataset"
+            )
         except Exception:
             raise AssertionError("INTEGRATION_SETUP_FAILED") from None
 
@@ -379,10 +407,13 @@ class TrustedCleanInstallationTests(unittest.TestCase):
     ) -> None:
         if result.stdout:
             raise AssertionError
-        if json.loads(result.stderr) != {
+        expected_payload = {
             "phase": phase,
             "reasonCode": reason_code,
-        }:
+        }
+        if phase == "startup":
+            expected_payload["category"] = "startup"
+        if json.loads(result.stderr) != expected_payload:
             raise AssertionError
         cls._assert_private_output(result)
 
@@ -525,6 +556,30 @@ class TrustedCleanInstallationTests(unittest.TestCase):
             {"phase": "startup", "status": "ready"},
         )
         self.assertEqual(result.stderr, "")
+        self._assert_private_output(result)
+
+    def test_real_console_streams_the_public_fixture_without_output(self):
+        result = self._run_console(
+            arguments=[
+                "preprocess",
+                "--annual-source",
+                str(self.synthetic_source),
+                "--output-dir",
+                str(self.ignored_output),
+            ]
+        )
+        self.assertEqual(
+            json.loads(result.stdout),
+            {
+                "annualSourceCount": 1,
+                "overlapVerificationCount": 0,
+                "phase": "source-validation",
+                "rawMessageCount": 5000,
+                "status": "ready",
+            },
+        )
+        self.assertEqual(result.stderr, "")
+        self.assertFalse(self.ignored_output.exists())
         self._assert_private_output(result)
 
     def test_hostile_python_and_pip_environment_cannot_redirect_bootstrap(self):
@@ -898,10 +953,17 @@ class TrustedCleanInstallationTests(unittest.TestCase):
     def test_invalid_arguments_are_content_free(self):
         result = self._run_console(
             arguments=[SENSITIVE_VALUE],
-            expected=2,
+            expected=64,
         )
         self.assertEqual(result.stdout, "")
-        self.assertIn("usage: chat-history-analysis", result.stderr)
+        self.assertEqual(
+            json.loads(result.stderr),
+            {
+                "category": "argument",
+                "phase": "argument",
+                "reasonCode": "ARGUMENT_FAILURE",
+            },
+        )
         self._assert_private_output(result)
 
 

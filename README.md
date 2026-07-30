@@ -1,6 +1,6 @@
 # ChatHisotryAnalysis
 
-本项目用于开发和验证本地聊天历史分析能力。当前阶段包含可复现的合成数据基线、本地 Python 预处理器的可信启动边界，以及只使用合成探针的本地前端基础设施；尚不包含原始消息预处理、真实聊天导入、完整词云业务应用、后端 API、数据库解密或微信/CipherTalk 连接功能。
+本项目用于开发和验证本地聊天历史分析能力。当前阶段包含可复现的合成数据基线、本地 Python 预处理器的可信启动边界、CipherTalk `detailed-json` 三遍流式验证，以及只使用合成探针的本地前端基础设施；尚不包含 Stage 4 消息分类/标准化、SQLite、NDJSON、manifest、完整词云业务应用、后端 API、数据库解密或微信/CipherTalk 连接功能。
 
 ## 当前阶段：合成数据基线
 
@@ -43,6 +43,33 @@ python3 scripts/generate_mock_chat.py \
 ```
 
 该命令只验证运行时、保留的官方 `ijson` 制品、已安装包字节、原生 `yajl2_c` 后端和内存解析器自检；它不接受、打开或处理 CipherTalk 文件。项目元数据允许 Python 3.9+ 安装，仅用于让已安装的兼容入口在不支持的解释器上输出稳定拒绝；应用运行时仍严格限定为 CPython 3.12.x/macOS/arm64。
+
+## CipherTalk 流式验证
+
+`preprocess` 当前完成 Stage 3 的只读验证边界：
+
+```bash
+<external-venv>/bin/chat-history-analysis preprocess \
+  --annual-source <annual-detailed-json> \
+  --overlap-verification <optional-verification-detailed-json> \
+  --output-dir <git-ignored-future-output-directory>
+```
+
+`--annual-source` 和 `--overlap-verification` 可重复。每个 source 依次执行 binary SHA-256/strict UTF-8、`yajl2_c` validation/range、ranked staging stream 三遍；每个后续 pass 都复核内容 hash 与首遍文件身份。全局 raw message limit 是包含两种角色的 2,000,000 条，第 2,000,001 条立即中止。验证结果只保留 source role/ordinal、byte/hash evidence、消息数、实际时间范围、file rank 和假名化 conversation fingerprint，不保留消息正文。
+
+Stage 3 只验证并流式丢弃消息。`--output-dir` 在本阶段只执行 Git ignore-policy preflight，不创建目录，不生成 SQLite、NDJSON、manifest 或任何部分正式输出。
+
+稳定退出码为：
+
+| Exit code | Class |
+| ---: | --- |
+| `2` | startup/runtime failure |
+| `64` | argument failure |
+| `65` | input validation failure |
+| `66` | output ignore-policy failure |
+| `67` | byte/message capacity failure |
+
+失败输出是单行 JSON，只包含固定 category、phase、reason code、role、source/record ordinal 和受控 field；不包含 path、basename、消息值、JSON 片段、hash、内部异常或 traceback。
 
 ## Stage 1B 前端基础设施
 

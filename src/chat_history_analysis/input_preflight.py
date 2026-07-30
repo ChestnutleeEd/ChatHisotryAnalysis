@@ -9,7 +9,11 @@ import stat
 import subprocess
 from typing import Final, Iterable
 
-from .errors import InputPreflightError, InputPreflightReasonCode
+from .errors import (
+    FailureCategory,
+    InputPreflightError,
+    InputPreflightReasonCode,
+)
 
 
 GIT_EXECUTABLE: Final = "git"
@@ -64,19 +68,34 @@ def _reject(
     reason_code: InputPreflightReasonCode = (
         InputPreflightReasonCode.INPUT_PREFLIGHT_FAILED
     ),
+    category: FailureCategory = FailureCategory.INPUT_VALIDATION,
 ) -> None:
-    raise InputPreflightError(reason_code)
+    raise InputPreflightError(reason_code, category)
 
 
-def _lexical_absolute(path: Path) -> Path:
+def _reject_output() -> None:
+    _reject(
+        InputPreflightReasonCode.OUTPUT_IGNORE_POLICY_FAILED,
+        FailureCategory.IGNORE_POLICY,
+    )
+
+
+def _lexical_absolute(
+    path: Path,
+    category: FailureCategory = FailureCategory.INPUT_VALIDATION,
+) -> Path:
     try:
         value = os.fspath(path)
         if not value or "\x00" in value:
+            if category is FailureCategory.IGNORE_POLICY:
+                _reject_output()
             _reject()
         return Path(os.path.abspath(value))
     except InputPreflightError:
         raise
     except (OSError, TypeError, ValueError):
+        if category is FailureCategory.IGNORE_POLICY:
+            _reject_output()
         _reject()
 
 
@@ -178,13 +197,13 @@ def _nearest_existing_directory(path: Path) -> Path:
         except FileNotFoundError:
             parent = current.parent
             if parent == current:
-                _reject()
+                _reject_output()
             current = parent
             continue
         except OSError:
-            _reject()
+            _reject_output()
         if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
-            _reject()
+            _reject_output()
         return current
 
 
@@ -223,7 +242,7 @@ def _run_git(
             timeout=10,
         )
     except (OSError, subprocess.SubprocessError, UnicodeError, ValueError):
-        _reject()
+        _reject_output()
 
 
 def _repository_root(existing_directory: Path) -> Path:
@@ -233,19 +252,19 @@ def _repository_root(existing_directory: Path) -> Path:
         capture_stdout=True,
     )
     if result.returncode != 0:
-        _reject()
+        _reject_output()
     try:
         root_text = result.stdout.strip()
         if not root_text:
-            _reject()
+            _reject_output()
         root = Path(root_text).resolve(strict=True)
         metadata = os.stat(root, follow_symlinks=False)
     except InputPreflightError:
         raise
     except (OSError, RuntimeError, ValueError):
-        _reject()
+        _reject_output()
     if not stat.S_ISDIR(metadata.st_mode):
-        _reject()
+        _reject_output()
     return root
 
 
@@ -264,12 +283,12 @@ def _verify_lexical_repository_boundary(
             or not stat.S_ISDIR(lexical_root_metadata.st_mode)
             or lexical_root.resolve(strict=True) != repository_root
         ):
-            _reject()
+            _reject_output()
         lexical_relative = lexical_candidate.relative_to(lexical_root)
     except InputPreflightError:
         raise
     except (OSError, RuntimeError, ValueError):
-        _reject()
+        _reject_output()
 
     current = lexical_root
     for component in lexical_relative.parts:
@@ -279,11 +298,11 @@ def _verify_lexical_repository_boundary(
         except FileNotFoundError:
             return
         except OSError:
-            _reject()
+            _reject_output()
         if stat.S_ISLNK(metadata.st_mode):
-            _reject()
+            _reject_output()
         if current != lexical_candidate and not stat.S_ISDIR(metadata.st_mode):
-            _reject()
+            _reject_output()
 
 
 def _revalidate_output_target(
@@ -297,12 +316,12 @@ def _revalidate_output_target(
         final_metadata = os.lstat(lexical_candidate)
     except FileNotFoundError:
         if initial_metadata is not None:
-            _reject()
+            _reject_output()
         return
     except InputPreflightError:
         raise
     except (OSError, RuntimeError, ValueError):
-        _reject()
+        _reject_output()
 
     if (
         initial_metadata is None
@@ -311,37 +330,40 @@ def _revalidate_output_target(
         or (final_metadata.st_dev, final_metadata.st_ino)
         != (initial_metadata.st_dev, initial_metadata.st_ino)
     ):
-        _reject()
+        _reject_output()
 
 
 def _preflight_output_directory(path: Path) -> Path:
-    lexical_candidate = _lexical_absolute(path)
+    lexical_candidate = _lexical_absolute(
+        path,
+        FailureCategory.IGNORE_POLICY,
+    )
 
     try:
         candidate_metadata = os.lstat(lexical_candidate)
     except FileNotFoundError:
         candidate_metadata = None
     except OSError:
-        _reject()
+        _reject_output()
     if candidate_metadata is not None:
         if stat.S_ISLNK(candidate_metadata.st_mode) or not stat.S_ISDIR(
             candidate_metadata.st_mode
         ):
-            _reject()
+            _reject_output()
 
     try:
         candidate = lexical_candidate.resolve(strict=False)
     except (OSError, RuntimeError):
-        _reject()
+        _reject_output()
 
     existing_directory = _nearest_existing_directory(candidate)
     repository_root = _repository_root(existing_directory)
     try:
         relative = candidate.relative_to(repository_root)
     except ValueError:
-        _reject()
+        _reject_output()
     if relative == Path("."):
-        _reject()
+        _reject_output()
     _verify_lexical_repository_boundary(
         lexical_candidate,
         repository_root,
@@ -354,9 +376,9 @@ def _preflight_output_directory(path: Path) -> Path:
         ("ls-files", "--error-unmatch", "--", relative_text),
     )
     if tracked.returncode == 0:
-        _reject()
+        _reject_output()
     if tracked.returncode != 1:
-        _reject()
+        _reject_output()
 
     ignored = _run_git(
         repository_root,
@@ -369,7 +391,7 @@ def _preflight_output_directory(path: Path) -> Path:
         ),
     )
     if ignored.returncode != 0:
-        _reject()
+        _reject_output()
     _revalidate_output_target(
         lexical_candidate,
         candidate,
@@ -405,7 +427,10 @@ def preflight_inputs(selection: InputSelection) -> PreflightedInputs:
     )
 
     if len(annual_source_metadata) > MAX_ANNUAL_SOURCES:
-        _reject(InputPreflightReasonCode.ANNUAL_SOURCE_COUNT_LIMIT_EXCEEDED)
+        _reject(
+            InputPreflightReasonCode.ANNUAL_SOURCE_COUNT_LIMIT_EXCEEDED,
+            FailureCategory.CAPACITY,
+        )
 
     all_source_metadata = (
         annual_source_metadata + overlap_verification_metadata
@@ -414,13 +439,19 @@ def preflight_inputs(selection: InputSelection) -> PreflightedInputs:
         source.size_bytes > MAX_RAW_INPUT_BYTES
         for source in all_source_metadata
     ):
-        _reject(InputPreflightReasonCode.RAW_INPUT_FILE_LIMIT_EXCEEDED)
+        _reject(
+            InputPreflightReasonCode.RAW_INPUT_FILE_LIMIT_EXCEEDED,
+            FailureCategory.CAPACITY,
+        )
 
     aggregate_size_bytes = sum(
         source.size_bytes for source in all_source_metadata
     )
     if aggregate_size_bytes > MAX_AGGREGATE_RAW_INPUT_BYTES:
-        _reject(InputPreflightReasonCode.AGGREGATE_RAW_INPUT_LIMIT_EXCEEDED)
+        _reject(
+            InputPreflightReasonCode.AGGREGATE_RAW_INPUT_LIMIT_EXCEEDED,
+            FailureCategory.CAPACITY,
+        )
 
     output_directory = _preflight_output_directory(selection.output_directory)
     for source in all_source_metadata:

@@ -59,7 +59,7 @@ class StartupGate:
     distribution_provider: DistributionProvider = inspect_installed_distribution
     backend_provider: BackendProvider = load_exact_backend
 
-    def verify(self) -> None:
+    def verify(self) -> BackendEvidence:
         """Fail closed in the approved deterministic order."""
 
         runtime = self._runtime_facts()
@@ -71,6 +71,7 @@ class StartupGate:
         backend = self._verify_backend_available()
         self._verify_backend_identity(backend)
         self._verify_parser_initialization(backend)
+        return backend
 
     def _runtime_facts(self) -> RuntimeFacts:
         try:

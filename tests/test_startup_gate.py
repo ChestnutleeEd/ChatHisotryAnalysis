@@ -259,7 +259,11 @@ class StartupGateTests(unittest.TestCase):
                 payload = json.loads(stderr.getvalue())
                 self.assertEqual(payload["phase"], "startup")
                 self.assertEqual(payload["reasonCode"], expected_reason.value)
-                self.assertEqual(set(payload), {"phase", "reasonCode"})
+                self.assertEqual(
+                    set(payload),
+                    {"category", "phase", "reasonCode"},
+                )
+                self.assertEqual(payload["category"], "startup")
 
     def test_success_calls_source_open_only_after_all_checks(self):
         sentinel = SourceOpenSentinel()
@@ -283,9 +287,8 @@ class StartupGateTests(unittest.TestCase):
         stdout = io.StringIO()
         stderr = io.StringIO()
         with redirect_stdout(stdout), redirect_stderr(stderr):
-            with self.assertRaises(SystemExit) as raised:
-                main([SENSITIVE_VALUE])
-        self.assertEqual(raised.exception.code, 2)
+            exit_code = main([SENSITIVE_VALUE])
+        self.assertEqual(exit_code, 64)
         self.assertEqual(stdout.getvalue(), "")
         self.assertNotIn(SENSITIVE_VALUE, stderr.getvalue())
 

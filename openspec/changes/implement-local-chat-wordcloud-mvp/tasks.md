@@ -20,23 +20,23 @@
 - [x] 2.4 Enforce the inclusive 536,870,912-byte per-raw-file limit before parsing.
 - [x] 2.5 Enforce the inclusive 20 annual-source-file limit before parsing.
 - [x] 2.6 Enforce the inclusive 2,147,483,648-byte aggregate raw-input limit across both roles.
-- [ ] 2.7 Enforce the inclusive 2,000,000 aggregate raw-message limit during streaming and abort on the next record.
-- [ ] 2.8 Add distinct content-free CLI exit codes for argument, input validation, ignore-policy, and capacity failures without presenting any path or basename.
+- [x] 2.7 Enforce the inclusive 2,000,000 aggregate raw-message limit during streaming and abort on the next record.
+- [x] 2.8 Add distinct content-free CLI exit codes for argument, input validation, ignore-policy, and capacity failures without presenting any path or basename.
 
 ## 3. Streaming JSON and Session Validation
 
-- [ ] 3.1 Implement a first binary pass that computes source SHA-256 and performs strict incremental UTF-8 validation without correction or replacement.
-- [ ] 3.2 Implement the bounded validation/range pass with `ijson.backends.yajl2_c.parse`, fixed options/buffer, no record persistence, and a concurrent hash check against pass one.
-- [ ] 3.3 Build a bounded event-state adapter that validates one object root and constructs only small top-level metadata plus one message object at a time.
-- [ ] 3.4 Validate object `exportInfo`, exact `detailed-json` format, object `session`, array `messages`, and single top-level JSON completion.
-- [ ] 3.5 Reject group and ambiguous sessions using exact private-session discriminators.
-- [ ] 3.6 Derive each source's actual minimum and maximum valid message time without trusting filenames.
-- [ ] 3.7 Derive a transient participant set and validate platform, owner, peer, and participant consistency for all annual sources.
-- [ ] 3.8 Implement versioned length-prefixed canonical session serialization and lowercase SHA-256 conversation fingerprints.
-- [ ] 3.9 Reject a different or insufficiently identifiable annual-source session before output promotion.
-- [ ] 3.10 After all final ranks are known, implement the bounded annual staging pass in rank order plus verification streaming without inserting verification records.
-- [ ] 3.11 Recompute and compare source SHA-256 during every post-digest pass; treat source mutation as fatal and remove staged mixed-version state.
-- [ ] 3.12 Ensure parser, UTF-8, schema, mutation, and session errors contain only field names, source ordinals, and reason codes.
+- [x] 3.1 Implement a first binary pass that computes source SHA-256 and performs strict incremental UTF-8 validation without correction or replacement.
+- [x] 3.2 Implement the bounded validation/range pass with `ijson.backends.yajl2_c.parse`, fixed options/buffer, no record persistence, and a concurrent hash check against pass one.
+- [x] 3.3 Build a bounded event-state adapter that validates one object root and constructs only small top-level metadata plus one message object at a time.
+- [x] 3.4 Validate object `exportInfo`, exact `detailed-json` format, object `session`, array `messages`, and single top-level JSON completion.
+- [x] 3.5 Reject group and ambiguous sessions using exact private-session discriminators.
+- [x] 3.6 Derive each source's actual minimum and maximum valid message time without trusting filenames.
+- [x] 3.7 Derive a transient participant set and validate platform, owner, peer, and participant consistency for all annual sources.
+- [x] 3.8 Implement versioned length-prefixed canonical session serialization and lowercase SHA-256 conversation fingerprints.
+- [x] 3.9 Reject a different or insufficiently identifiable annual-source session before output promotion.
+- [x] 3.10 After all final ranks are known, implement the bounded annual staging pass in rank order plus verification streaming without inserting verification records.
+- [x] 3.11 Recompute and compare source SHA-256 during every post-digest pass; treat source mutation as fatal and remove staged mixed-version state.
+- [x] 3.12 Ensure parser, UTF-8, schema, mutation, and session errors contain only field names, source ordinals, and reason codes.
 
 ## 4. Classification, Text Eligibility, Sender, and Time
 

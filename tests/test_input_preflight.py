@@ -44,7 +44,7 @@ class CliInputRoleTests(unittest.TestCase):
         self.assertEqual(stderr.getvalue(), "")
         self.assertEqual(
             json.loads(stdout.getvalue()),
-            {"phase": "input-preflight", "status": "ready"},
+            {"phase": "source-validation", "status": "ready"},
         )
         self.assertEqual(len(captured), 1)
         return captured[0]
@@ -54,9 +54,8 @@ class CliInputRoleTests(unittest.TestCase):
         stderr = io.StringIO()
         runner = Mock()
         with redirect_stdout(stdout), redirect_stderr(stderr):
-            with self.assertRaises(SystemExit) as raised:
-                _run_for_test(arguments, lambda: None, runner)
-        self.assertEqual(raised.exception.code, 2)
+            exit_code = _run_for_test(arguments, lambda: None, runner)
+        self.assertEqual(exit_code, 64)
         self.assertEqual(stdout.getvalue(), "")
         runner.assert_not_called()
         return stderr.getvalue()
@@ -249,6 +248,7 @@ class IsolatedGitPreflightTestCase(unittest.TestCase):
         self.assertEqual(
             raised.exception.public_payload(),
             {
+                "category": "input-validation",
                 "phase": "input-preflight",
                 "reasonCode": "INPUT_PREFLIGHT_FAILED",
             },
@@ -345,11 +345,12 @@ class SourcePreflightTests(IsolatedGitPreflightTestCase):
                 lambda: None,
                 preflight_inputs,
             )
-        self.assertEqual(exit_code, 2)
+        self.assertEqual(exit_code, 65)
         self.assertEqual(stdout.getvalue(), "")
         self.assertEqual(
             json.loads(stderr.getvalue()),
             {
+                "category": "input-validation",
                 "phase": "input-preflight",
                 "reasonCode": "INPUT_PREFLIGHT_FAILED",
             },
@@ -394,6 +395,19 @@ class SourcePreflightTests(IsolatedGitPreflightTestCase):
 
 
 class OutputPolicyTests(IsolatedGitPreflightTestCase):
+    def assert_rejected(self, selection: InputSelection) -> InputPreflightError:
+        with self.assertRaises(InputPreflightError) as raised:
+            preflight_inputs(selection)
+        self.assertEqual(
+            raised.exception.public_payload(),
+            {
+                "category": "ignore-policy",
+                "phase": "input-preflight",
+                "reasonCode": "OUTPUT_IGNORE_POLICY_FAILED",
+            },
+        )
+        return raised.exception
+
     def test_nonexistent_git_ignored_output_target_passes_without_creation(self):
         output = self.ignored_output()
         self.assertFalse(output.exists())
@@ -499,13 +513,14 @@ class OutputPolicyTests(IsolatedGitPreflightTestCase):
                     lambda: None,
                     preflight_inputs,
                 )
-        self.assertEqual(exit_code, 2)
+        self.assertEqual(exit_code, 66)
         self.assertEqual(stdout.getvalue(), "")
         self.assertEqual(
             json.loads(stderr.getvalue()),
             {
+                "category": "ignore-policy",
                 "phase": "input-preflight",
-                "reasonCode": "INPUT_PREFLIGHT_FAILED",
+                "reasonCode": "OUTPUT_IGNORE_POLICY_FAILED",
             },
         )
         self.assertNotIn(SENSITIVE_NAME, stderr.getvalue())
