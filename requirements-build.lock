@@ -1,0 +1,8 @@
+# Official PyPI wheels used only for the trusted build/bootstrap boundary.
+# Every requirement is an exact wheel URL with its official SHA-256.
+--only-binary=:all:
+
+pip @ https://files.pythonhosted.org/packages/29/a2/d40fb2460e883eca5199c62cfc2463fd261f760556ae6290f88488c362c0/pip-25.1.1-py3-none-any.whl \
+    --hash=sha256:2913a38a2abf4ea6b64ab507bd9e967f3b53dc1ede74b01b0931e1ce548751af
+setuptools @ https://files.pythonhosted.org/packages/a3/dc/17031897dae0efacfea57dfd3a82fdd2a2aeb58e0ff71b77b87e44edc772/setuptools-80.9.0-py3-none-any.whl \
+    --hash=sha256:062d34222ad13e0cc312a4c02d73f059e86a4acbfbdea8f8f76b28c99f306922

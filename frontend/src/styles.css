@@ -1,0 +1,148 @@
+:root {
+  color: #17342d;
+  background: #eeeae1;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background:
+    radial-gradient(circle at 12% 10%, rgb(255 255 255 / 72%), transparent 32%),
+    #eeeae1;
+}
+
+.shell {
+  width: min(1100px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: 72px 0;
+}
+
+.hero {
+  max-width: 760px;
+}
+
+.eyebrow {
+  margin: 0 0 12px;
+  color: #9a4f2f;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  margin-bottom: 18px;
+  font-size: clamp(2.2rem, 5vw, 4.4rem);
+  line-height: 1.02;
+  letter-spacing: -0.045em;
+}
+
+h2 {
+  margin-bottom: 10px;
+  font-size: 1.75rem;
+}
+
+.hero > p:last-child,
+.probe-panel p {
+  color: #53645f;
+  line-height: 1.7;
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 42px 0 18px;
+}
+
+.status-card,
+.probe-panel {
+  border: 1px solid rgb(23 52 45 / 14%);
+  border-radius: 18px;
+  background: rgb(255 255 255 / 55%);
+  box-shadow: 0 16px 38px rgb(53 50 39 / 7%);
+}
+
+.status-card {
+  display: grid;
+  min-height: 144px;
+  padding: 18px;
+}
+
+.status-card span,
+.status-card small {
+  color: #66736f;
+}
+
+.status-card strong {
+  align-self: center;
+  font-size: 1.35rem;
+}
+
+.probe-panel {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.7fr) minmax(420px, 1.3fr);
+  gap: 30px;
+  align-items: center;
+  padding: 28px;
+}
+
+.chart {
+  width: 560px;
+  max-width: 100%;
+  height: 280px;
+  margin-left: auto;
+  overflow: hidden;
+  border-radius: 14px;
+  background: #f6f3ed;
+}
+
+.footer {
+  margin-top: 20px;
+  text-align: right;
+}
+
+.footer a {
+  color: #53645f;
+  font-size: 0.82rem;
+}
+
+@media (max-width: 860px) {
+  .status-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .probe-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .chart {
+    margin: 0;
+  }
+}
+
+@media (max-width: 520px) {
+  .shell {
+    width: min(100% - 24px, 1100px);
+    padding: 42px 0;
+  }
+
+  .status-grid {
+    grid-template-columns: 1fr;
+  }
+}

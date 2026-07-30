@@ -1,0 +1,197 @@
+THIRD-PARTY NOTICES
+===================
+
+This file is distributed with the Chat History Analysis frontend. It records
+the license and copyright notices for embedded dictionary data and bundled
+third-party code that require an explicit provenance chain.
+
+The source revisions and hashes below are engineering evidence, not a legal
+conclusion. The complete notice text is delivered locally; the source URLs are
+provenance references and are not needed at application runtime.
+
+
+1. fxsjy/jieba default dictionary
+---------------------------------
+
+Project: jieba
+Fixed source snapshot: 17ef8abba38552e5b0a78de33765095c149b8c4d
+Source repository: https://github.com/fxsjy/jieba
+Asset at that revision: jieba/dict.txt
+Git blob: fc6075f64943e1861c420db4da38063de9d8afc5
+SHA-256: 7197c3211ddd98962b036cdf40324d1ea2bfaa12bd028e68faa70111a88e12a8
+
+Dictionary relationship: jieba-rs commit
+4e54f15f19f57c3715609f980175cfde917b40af introduced its default dictionary
+as a byte-identical copy of this asset. jieba-rs later renamed the path and
+commit 9d4474913d0f8eff5fae74af820f39597f556e3a sorted the dictionary, producing
+the dictionary embedded by the fixed jieba-rs revision listed in section 2.
+
+The MIT License (MIT)
+
+Copyright (c) 2013 Sun Junyi
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+
+2. jieba-rs
+-----------
+
+Project: jieba-rs
+Fixed revision: 7f3b27375b638bc22a2efe2fd889ea60130d265c
+Source repository: https://github.com/messense/jieba-rs
+Embedded asset: src/data/dict.txt
+Git blob: 8a9837551ef4f0833835565b5ca654bd6d786a42
+SHA-256: 139519822fe8ab9e10d9d07e68ea0451045380aedaf54ecc51e2a28c6b42a13f
+
+Code and dictionary relationship: the default `default-dict` feature compiles
+src/data/dict.txt into the jieba-rs binary. Jieba::new() loads that embedded
+dictionary. The fixed jieba-wasm revision in section 3 pins this exact
+jieba-rs revision as its submodule and builds it into the final WASM.
+
+MIT License
+
+Copyright (c) 2018 - 2019 messense
+Copyright (c) 2019 Paul Meng
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+3. jieba-wasm 2.4.0
+-------------------
+
+Package: jieba-wasm@2.4.0
+Fixed npm gitHead: 1708f27c9d785f2cdfa91d57dd70a25964a7c5a9
+Source repository: https://github.com/fengkx/jieba-wasm
+Pinned jieba-rs submodule: 7f3b27375b638bc22a2efe2fd889ea60130d265c
+Distributed web WASM:
+pkg/web/jieba_rs_wasm_bg.wasm
+SHA-256: f285288e12b2fee4966e2f766cb30cc465637d8679af7006269dfa25871adbf5
+
+Code and WASM relationship: jieba-wasm supplies the Rust/WASM bindings and
+builds the fixed jieba-rs code plus its embedded default dictionary into the
+web WASM. Consequently the notices in sections 1, 2, and 3 accompany the
+distributed WASM.
+
+Copyright (c) 2018 fengkx <liangkx8237@gmail.com>
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+
+4. echarts-wordcloud 2.1.0
+-------------------------
+
+Package: echarts-wordcloud@2.1.0
+Fixed npm gitHead: ada5d364119941548c32a911470be020e24e8093
+Source repository: https://github.com/ecomfe/echarts-wordcloud
+Manifest license declaration: ISC
+
+Packaging evidence: the fixed npm manifest declares ISC, but the npm tarball
+does not contain a standalone LICENSE file. The fixed repository tree also
+does not state a separate copyright line. Repository history identifies the
+echarts-wordcloud contributors from the 2016 initial revision through the 2022
+fixed revision; npm identifies ecomfe-core and project contributors as
+maintainers. The following complete ISC text is supplied with the attribution
+"echarts-wordcloud contributors" so the declared license travels with the
+distributed bundle.
+
+Copyright (c) 2016-2022 echarts-wordcloud contributors
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+PERFORMANCE OF THIS SOFTWARE.
+
+
+5. wordcloud2.js code bundled by echarts-wordcloud
+--------------------------------------------------
+
+Project/file: wordcloud2.js, index.js-derived layout engine
+Fixed source reference used by echarts-wordcloud:
+c236bee60436e048949f9becc4f0f67bd832dc5c
+Source repository: https://github.com/timdream/wordcloud2.js
+
+Bundle relationship: echarts-wordcloud src/layout.js carries the wordcloud2.js
+header and adapted implementation. The npm bundle includes that layout code.
+The package's generated `dist/echarts-wordcloud.min.js.LICENSE.txt` preserves
+the wordcloud2.js header, but not the complete MIT license below.
+
+Copyright (c) 2011 Timothy Guan-tin Chien, http://timc.idv.tw/
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

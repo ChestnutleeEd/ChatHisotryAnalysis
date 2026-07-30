@@ -16,3 +16,22 @@ outputs/
 # Python-generated local files
 __pycache__/
 *.py[cod]
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+
+# Frontend dependencies, builds, tests, and local launch state
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
+frontend/coverage/
+frontend/playwright-report/
+frontend/test-results/
+frontend/.cache/ms-playwright/
+frontend/.npm-cache/
+.npm-cache/
+.chat-analysis-runtime/
+*.tgz

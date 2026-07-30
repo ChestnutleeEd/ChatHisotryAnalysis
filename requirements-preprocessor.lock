@@ -1,0 +1,6 @@
+# Generated from the official PyPI metadata for ijson 3.5.1.
+# Supported tuple: CPython 3.12.x, macOS arm64.
+--only-binary=:all:
+
+ijson @ https://files.pythonhosted.org/packages/30/c7/6e3e591324fd4c7a7a9e1bc23548bacbd84c0d91766b71f09f13e945e7e9/ijson-3.5.1-cp312-cp312-macosx_11_0_arm64.whl \
+    --hash=sha256:b9517efbe6604bce16f3e50d49b0cd1bdc58917f98cf2eab026599c5c0422991

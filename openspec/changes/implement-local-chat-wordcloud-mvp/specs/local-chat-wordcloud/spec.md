@@ -811,6 +811,88 @@ The application SHALL run through the Vite development server and verify its pro
 - **WHEN** all non-loopback requests are denied
 - **THEN** normalized loading, analysis, visualization, and PNG export remain functional
 
+### Requirement: Finder one-click launch and identity-safe stop
+The repository root SHALL contain Finder-launchable executable files named exactly `Start Chat Analysis.command` and `Stop Chat Analysis.command`. Each script SHALL derive a canonical project root from its own real location, SHALL support a project path containing spaces, and SHALL contain no user-specific absolute project path. Start SHALL verify the documented Node/npm boundary, `frontend/package.json`, and authoritative `frontend/package-lock.json`. If `node_modules`, the project-local Vite entry, or a required direct dependency is missing, Start SHALL automatically run lockfile-driven project-local `npm ci` without manual terminal input, global installation, floating versions, remote shell scripts, or changes to global npm configuration. Installation MAY use the network and SHALL NOT be described as offline. Successful installation SHALL continue through build, preview readiness, valid state publication, and one browser open; failure SHALL exit nonzero without preview, browser open, valid PID/state/identity publication, or damage to an existing valid instance. A complete dependency tree SHALL NOT cause unconditional repeated installation.
+
+The preview SHALL run inside the actual Node process executing a fixed project-local launcher that uses Vite's Node API with exact canonical project root, config, host, port, and strict-port behavior. Every new instance SHALL receive a cryptographically unpredictable nonce of at least 128 bits and SHALL hold open one exact unique owner-only identity file for its lifetime. State SHALL bind the real PID to the nonce, complete process-start fingerprint, canonical actual Node executable, canonical launcher, exact structured launcher arguments, canonical root/config, identity file, and unique content-free log. The nonce SHALL NOT enter logs. A duplicate valid instance SHALL retain its existing nonce and state.
+
+The runtime directory SHALL be a current-user-owned real directory, not a symlink, with permissions no wider than `0700`, whose canonical path remains within the canonical project root. State, PID if retained, identity, log, and temporary state entries SHALL be current-user-owned regular files with mode `0600`, created or read without following symlinks. Unique log and identity files SHALL use exclusive creation. State SHALL be written to a random secure temporary file and published atomically. Existing symlinks, wrong owners, unsafe modes/types, malformed state, unknown or duplicate fields, or containment failures SHALL be rejected without changing an external target. Cleanup SHALL remove only paths proven to belong to the current project instance and SHALL never follow a symlink.
+
+Before `TERM`, Stop SHALL verify the process-start fingerprint, actual process executable rather than argv zero alone, exact launcher path and tokenized arguments, exact nonce/host/port/strict-port/root/config/identity values, and current ownership evidence that the PID holds the exact identity file open. Vite-like argv substrings alone SHALL NOT establish ownership. PID reuse, argv spoofing, unrelated processes, wrong nonce, wrong executable, or an identity file not held SHALL be refused without a signal and diagnostic state SHALL remain. Before any bounded `KILL`, Stop SHALL repeat the complete verification and require the same start fingerprint and held-open identity. Stop SHALL NOT search or signal processes by global name or port.
+
+Generated PID files, state files, local logs, `node_modules`, Vite build output, coverage, browser-test output, temporary downloads, and npm pack tarballs SHALL be Git-ignored.
+
+#### Scenario: Launch from Finder with installed dependencies
+- **WHEN** the user double-clicks `Start Chat Analysis.command` from Finder in a supported checkout with a complete project-local dependency tree
+- **THEN** the script does not repeat `npm ci`, self-locates the project, builds and starts the project-local production preview only on loopback, records complete project-specific identity state, and opens the ready loopback URL in the default browser
+
+#### Scenario: Launch a new clone without dependencies
+- **WHEN** the user double-clicks Start in a supported new clone or checkout without `frontend/node_modules`
+- **THEN** Start runs project-local `npm ci` from the authoritative lockfile without further terminal input and, after success, continues build, launch, readiness, state publication, and browser opening
+
+#### Scenario: Fail dependency installation safely
+- **WHEN** automatic `npm ci` fails
+- **THEN** Start exits nonzero, opens no browser, launches no preview, publishes no valid PID/state/identity, leaves an existing valid instance untouched, changes no global npm configuration, and does not claim installation was offline
+
+#### Scenario: Support a project path with spaces
+- **WHEN** the repository path contains spaces and no user-specific absolute path matches the current machine
+- **THEN** both command files still resolve and use the correct project-local frontend, runtime directory, and Vite entry
+
+#### Scenario: Refuse a duplicate instance
+- **WHEN** Start finds a live process whose PID, command, project path, host, port, and Vite preview identity match valid project state
+- **THEN** it reports the existing local instance without starting another process or overwriting state
+
+#### Scenario: Refuse a conflicting port
+- **WHEN** the fixed loopback port is already owned by another program
+- **THEN** Start exits unsuccessfully, sends no signal to the owner, opens no browser for a false instance, and leaves no false valid PID or state
+
+#### Scenario: Stop the verified project preview
+- **WHEN** PID and state agree and the live command line identifies the expected project-local Vite preview
+- **THEN** Stop sends targeted `TERM` only to that PID, waits a bounded interval for exit, and removes this project's PID and state files after success
+
+#### Scenario: Clean confirmed stale state
+- **WHEN** PID and state are structurally valid but the recorded process no longer exists
+- **THEN** Stop reports stale state and removes only the explicit project PID and state files without signaling any process
+
+#### Scenario: Refuse PID reuse or unrelated process
+- **WHEN** the recorded PID exists but its start fingerprint, actual executable, exact launcher tokens, nonce, project path, config, host, port, strict-port value, or held-open identity does not match the expected project identity
+- **THEN** Stop refuses termination and preserves diagnostic state for inspection
+
+#### Scenario: Refuse argv spoofing
+- **WHEN** an unrelated process includes Vite, preview, host, port, strict-port, or project strings in argv but lacks the complete launcher identity and held-open identity evidence
+- **THEN** Stop returns unsuccessfully without `TERM` or `KILL` and the unrelated process remains alive
+
+#### Scenario: Revalidate before forced stop
+- **WHEN** a verified process remains alive after `TERM` but any identity factor changes before bounded `KILL`
+- **THEN** Stop refuses `KILL`, preserves diagnostic state, and leaves the process alive
+
+#### Scenario: Reject runtime symlinks
+- **WHEN** the runtime directory or any state, PID, log, identity, or temporary publication entry is a symlink
+- **THEN** Start or Stop safely rejects it or replaces only the symlink path entry, does not modify its external target, starts no false service, and signals no unrelated process
+
+#### Scenario: Preserve unrelated local processes
+- **WHEN** other Node, Vite, npm, browser, or port-owning processes are running
+- **THEN** launch and stop operations neither search for nor signal them by global name or port
+
+#### Scenario: Ignore local runtime artifacts
+- **WHEN** dependencies, builds, tests, launch state, or logs create local artifacts
+- **THEN** Git ignore checks exclude every required artifact class from version control
+
+### Requirement: Distributed third-party notices
+The public source SHALL contain `frontend/public/THIRD_PARTY_NOTICES.txt` with complete applicable copyright and license notice text traced to the actual fixed upstream assets for the embedded `fxsjy/jieba` dictionary, `jieba-rs`, `jieba-wasm@2.4.0`, `echarts-wordcloud@2.1.0`, and the bundled `wordcloud2.js` code. Evidence SHALL identify which layer supplies code, embeds the dictionary, and produces the final WASM, and SHALL record when a package manifest declares a license while its tarball omits a standalone license file. The production build SHALL contain a byte-identical `dist/THIRD_PARTY_NOTICES.txt`, available through the same loopback origin without an external request.
+
+#### Scenario: Trace the embedded dictionary
+- **WHEN** the fixed Jieba WASM dependency is reviewed or distributed
+- **THEN** source revisions, the actual dictionary asset and hash, upstream copyright notices, complete applicable license text, and the code/dictionary/WASM relationship are recorded and delivered in the public notice
+
+#### Scenario: Preserve bundled word-cloud notices
+- **WHEN** `echarts-wordcloud` and its bundled `wordcloud2.js` are distributed
+- **THEN** the manifest license declaration, missing standalone tarball license fact, fixed source relationship, copyright attribution, and complete applicable license text are preserved in the public notice
+
+#### Scenario: Distribute notices with production assets
+- **WHEN** Vite creates the production build
+- **THEN** `dist/THIRD_PARTY_NOTICES.txt` exists with the same bytes and hash as the public source and can be opened from loopback without external traffic
+
 ### Requirement: Repository and runtime privacy
 Raw CipherTalk exports and data-minimized local analysis datasets SHALL remain only in ignored local locations such as `data/private/` and `data/exports/normalized/<dataset-name>/`. They SHALL NOT be committed, bundled, uploaded, logged, snapshotted, or used as test fixtures. Telemetry SHALL be disabled unless a future policy proves it contains no source names, text, tokens, frequencies, identifiers, or derived private metadata.
 

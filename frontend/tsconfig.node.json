@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "skipLibCheck": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true,
+    "strict": true,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": [
+    "src/**/*.ts",
+    "eslint.config.js",
+    "vite.config.ts",
+    "playwright.shared.ts",
+    "playwright.dev.config.ts",
+    "playwright.preview.config.ts",
+    "tests"
+  ]
+}

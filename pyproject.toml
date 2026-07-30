@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chat-history-analysis"
+version = "0.1.0"
+description = "Local, privacy-preserving chat history analysis"
+# The bootstrap must install on unsupported interpreters so it can reject them
+# content-free; the application runtime itself remains exactly CPython 3.12/macOS/arm64.
+requires-python = ">=3.9"
+dependencies = [
+  "ijson==3.5.1",
+]
+
+[project.scripts]
+chat-history-analysis = "chat_history_analysis.bootstrap_cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,16 +1,16 @@
 ## 1. Dependency and Project Boundaries
 
-- [ ] 1.1 Create the local Python CLI module structure without introducing an HTTP server, API framework, database service, or network code path.
-- [ ] 1.2 Add an exact `ijson==3.5.1` dependency for the preprocessor and document its `BSD-3-Clause AND ISC` license.
-- [ ] 1.3 Pin the MVP runtime matrix to CPython 3.12.x on macOS arm64 and reject every other interpreter, minor, operating system, and architecture before opening raw input.
-- [ ] 1.4 Verify official `ijson==3.5.1` distribution SHA-256 values for that exact runtime/platform tuple and generate a hash-enforced lock file.
-- [ ] 1.5 Implement the pre-open startup gate for exact version, approved distribution hash, exact `yajl2_c` backend identity, and no automatic or Python-backend fallback.
-- [ ] 1.6 Implement the in-memory parser self-check and content-free startup categories `UNSUPPORTED_PYTHON_RUNTIME`, `IJSON_DISTRIBUTION_UNVERIFIED`, `IJSON_BACKEND_UNAVAILABLE`, `IJSON_BACKEND_MISMATCH`, and `IJSON_PARSER_INITIALIZATION_FAILED`.
-- [ ] 1.7 Prove with an unopened-source sentinel that no raw source is opened until every startup check succeeds.
-- [ ] 1.8 Create the React, TypeScript, and Vite application scaffold with loopback development, build, preview, type-check, lint, and test commands.
-- [ ] 1.9 Establish separate modules for preprocessing contracts, normalized schema, browser input, Worker analysis, presentation, and privacy validation.
-- [ ] 1.10 Add exact `jieba-wasm@2.4.0` and verify package integrity, license, embedded dictionary, browser export, and Worker-compatible initialization.
-- [ ] 1.11 Select and pin ECharts plus a browser word-cloud extension after verifying local bundling, licensing, canvas PNG export, and stable ordered inputs.
+- [x] 1.1 Create the local Python CLI module structure without introducing an HTTP server, API framework, database service, or network code path.
+- [x] 1.2 Add an exact `ijson==3.5.1` dependency for the preprocessor and document its `BSD-3-Clause AND ISC` license.
+- [x] 1.3 Pin the MVP runtime matrix to CPython 3.12.x on macOS arm64 and reject every other interpreter, minor, operating system, and architecture before opening raw input.
+- [x] 1.4 Verify official `ijson==3.5.1` distribution SHA-256 values for that exact runtime/platform tuple and generate a hash-enforced lock file.
+- [x] 1.5 Implement the pre-open startup gate for exact version, approved distribution hash, exact `yajl2_c` backend identity, and no automatic or Python-backend fallback.
+- [x] 1.6 Implement the in-memory parser self-check and content-free startup categories `UNSUPPORTED_PYTHON_RUNTIME`, `IJSON_DISTRIBUTION_UNVERIFIED`, `IJSON_BACKEND_UNAVAILABLE`, `IJSON_BACKEND_MISMATCH`, and `IJSON_PARSER_INITIALIZATION_FAILED`.
+- [x] 1.7 Prove with an unopened-source sentinel that no raw source is opened until every startup check succeeds.
+- [x] 1.8 Create the React, TypeScript, and Vite application scaffold with loopback development, build, preview, type-check, lint, and test commands; add and test repository-root Finder start/stop commands with self-location, strict loopback single-instance state, safe port-conflict behavior, and identity-verified targeted shutdown.
+- [x] 1.9 Establish separate modules for preprocessing contracts, normalized schema, browser input, Worker analysis, presentation, and privacy validation.
+- [x] 1.10 Add exact `jieba-wasm@2.4.0` and verify package integrity, license, embedded dictionary, browser export, and Worker-compatible initialization.
+- [x] 1.11 Select and pin ECharts plus a browser word-cloud extension after verifying local bundling, licensing, canvas PNG export, and stable ordered inputs.
 
 ## 2. CLI Input Roles and Capacity Preflight
 
