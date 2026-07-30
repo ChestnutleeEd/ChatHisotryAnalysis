@@ -40,17 +40,17 @@
 
 ## 4. Classification, Text Eligibility, Sender, and Time
 
-- [ ] 4.1 Implement the complete documented `chatLabType` primary mapping for 0, 1, 2, 3, 4, 5, 7, 8, 23, 24, 25, 27, 80, and 99.
-- [ ] 4.2 Implement `type` consistency validation and conservative non-text handling for conflicts and unknown primary codes.
-- [ ] 4.3 Parse `localType` only as a non-boolean safe integer and prohibit bitwise operations, 32-bit casts, `Int32Array`, and 32-bit database columns.
-- [ ] 4.4 Accept unknown safe `localType` values as transient metadata and remove the provisional `localType=49` canonical assumption.
-- [ ] 4.5 Implement the exact eligible-text conjunction `chatLabType===0`, `type==="文本消息"`, `localType===1`, and non-empty string content.
-- [ ] 4.6 Implement bracketed-placeholder, XML-like, URL-only, post-URL-empty, and malformed-content exclusions.
-- [ ] 4.7 Remove URL spans from mixed text while retaining remaining human-readable text.
-- [ ] 4.8 Implement exact numeric `isSend` normalization to `owner` or `other` without coercion.
-- [ ] 4.9 Keep valid `isSend` authoritative and aggregate owner/sender metadata conflicts without exposing identifiers.
-- [ ] 4.10 Validate integer Unix-second `createTime` and strict UTC+08:00 `YYYY-MM-DD HH:mm:ss` equality without host-timezone APIs.
-- [ ] 4.11 Skip ineligible records with aggregate non-sensitive reason counters and never retain non-text content.
+- [x] 4.1 Implement the complete documented `chatLabType` primary mapping for 0, 1, 2, 3, 4, 5, 7, 8, 23, 24, 25, 27, 80, and 99.
+- [x] 4.2 Implement `type` consistency validation and conservative non-text handling for conflicts and unknown primary codes.
+- [x] 4.3 Parse `localType` only as a non-boolean safe integer and prohibit bitwise operations, 32-bit casts, `Int32Array`, and 32-bit database columns.
+- [x] 4.4 Accept unknown safe `localType` values as transient metadata and remove the provisional `localType=49` canonical assumption.
+- [x] 4.5 Implement the exact eligible-text conjunction `chatLabType===0`, `type==="文本消息"`, `localType===1`, and non-empty string content.
+- [x] 4.6 Implement bracketed-placeholder, XML-like, URL-only, post-URL-empty, and malformed-content exclusions.
+- [x] 4.7 Remove URL spans from mixed text while retaining remaining human-readable text.
+- [x] 4.8 Implement exact numeric `isSend` normalization to `owner` or `other` without coercion.
+- [x] 4.9 Keep valid `isSend` authoritative and aggregate owner/sender metadata conflicts without exposing identifiers.
+- [x] 4.10 Validate integer Unix-second `createTime` and strict UTC+08:00 `YYYY-MM-DD HH:mm:ss` equality without host-timezone APIs.
+- [x] 4.11 Skip ineligible records with aggregate non-sensitive reason counters and never retain non-text content.
 
 ## 5. File Ranking, Staging, Deduplication, and Merge
 

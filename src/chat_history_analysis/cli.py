@@ -111,6 +111,15 @@ def _run_for_test(
                         "rawMessageCount": (
                             result.aggregate_raw_message_count
                         ),
+                        "eligibleTextCount": (
+                            result.annual_normalization.eligible_count
+                        ),
+                        "skippedRecordCount": (
+                            result.annual_normalization.skipped_count
+                        ),
+                        "warningCount": (
+                            result.annual_normalization.warning_count
+                        ),
                     }
                 )
         else:

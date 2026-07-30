@@ -19,6 +19,10 @@ from .message_capacity import (
     MAX_AGGREGATE_RAW_MESSAGES,
     AggregateMessageCounter,
 )
+from .message_normalization import (
+    MessageNormalizationConsumer,
+    NormalizationSummary,
+)
 from .source_validation import (
     AggregateRawByteCounter,
     FirstPassEvidence,
@@ -74,6 +78,8 @@ class ValidationResult:
     aggregate_raw_message_count: int
     annual_staged_message_count: int
     verification_streamed_message_count: int
+    annual_normalization: NormalizationSummary
+    verification_normalization: NormalizationSummary
 
 
 class StagingConsumer(Protocol):
@@ -84,6 +90,9 @@ class StagingConsumer(Protocol):
         descriptor: ValidatedSourceDescriptor,
         source_array_index: int,
         message: dict[str, Any],
+        *,
+        owner_identity: str,
+        peer_identity: str,
     ) -> None: ...
 
     def observe_verification_message(
@@ -91,6 +100,9 @@ class StagingConsumer(Protocol):
         descriptor: ValidatedSourceDescriptor,
         source_array_index: int,
         message: dict[str, Any],
+        *,
+        owner_identity: str,
+        peer_identity: str,
     ) -> None: ...
 
     def complete(self) -> None: ...
@@ -111,6 +123,9 @@ class DiscardingStagingConsumer:
         descriptor: ValidatedSourceDescriptor,
         source_array_index: int,
         message: dict[str, Any],
+        *,
+        owner_identity: str,
+        peer_identity: str,
     ) -> None:
         self.annual_message_count += 1
 
@@ -119,6 +134,9 @@ class DiscardingStagingConsumer:
         descriptor: ValidatedSourceDescriptor,
         source_array_index: int,
         message: dict[str, Any],
+        *,
+        owner_identity: str,
+        peer_identity: str,
     ) -> None:
         self.verification_message_count += 1
 
@@ -129,6 +147,68 @@ class DiscardingStagingConsumer:
         self.annual_message_count = 0
         self.verification_message_count = 0
         self._complete = False
+
+
+@dataclass
+class _CompositeStagingConsumer:
+    primary: StagingConsumer
+    secondary: StagingConsumer
+
+    def stage_annual_message(
+        self,
+        descriptor: ValidatedSourceDescriptor,
+        source_array_index: int,
+        message: dict[str, Any],
+        *,
+        owner_identity: str,
+        peer_identity: str,
+    ) -> None:
+        self.primary.stage_annual_message(
+            descriptor,
+            source_array_index,
+            message,
+            owner_identity=owner_identity,
+            peer_identity=peer_identity,
+        )
+        self.secondary.stage_annual_message(
+            descriptor,
+            source_array_index,
+            message,
+            owner_identity=owner_identity,
+            peer_identity=peer_identity,
+        )
+
+    def observe_verification_message(
+        self,
+        descriptor: ValidatedSourceDescriptor,
+        source_array_index: int,
+        message: dict[str, Any],
+        *,
+        owner_identity: str,
+        peer_identity: str,
+    ) -> None:
+        self.primary.observe_verification_message(
+            descriptor,
+            source_array_index,
+            message,
+            owner_identity=owner_identity,
+            peer_identity=peer_identity,
+        )
+        self.secondary.observe_verification_message(
+            descriptor,
+            source_array_index,
+            message,
+            owner_identity=owner_identity,
+            peer_identity=peer_identity,
+        )
+
+    def complete(self) -> None:
+        self.primary.complete()
+        self.secondary.complete()
+
+    def abort(self) -> None:
+        self.primary.abort()
+        self.secondary.abort()
 
 
 def _contexts(
@@ -306,35 +386,50 @@ def validate_preflighted_inputs(
         verification_descriptors,
     )
     ranked_annual = _rank_annual_sources(annual_descriptors)
-    consumer = staging_consumer or DiscardingStagingConsumer()
+    normalizer = MessageNormalizationConsumer()
+    consumer: StagingConsumer = normalizer
+    if staging_consumer is not None:
+        consumer = _CompositeStagingConsumer(normalizer, staging_consumer)
 
     try:
         for descriptor in ranked_annual:
+            identity = summaries_by_context[
+                _context_for(descriptor)
+            ].session_identity
             summary = parse_and_validate_source(
                 _context_for(descriptor),
                 _evidence_for(descriptor),
                 backend,
                 phase=SOURCE_STAGING_PHASE,
-                on_message=lambda source_index, message, selected=descriptor: (
+                on_message=lambda source_index, message, selected=descriptor,
+                expected=identity: (
                     consumer.stage_annual_message(
                         selected,
                         source_index,
                         message,
+                        owner_identity=expected.owner_identity,
+                        peer_identity=expected.peer_identity,
                     )
                 ),
             )
             _assert_same_pass(descriptor, summary)
         for descriptor in verification_descriptors:
+            identity = summaries_by_context[
+                _context_for(descriptor)
+            ].session_identity
             summary = parse_and_validate_source(
                 _context_for(descriptor),
                 _evidence_for(descriptor),
                 backend,
                 phase=SOURCE_STAGING_PHASE,
-                on_message=lambda source_index, message, selected=descriptor: (
+                on_message=lambda source_index, message, selected=descriptor,
+                expected=identity: (
                     consumer.observe_verification_message(
                         selected,
                         source_index,
                         message,
+                        owner_identity=expected.owner_identity,
+                        peer_identity=expected.peer_identity,
                     )
                 ),
             )
@@ -361,4 +456,6 @@ def validate_preflighted_inputs(
         aggregate_raw_message_count=message_counter.count,
         annual_staged_message_count=annual_staged,
         verification_streamed_message_count=verification_streamed,
+        annual_normalization=normalizer.annual_summary,
+        verification_normalization=normalizer.verification_summary,
     )

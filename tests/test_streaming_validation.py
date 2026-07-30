@@ -95,6 +95,9 @@ class RecordingConsumer(StagingConsumer):
         descriptor: ValidatedSourceDescriptor,
         source_array_index: int,
         message_value: dict[str, object],
+        *,
+        owner_identity: str,
+        peer_identity: str,
     ) -> None:
         self.annual.append(
             (
@@ -109,6 +112,9 @@ class RecordingConsumer(StagingConsumer):
         descriptor: ValidatedSourceDescriptor,
         source_array_index: int,
         message_value: dict[str, object],
+        *,
+        owner_identity: str,
+        peer_identity: str,
     ) -> None:
         self.verification.append(
             (descriptor.supplied_ordinal, source_array_index)
@@ -477,7 +483,9 @@ class StreamingValidationTests(unittest.TestCase):
                     SourceValidationReasonCode.PARTICIPANT_INVALID,
                 )
 
-    def test_invalid_message_timestamps_are_fatal(self) -> None:
+    def test_invalid_message_timestamps_are_recoverable_when_range_remains(
+        self,
+    ) -> None:
         for label, invalid_time in (
             ("missing", None),
             ("boolean", True),
@@ -486,16 +494,25 @@ class StreamingValidationTests(unittest.TestCase):
             ("above-int64", 2**63),
         ):
             with self.subTest(label=label):
-                invalid_message = {"senderUsername": OWNER}
-                if label != "missing":
-                    invalid_message["createTime"] = invalid_time
+                invalid_message = message(invalid_time, OWNER)
+                if label == "missing":
+                    invalid_message.pop("createTime")
                 path = write_export(
                     self.root / f"timestamp-{label}.json",
                     (invalid_message, message(11, PEER)),
                 )
-                self.assert_failure(
-                    path,
-                    SourceValidationReasonCode.MESSAGE_TIME_INVALID,
+                result = validate_preflighted_inputs(
+                    self.inputs((path,)),
+                    real_backend(),
+                )
+                descriptor = result.annual_sources[0]
+                self.assertEqual(descriptor.minimum_create_time, 11)
+                self.assertEqual(descriptor.maximum_create_time, 11)
+                self.assertEqual(
+                    dict(result.annual_normalization.skipped_by_reason)[
+                        "MALFORMED_TIME"
+                    ],
+                    1,
                 )
 
     def test_signed_64_timestamp_range_boundaries_are_deterministic(self) -> None:
@@ -521,9 +538,23 @@ class StreamingValidationTests(unittest.TestCase):
                 message(11, PEER),
             ),
         )
+        result = validate_preflighted_inputs(
+            self.inputs((below,)),
+            real_backend(),
+        )
+        self.assertEqual(result.annual_sources[0].minimum_create_time, 11)
+
+    def test_source_without_any_valid_timestamp_is_fatal(self) -> None:
+        path = write_export(
+            self.root / "no-valid-time.json",
+            (
+                message("invalid", OWNER),
+                message(None, PEER),
+            ),
+        )
         self.assert_failure(
-            below,
-            SourceValidationReasonCode.MESSAGE_TIME_INVALID,
+            path,
+            SourceValidationReasonCode.MESSAGE_TIME_RANGE_UNAVAILABLE,
         )
 
     def test_different_annual_or_verification_session_is_rejected(self) -> None:
@@ -574,11 +605,16 @@ class StreamingValidationTests(unittest.TestCase):
                 descriptor: ValidatedSourceDescriptor,
                 source_array_index: int,
                 message_value: dict[str, object],
+                *,
+                owner_identity: str,
+                peer_identity: str,
             ) -> None:
                 super().stage_annual_message(
                     descriptor,
                     source_array_index,
                     message_value,
+                    owner_identity=owner_identity,
+                    peer_identity=peer_identity,
                 )
                 if len(nested_self.annual) == 1:
                     replacement = write_export(
@@ -617,11 +653,16 @@ class StreamingValidationTests(unittest.TestCase):
                 descriptor: ValidatedSourceDescriptor,
                 source_array_index: int,
                 message_value: dict[str, object],
+                *,
+                owner_identity: str,
+                peer_identity: str,
             ) -> None:
                 super().stage_annual_message(
                     descriptor,
                     source_array_index,
                     message_value,
+                    owner_identity=owner_identity,
+                    peer_identity=peer_identity,
                 )
                 if len(nested_self.annual) == 1:
                     mutated = original.replace(

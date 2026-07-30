@@ -84,6 +84,7 @@ class SourcePassSummary:
     minimum_create_time: int
     maximum_create_time: int
     conversation_fingerprint: str
+    session_identity: SessionIdentity = field(repr=False, compare=False)
 
 
 @dataclass
@@ -511,30 +512,26 @@ class _MessageFacts:
         phase: str,
         record_ordinal: int,
     ) -> None:
+        self.count += 1
         create_time = message.get("createTime")
         if (
-            isinstance(create_time, bool)
-            or not isinstance(create_time, int)
-            or create_time < _MIN_SIGNED_64
-            or create_time > _MAX_SIGNED_64
+            isinstance(create_time, int)
+            and not isinstance(create_time, bool)
+            and _MIN_SIGNED_64 <= create_time <= _MAX_SIGNED_64
         ):
-            raise _error(
-                context,
-                SourceValidationReasonCode.MESSAGE_TIME_INVALID,
-                phase=phase,
-                field="messages.createTime",
-                record_ordinal=record_ordinal,
+            self.minimum_time = (
+                create_time
+                if self.minimum_time is None
+                else min(self.minimum_time, create_time)
+            )
+            self.maximum_time = (
+                create_time
+                if self.maximum_time is None
+                else max(self.maximum_time, create_time)
             )
         sender = message.get("senderUsername")
-        if not _valid_identity_component(sender):
-            raise _error(
-                context,
-                SourceValidationReasonCode.PARTICIPANT_INVALID,
-                phase=phase,
-                field="messages.senderUsername",
-                record_ordinal=record_ordinal,
-            )
-        self.participants.add(sender)
+        if _valid_identity_component(sender):
+            self.participants.add(sender)
         if len(self.participants) > 2:
             raise _error(
                 context,
@@ -543,17 +540,6 @@ class _MessageFacts:
                 field="messages.senderUsername",
                 record_ordinal=record_ordinal,
             )
-        self.count += 1
-        self.minimum_time = (
-            create_time
-            if self.minimum_time is None
-            else min(self.minimum_time, create_time)
-        )
-        self.maximum_time = (
-            create_time
-            if self.maximum_time is None
-            else max(self.maximum_time, create_time)
-        )
 
 
 def _finalize_summary(
@@ -641,6 +627,7 @@ def _finalize_summary(
         minimum_create_time=facts.minimum_time,
         maximum_create_time=facts.maximum_time,
         conversation_fingerprint=conversation_fingerprint(identity),
+        session_identity=identity,
     )
 
 

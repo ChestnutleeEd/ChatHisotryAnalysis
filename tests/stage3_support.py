@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 import importlib.util
 import json
 from pathlib import Path
@@ -42,10 +43,29 @@ def message(
     content: Any = "synthetic-message",
     **extra: Any,
 ) -> dict[str, Any]:
+    if (
+        isinstance(create_time, int)
+        and not isinstance(create_time, bool)
+        and -(2**62) <= create_time <= 2**62
+    ):
+        try:
+            formatted_time = (
+                datetime(1970, 1, 1, tzinfo=timezone.utc)
+                + timedelta(seconds=create_time, hours=8)
+            ).strftime("%Y-%m-%d %H:%M:%S")
+        except (OverflowError, ValueError):
+            formatted_time = "1970-01-01 08:00:00"
+    else:
+        formatted_time = "1970-01-01 08:00:00"
     value = {
         "createTime": create_time,
+        "formattedTime": formatted_time,
         "senderUsername": sender,
         "content": content,
+        "chatLabType": 0,
+        "type": "文本消息",
+        "localType": 1,
+        "isSend": 1 if sender == OWNER else 0,
     }
     value.update(extra)
     return value

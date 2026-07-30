@@ -572,10 +572,13 @@ class TrustedCleanInstallationTests(unittest.TestCase):
             json.loads(result.stdout),
             {
                 "annualSourceCount": 1,
+                "eligibleTextCount": 4100,
                 "overlapVerificationCount": 0,
                 "phase": "source-validation",
                 "rawMessageCount": 5000,
+                "skippedRecordCount": 900,
                 "status": "ready",
+                "warningCount": 81,
             },
         )
         self.assertEqual(result.stderr, "")

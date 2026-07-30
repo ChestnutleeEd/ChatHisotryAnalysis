@@ -1,6 +1,6 @@
 # ChatHisotryAnalysis
 
-本项目用于开发和验证本地聊天历史分析能力。当前阶段包含可复现的合成数据基线、本地 Python 预处理器的可信启动边界、CipherTalk `detailed-json` 三遍流式验证，以及只使用合成探针的本地前端基础设施；尚不包含 Stage 4 消息分类/标准化、SQLite、NDJSON、manifest、完整词云业务应用、后端 API、数据库解密或微信/CipherTalk 连接功能。
+本项目用于开发和验证本地聊天历史分析能力。当前阶段包含可复现的合成数据基线、本地 Python 预处理器的可信启动边界、CipherTalk `detailed-json` 三遍流式验证、单消息分类与文本/发送者/时间规范化，以及只使用合成探针的本地前端基础设施；尚不包含 SQLite、跨文件去重/合并、NDJSON、manifest、完整词云业务应用、后端 API、数据库解密或微信/CipherTalk 连接功能。
 
 ## 当前阶段：合成数据基线
 
@@ -46,7 +46,7 @@ python3 scripts/generate_mock_chat.py \
 
 ## CipherTalk 流式验证
 
-`preprocess` 当前完成 Stage 3 的只读验证边界：
+`preprocess` 当前完成 Stage 4 的只读流式规范化边界：
 
 ```bash
 <external-venv>/bin/chat-history-analysis preprocess \
@@ -57,7 +57,7 @@ python3 scripts/generate_mock_chat.py \
 
 `--annual-source` 和 `--overlap-verification` 可重复。每个 source 依次执行 binary SHA-256/strict UTF-8、`yajl2_c` validation/range、ranked staging stream 三遍；每个后续 pass 都复核内容 hash 与首遍文件身份。全局 raw message limit 是包含两种角色的 2,000,000 条，第 2,000,001 条立即中止。验证结果只保留 source role/ordinal、byte/hash evidence、消息数、实际时间范围、file rank 和假名化 conversation fingerprint，不保留消息正文。
 
-Stage 3 只验证并流式丢弃消息。`--output-dir` 在本阶段只执行 Git ignore-policy preflight，不创建目录，不生成 SQLite、NDJSON、manifest 或任何部分正式输出。
+第三遍 ranked staging stream 会逐条执行完整 `chatLabType` 映射、safe-integer `localType` 验证、精确文本资格、占位符/XML/URL 过滤、`isSend` 双方角色映射和固定 UTC+08:00 时间一致性检查。Production sink 只保留合格/跳过/警告聚合计数，当前正文在回调结束后立即丢弃；recoverable record 不阻断后续流式消费，fatal dataset error 立即停止。`--output-dir` 在本阶段仍只执行 Git ignore-policy preflight，不创建目录，不生成 SQLite、NDJSON、manifest 或任何正式输出。
 
 稳定退出码为：
 
