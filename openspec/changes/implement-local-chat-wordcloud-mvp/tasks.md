@@ -161,22 +161,22 @@
 
 ## 12. Preprocessor Unit and Integration Tests
 
-- [ ] 12.1 Test every raw per-file, annual-count, aggregate-byte, and aggregate-message boundary at exact and first-over values.
-- [ ] 12.2 Test every startup category plus success, wrong version, unapproved hash, missing/mismatched backend, parser initialization exception, and proof that raw input remains unopened on failure.
-- [ ] 12.3 Test strict UTF-8, malformed/incomplete JSON, comments, trailing values, top-level types, detailed format, and group rejection.
-- [ ] 12.4 Test same-session canonical encoding, pseudonymous fingerprint stability, participant consistency, and different-session rejection.
-- [ ] 12.5 Test all documented `chatLabType` categories, unknown codes, `type` conflicts, and conservative inconsistent-image exclusion.
-- [ ] 12.6 Test safe integers above signed 32-bit, unknown safe `localType`, unsafe integers, and absence of 32-bit operations/storage.
-- [ ] 12.7 Test exact text agreement, placeholders, XML, URLs, mixed text, malformed content, and non-text content disposal.
-- [ ] 12.8 Test `isSend`, metadata conflicts, strict UTC+08:00, filename/range mismatch, annual gaps, overlaps, and file ranking.
-- [ ] 12.9 Test duplicate platform/fallback identities, matching SHA plus matching verifier, simulated matching SHA plus different verifier, domain separation, ambiguous lengths, and raw-ID absence from SQLite.
-- [ ] 12.10 Test duplicate `localId`, identical timestamps, deterministic survivor selection, canonical indexing, and no prohibited identity basis.
-- [ ] 12.11 Test exact staging columns/indexes, permissions, every PRAGMA, no shared cache/WAL/temp spill, forbidden raw-value absence, and stop-on-memory-policy failure.
-- [ ] 12.12 Test complete and partial verification, different-session verification, combined-run failure, and separate read-only verification.
-- [ ] 12.13 Test exact and first-over record/chunk boundaries, first chunk creation, zero records, manifest schema/hashes, recoverable-skip determinism, and no empty/oversized chunk.
-- [ ] 12.14 Test disk exhaustion, destination collision, hash mismatch, interrupted pre-rename cleanup, simulated promotion failure, same-filesystem enforcement, and no copy fallback.
-- [ ] 12.15 Test success/failure/cancellation/interruption cleanup of every database sidecar and non-output entry plus safe one-candidate crash recovery refusal/confirmation cases.
-- [ ] 12.16 Test the output allow-list by injecting sensitive-looking paths, basenames, parser errors, identifiers, values, URLs, and hashes across every specified surface.
+- [x] 12.1 Test every raw per-file, annual-count, aggregate-byte, and aggregate-message boundary at exact and first-over values.
+- [x] 12.2 Test every startup category plus success, wrong version, unapproved hash, missing/mismatched backend, parser initialization exception, and proof that raw input remains unopened on failure.
+- [x] 12.3 Test strict UTF-8, malformed/incomplete JSON, comments, trailing values, top-level types, detailed format, and group rejection.
+- [x] 12.4 Test same-session canonical encoding, pseudonymous fingerprint stability, participant consistency, and different-session rejection.
+- [x] 12.5 Test all documented `chatLabType` categories, unknown codes, `type` conflicts, and conservative inconsistent-image exclusion.
+- [x] 12.6 Test safe integers above signed 32-bit, unknown safe `localType`, unsafe integers, and absence of 32-bit operations/storage.
+- [x] 12.7 Test exact text agreement, placeholders, XML, URLs, mixed text, malformed content, and non-text content disposal.
+- [x] 12.8 Test `isSend`, metadata conflicts, strict UTC+08:00, filename/range mismatch, annual gaps, overlaps, and file ranking.
+- [x] 12.9 Test duplicate platform/fallback identities, matching SHA plus matching verifier, simulated matching SHA plus different verifier, domain separation, ambiguous lengths, and raw-ID absence from SQLite.
+- [x] 12.10 Test duplicate `localId`, identical timestamps, deterministic survivor selection, canonical indexing, and no prohibited identity basis.
+- [x] 12.11 Test exact staging columns/indexes, permissions, every PRAGMA, no shared cache/WAL/temp spill, forbidden raw-value absence, and stop-on-memory-policy failure.
+- [x] 12.12 Test complete and partial verification, different-session verification, combined-run failure, and separate read-only verification.
+- [x] 12.13 Test exact and first-over record/chunk boundaries, first chunk creation, zero records, manifest schema/hashes, recoverable-skip determinism, and no empty/oversized chunk.
+- [x] 12.14 Test disk exhaustion, destination collision, hash mismatch, interrupted pre-rename cleanup, simulated promotion failure, same-filesystem enforcement, and no copy fallback.
+- [x] 12.15 Test success/failure/cancellation/interruption cleanup of every database sidecar and non-output entry plus safe one-candidate crash recovery refusal/confirmation cases.
+- [x] 12.16 Test the output allow-list by injecting sensitive-looking paths, basenames, parser errors, identifiers, values, URLs, and hashes across every specified surface.
 
 ## 13. Browser, Worker, and Workflow Tests
 
