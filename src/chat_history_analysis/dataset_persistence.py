@@ -39,6 +39,7 @@ from .errors import (
 from .input_preflight import PreflightedOverlapVerification
 from .message_capacity import AggregateMessageCounter
 from .message_normalization import (
+    CanonicalEventCandidate,
     MessageNormalizationConsumer,
     NormalizedMessage,
     NormalizationSummary,
@@ -82,6 +83,12 @@ PLATFORM_ID_VERIFIER_DOMAIN: Final = (
 FALLBACK_DOMAIN: Final = b"ChatHistoryAnalysis/dedup/fallback/v1"
 FALLBACK_VERIFIER_DOMAIN: Final = (
     b"ChatHistoryAnalysis/dedup/fallback-verifier/v1"
+)
+EVENT_FALLBACK_DOMAIN_V2: Final = (
+    b"ChatHistoryAnalysis/dedup/event-fallback/v2"
+)
+EVENT_FALLBACK_VERIFIER_DOMAIN_V2: Final = (
+    b"ChatHistoryAnalysis/dedup/event-fallback-verifier/v2"
 )
 NORMALIZED_MESSAGE_TYPE: Final = b"text"
 
@@ -374,6 +381,150 @@ def fallback_identity(
             digest_size=16,
         ).digest(),
     )
+
+
+def _typed_transient_digest(tag: str, value: str) -> bytes:
+    """Hash one transient value with an unambiguous type tag."""
+
+    return hashlib.sha256(
+        _length_prefixed(tag.encode("ascii"))
+        + _length_prefixed(value.encode("utf-8"))
+    ).digest()
+
+
+def fallback_identity_v2(
+    conversation_fingerprint: str,
+    candidate: CanonicalEventCandidate | Mapping[str, Any],
+) -> IdentityDigests | None:
+    """Build the event-wide v2 fallback identity from transient evidence.
+
+    A timestamp/category/sender tuple is intentionally insufficient.  The
+    caller retains that occurrence when no typed payload digest is available,
+    so an evidence-poor media event is never silently dropped.
+    """
+
+    fingerprint = _fingerprint_bytes(conversation_fingerprint)
+    if isinstance(candidate, CanonicalEventCandidate):
+        create_time = candidate.create_time
+        sender_scope = candidate.sender_scope
+        category = candidate.message_category
+        raw_classification = candidate.raw_classification
+        local_id = candidate.local_id
+        content = candidate.content
+        raw_content = candidate.raw_content
+    else:
+        create_time = candidate["createTime"]
+        sender_scope = candidate["senderScope"]
+        category = candidate["messageCategory"]
+        raw_classification = tuple(candidate.get("rawClassification", ()))
+        local_id = candidate.get("localId")
+        content = candidate.get("content")
+        raw_content = candidate.get("rawContent")
+
+    if (
+        not _is_integer(create_time)
+        or not _MIN_SIGNED_64 <= create_time <= _MAX_SIGNED_64
+        or sender_scope not in {None, "owner", "other"}
+        or not isinstance(category, str)
+    ):
+        raise _persistence_error(
+            DatasetPersistenceReasonCode.NORMALIZED_SCHEMA_INVALID,
+            phase=DATASET_STAGING_PHASE,
+            category=FailureCategory.INPUT_VALIDATION,
+        )
+
+    safe_local_id = (
+        local_id
+        if isinstance(local_id, str)
+        and local_id
+        and "\x00" not in local_id
+        and len(local_id.encode("utf-8")) <= 4_096
+        else None
+    )
+    safe_content = content if isinstance(content, str) and content else None
+    safe_raw_content = (
+        raw_content
+        if isinstance(raw_content, str) and raw_content
+        else None
+    )
+    # A local ID is only corroborating evidence.  It can never make an
+    # otherwise evidence-free occurrence deduplicable by itself.
+    if safe_content is None and safe_raw_content is None:
+        return None
+
+    sender_marker = "system" if sender_scope is None else sender_scope
+    classification_bytes = bytearray()
+    for key, value in raw_classification:
+        if (
+            not isinstance(key, str)
+            or not isinstance(value, int)
+            or isinstance(value, bool)
+            or not -(2**53 - 1) <= value <= 2**53 - 1
+        ):
+            raise _persistence_error(
+                DatasetPersistenceReasonCode.NORMALIZED_SCHEMA_INVALID,
+                phase=DATASET_STAGING_PHASE,
+                category=FailureCategory.INPUT_VALIDATION,
+            )
+        classification_bytes.extend(_length_prefixed(key.encode("ascii")))
+        classification_bytes.extend(struct.pack(">q", value))
+
+    def encoded(domain: bytes) -> bytes:
+        output = bytearray(domain)
+        output.extend(_length_prefixed(fingerprint))
+        output.extend(struct.pack(">q", create_time))
+        output.extend(_length_prefixed(sender_marker.encode("ascii")))
+        output.extend(_length_prefixed(category.encode("utf-8")))
+        output.extend(_length_prefixed(bytes(classification_bytes)))
+        if safe_local_id is None:
+            output.extend(_length_prefixed(b"local-id:absent"))
+        else:
+            output.extend(
+                _length_prefixed(
+                    b"local-id:" + _typed_transient_digest("localId", safe_local_id)
+                )
+            )
+        if safe_content is None:
+            output.extend(_length_prefixed(b"content:absent"))
+        else:
+            output.extend(
+                _length_prefixed(
+                    b"content:" + _typed_transient_digest("content", safe_content)
+                )
+            )
+        if safe_raw_content is None:
+            output.extend(_length_prefixed(b"raw-content:absent"))
+        else:
+            output.extend(
+                _length_prefixed(
+                    b"raw-content:"
+                    + _typed_transient_digest("rawContent", safe_raw_content)
+                )
+            )
+        return bytes(output)
+
+    return IdentityDigests(
+        kind="fallback-v2",
+        digest=hashlib.sha256(encoded(EVENT_FALLBACK_DOMAIN_V2)).digest(),
+        verifier=hashlib.blake2b(
+            encoded(EVENT_FALLBACK_VERIFIER_DOMAIN_V2),
+            digest_size=16,
+        ).digest(),
+    )
+
+
+def canonical_event_identity(
+    conversation_fingerprint: str,
+    candidate: CanonicalEventCandidate,
+) -> IdentityDigests | None:
+    """Return a v2 identity or ``None`` for insufficient fallback evidence."""
+
+    if candidate.platform_message_id:
+        return platform_identity(
+            conversation_fingerprint,
+            candidate.platform_message_id,
+        )
+    return fallback_identity_v2(conversation_fingerprint, candidate)
 
 
 def _identity_for(

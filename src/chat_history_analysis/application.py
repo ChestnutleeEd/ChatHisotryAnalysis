@@ -7,6 +7,10 @@ from pathlib import Path
 from typing import Callable, TypeVar
 
 from .backend import BackendEvidence
+from .canonical_dataset import (
+    CanonicalDatasetBuildResult,
+    CanonicalEventStagingConsumer,
+)
 from .errors import (
     INPUT_PREFLIGHT_PHASE,
     STARTUP_PHASE,
@@ -25,6 +29,7 @@ from .input_preflight import (
     InputSelection,
     OverlapVerificationSelection,
     PreflightedInputs,
+    preflight_desktop_inputs,
     preflight_ignored_existing_directory,
     preflight_inputs,
     preflight_overlap_verification,
@@ -32,6 +37,7 @@ from .input_preflight import (
 from .preprocessing_validation import (
     ValidationResult,
     validate_preflighted_inputs,
+    validate_preflighted_inputs_v2,
 )
 from .operation_control import current_operation_control
 from .startup import StartupGate
@@ -48,6 +54,14 @@ class PreprocessingResult:
 
     validation: ValidationResult
     dataset: DatasetBuildResult
+
+
+@dataclass(frozen=True)
+class CanonicalPreprocessingResult:
+    """Successful product v2 event-dataset publication."""
+
+    validation: ValidationResult
+    dataset: CanonicalDatasetBuildResult
 
 
 class _SourceAuthorization:
@@ -165,6 +179,39 @@ def run_preprocessing(selection: InputSelection) -> PreprocessingResult:
             )
             dataset = consumer.publish(validation)
             return PreprocessingResult(
+                validation=validation,
+                dataset=dataset,
+            )
+        except BaseException:
+            consumer.abort()
+            raise
+
+    return run_source_operation(preprocess)
+
+
+def run_preprocessing_v2(
+    selection: InputSelection,
+) -> CanonicalPreprocessingResult:
+    """Run v2 with the application-cache output policy."""
+
+    def preprocess(
+        authorization: _SourceAuthorization,
+    ) -> CanonicalPreprocessingResult:
+        control = current_operation_control()
+        control.phase_progress(INPUT_PREFLIGHT_PHASE, 0, 1, force=True)
+        control.checkpoint(INPUT_PREFLIGHT_PHASE, "preflight-v2-before")
+        inputs = preflight_desktop_inputs(selection)
+        control.checkpoint(INPUT_PREFLIGHT_PHASE, "preflight-v2-after")
+        control.phase_progress(INPUT_PREFLIGHT_PHASE, 1, 1, force=True)
+        consumer = CanonicalEventStagingConsumer(inputs.output_directory)
+        try:
+            validation = validate_preflighted_inputs_v2(
+                inputs,
+                authorization.trusted_backend(),
+                canonical_event_consumer=consumer,
+            )
+            dataset = consumer.publish(validation)
+            return CanonicalPreprocessingResult(
                 validation=validation,
                 dataset=dataset,
             )

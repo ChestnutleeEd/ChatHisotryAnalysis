@@ -245,6 +245,12 @@ class CanonicalEventValidationError(ValueError):
 _DATE_PATTERN = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 _TIME_PATTERN = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$")
 _HASH_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+_URL_PATTERN = re.compile(
+    r"(?i)(?<![A-Za-z0-9_])(?:https?://|www\.)[^\s<>\"']+"
+)
+_XML_LIKE_PATTERN = re.compile(
+    r"<\s*(?:[!?]|/?[A-Za-z_][A-Za-z0-9_.:-]*(?:\s|/?>))"
+)
 _V1_DATASET_FIELDS: Final = ("records", "schemaVersion", "summary")
 _V1_SUMMARY_FIELDS: Final = (
     "chunkCount",
@@ -348,6 +354,15 @@ def validate_canonical_event(value: object) -> CanonicalEventV2:
         sender_scope is None
         or (content is None) != (not text_eligible)
         or (text_eligible and category != "text")
+        or (
+            text_eligible
+            and (
+                not content
+                or "\x00" in cast(str, content)
+                or _URL_PATTERN.search(cast(str, content)) is not None
+                or _XML_LIKE_PATTERN.search(cast(str, content)) is not None
+            )
+        )
     ):
         raise CanonicalEventValidationError("CANONICAL_EVENT_PRIVACY")
     return CanonicalEventV2(
@@ -608,7 +623,9 @@ def _validate_v2_dataset_contract(value: object) -> dict[str, object]:
     observed_categories = {category: 0 for category in CANONICAL_MESSAGE_CATEGORIES}
     observed_eligible = 0
     observed_system = 0
-    for event in events:
+    for expected_source_index, event in enumerate(events):
+        if event["sourceIndex"] != expected_source_index:
+            raise CanonicalEventValidationError("DATASET_V2_INVALID")
         observed_categories[cast(str, event["messageCategory"])] += 1
         observed_eligible += int(cast(bool, event["textEligible"]))
         observed_system += int(event["messageCategory"] == "system")

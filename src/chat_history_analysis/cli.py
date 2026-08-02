@@ -9,9 +9,11 @@ import sys
 from typing import Callable, Sequence
 
 from .application import (
+    CanonicalPreprocessingResult,
     PreprocessingResult,
     run_overlap_verification,
     run_preprocessing,
+    run_preprocessing_v2,
     run_startup_check,
     run_staging_recovery,
 )
@@ -40,6 +42,14 @@ from .operation_control import (
     use_operation_control,
 )
 from .preprocessing_validation import ValidationResult
+from .sidecar_protocol import (
+    SidecarConfiguration,
+    SidecarProtocolError,
+    emit_failure,
+    emit_progress,
+    emit_result,
+    read_configuration,
+)
 
 
 class _ContentFreeArgumentParser(argparse.ArgumentParser):
@@ -357,10 +367,80 @@ def _emit_progress(payload: object) -> None:
     print(json.dumps(payload, sort_keys=True), flush=True)
 
 
+def run_sidecar_streams(
+    input_stream,
+    output_stream,
+    error_stream,
+) -> int:
+    """Run the v2 production composition through the sidecar protocol."""
+
+    configuration: SidecarConfiguration | None = None
+    try:
+        configuration = read_configuration(
+            input_stream,
+            reject_buffered_extra=True,
+        )
+        selection = InputSelection(
+            annual_sources=configuration.annual_sources,
+            overlap_verifications=configuration.verification_sources,
+            output_directory=configuration.output_directory,
+        )
+
+        def progress(payload):
+            if configuration is None:
+                raise SidecarProtocolError()
+            emit_progress(output_stream, configuration, payload)
+
+        control = OperationControl(progress_sink=progress)
+        with use_operation_control(control), install_sigint_handler(control):
+            result = run_preprocessing_v2(selection)
+        if not isinstance(result, CanonicalPreprocessingResult):
+            raise SidecarProtocolError()
+        emit_result(
+            output_stream,
+            configuration,
+            {
+                "eventCount": result.dataset.event_count,
+                "eligibleTextCount": result.dataset.eligible_text_count,
+                "chunkCount": result.dataset.chunk_count,
+                "duplicateEventCount": result.dataset.duplicate_event_count,
+                "warningCount": result.dataset.warning_count,
+            },
+        )
+        return int(ExitCode.SUCCESS)
+    except SidecarProtocolError as error:
+        emit_failure(error_stream, error.reason_code)
+        return int(ExitCode.OUTPUT_FAILURE)
+    except StartupError as error:
+        emit_failure(error_stream, error.reason_code.value)
+        return int(ExitCode.STARTUP_FAILURE)
+    except InputPreflightError as error:
+        emit_failure(error_stream, error.reason_code.value)
+        return _classified_exit(error.category)
+    except SourceValidationError as error:
+        emit_failure(error_stream, error.reason_code.value)
+        return _classified_exit(error.category)
+    except DatasetPersistenceError as error:
+        emit_failure(error_stream, error.reason_code.value)
+        return _classified_exit(error.category)
+    except CancellationError as error:
+        emit_failure(error_stream, error.reason_code.value)
+        return int(ExitCode.CANCELLATION)
+    except Exception:
+        emit_failure(error_stream, "SIDECAR_CRASHED")
+        return int(ExitCode.OUTPUT_FAILURE)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the non-injectable production readiness command."""
 
     supplied = tuple(sys.argv[1:] if argv is None else argv)
+    if supplied == ("sidecar",):
+        return run_sidecar_streams(
+            sys.stdin.buffer,
+            sys.stdout,
+            sys.stderr,
+        )
     sink = _emit_progress if supplied[:1] == ("preprocess",) else None
     control = OperationControl(progress_sink=sink)
     with use_operation_control(control), install_sigint_handler(control):

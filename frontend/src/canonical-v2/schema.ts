@@ -299,6 +299,9 @@ function sha256(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{64}$/u.test(value);
 }
 
+const textUrlPattern = /(?<![A-Za-z0-9_])(?:https?:\/\/|www\.)[^\s<>"']+/iu;
+const textXmlLikePattern = /<\s*(?:[!?]|\/?[A-Za-z_][A-Za-z0-9_.:-]*(?:\s|\/?>))/u;
+
 export function validateCanonicalEventV2(
   value: unknown,
 ): CanonicalEventV2 {
@@ -342,7 +345,12 @@ export function validateCanonicalEventV2(
     if (
       value.senderScope === null ||
       (value.content === null) !== !value.textEligible ||
-      (value.textEligible && value.messageCategory !== "text")
+      (value.textEligible && value.messageCategory !== "text") ||
+      (value.textEligible &&
+        (!value.content ||
+          value.content.includes("\u0000") ||
+          textUrlPattern.test(value.content) ||
+          textXmlLikePattern.test(value.content)))
     ) {
       throw new CanonicalContractValidationError("CANONICAL_EVENT_PRIVACY");
     }
@@ -482,7 +490,10 @@ function validateV2DatasetContract(value: unknown): V2DatasetContract {
   ) as Record<CanonicalMessageCategory, number>;
   let observedEligible = 0;
   let observedSystem = 0;
-  for (const event of events) {
+  for (const [expectedSourceIndex, event] of events.entries()) {
+    if (event.sourceIndex !== expectedSourceIndex) {
+      throw new CanonicalContractValidationError("DATASET_V2_INVALID");
+    }
     observedCategories[event.messageCategory] += 1;
     observedEligible += event.textEligible ? 1 : 0;
     observedSystem += event.messageCategory === "system" ? 1 : 0;

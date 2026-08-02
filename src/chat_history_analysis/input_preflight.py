@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 from pathlib import Path
+import re
 import stat
 import subprocess
 from typing import Final, Iterable, NoReturn
@@ -20,6 +21,10 @@ GIT_EXECUTABLE: Final = "git"
 MAX_RAW_INPUT_BYTES: Final = 536_870_912
 MAX_ANNUAL_SOURCES: Final = 20
 MAX_AGGREGATE_RAW_INPUT_BYTES: Final = 2_147_483_648
+DESKTOP_SESSION_ROOT_NAME: Final = "analysis-sessions"
+_DESKTOP_SESSION_ID_PATTERN: Final = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9_-]{7,127}$"
+)
 _GIT_REPOSITORY_ENVIRONMENT: Final = frozenset(
     {
         "GIT_ALTERNATE_OBJECT_DIRECTORIES",
@@ -572,3 +577,164 @@ def preflight_ignored_existing_directory(path: Path) -> Path:
     if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
         _reject_output()
     return selected
+
+
+def ensure_desktop_session_root(application_cache_root: Path) -> Path:
+    """Create/validate the owner-only desktop session parent.
+
+    This policy is intentionally separate from the Git-ignored CLI output
+    policy above.  It accepts only a platform-resolved application cache root;
+    it never consults Git and never follows a symlink while creating the
+    fixed ``analysis-sessions`` child.
+    """
+
+    if not isinstance(application_cache_root, Path):
+        _reject()
+    root = _lexical_absolute(application_cache_root)
+    try:
+        resolved_root = Path(os.path.realpath(root))
+        is_macos_var_alias = (
+            len(root.parts) >= 2
+            and root.parts[1] == "var"
+            and len(resolved_root.parts) >= 3
+            and resolved_root.parts[1:3] == ("private", "var")
+        )
+        if resolved_root != root and not is_macos_var_alias:
+            _reject()
+        root = resolved_root
+    except (OSError, RuntimeError, ValueError):
+        _reject()
+    old_umask = os.umask(0o077)
+    try:
+        try:
+            root_metadata = os.lstat(root)
+        except FileNotFoundError:
+            root.mkdir(mode=0o700, parents=True, exist_ok=False)
+            root_metadata = os.lstat(root)
+        if (
+            stat.S_ISLNK(root_metadata.st_mode)
+            or not stat.S_ISDIR(root_metadata.st_mode)
+            or root_metadata.st_uid != os.getuid()
+            or stat.S_IMODE(root_metadata.st_mode) != 0o700
+        ):
+            _reject()
+        sessions = root / DESKTOP_SESSION_ROOT_NAME
+        try:
+            sessions_metadata = os.lstat(sessions)
+        except FileNotFoundError:
+            sessions.mkdir(mode=0o700, exist_ok=False)
+            sessions_metadata = os.lstat(sessions)
+        if (
+            stat.S_ISLNK(sessions_metadata.st_mode)
+            or not stat.S_ISDIR(sessions_metadata.st_mode)
+            or sessions_metadata.st_uid != os.getuid()
+            or stat.S_IMODE(sessions_metadata.st_mode) != 0o700
+        ):
+            _reject()
+        return sessions.resolve(strict=True)
+    except InputPreflightError:
+        raise
+    except (OSError, RuntimeError, ValueError):
+        _reject()
+    finally:
+        os.umask(old_umask)
+
+
+def preflight_desktop_output_directory(path: Path) -> Path:
+    """Validate one absent, opaque, owner-only desktop output destination."""
+
+    if not isinstance(path, Path):
+        _reject()
+    candidate = _lexical_absolute(path)
+    session_root = candidate.parent
+    cache_root = session_root.parent
+    if (
+        session_root.name != DESKTOP_SESSION_ROOT_NAME
+        or not _DESKTOP_SESSION_ID_PATTERN.fullmatch(candidate.name)
+    ):
+        _reject()
+    try:
+        lexical_cache_metadata = os.lstat(cache_root)
+        lexical_session_metadata = os.lstat(session_root)
+        resolved_cache_root = cache_root.resolve(strict=True)
+        resolved_session_root = session_root.resolve(strict=True)
+        resolved_candidate = candidate.resolve(strict=False)
+        root_metadata = os.lstat(resolved_cache_root)
+        sessions_metadata = os.lstat(resolved_session_root)
+        if (
+            stat.S_ISLNK(lexical_cache_metadata.st_mode)
+            or stat.S_ISLNK(lexical_session_metadata.st_mode)
+            or Path(os.path.realpath(cache_root)) != cache_root
+            or Path(os.path.realpath(session_root)) != session_root
+            or stat.S_ISLNK(root_metadata.st_mode)
+            or not stat.S_ISDIR(root_metadata.st_mode)
+            or root_metadata.st_uid != os.getuid()
+            or stat.S_IMODE(root_metadata.st_mode) != 0o700
+            or stat.S_ISLNK(sessions_metadata.st_mode)
+            or not stat.S_ISDIR(sessions_metadata.st_mode)
+            or sessions_metadata.st_uid != os.getuid()
+            or stat.S_IMODE(sessions_metadata.st_mode) != 0o700
+            or resolved_session_root.parent != resolved_cache_root
+            or resolved_candidate.parent != resolved_session_root
+            or resolved_candidate.name != candidate.name
+        ):
+            _reject()
+        if os.path.lexists(candidate):
+            _reject()
+    except InputPreflightError:
+        raise
+    except (OSError, RuntimeError, ValueError):
+        _reject()
+    return resolved_candidate
+
+
+def preflight_desktop_inputs(selection: InputSelection) -> PreflightedInputs:
+    """Validate raw sources with the application-cache output policy."""
+
+    if (
+        not isinstance(selection, InputSelection)
+        or not isinstance(selection.annual_sources, tuple)
+        or not isinstance(selection.overlap_verifications, tuple)
+        or not isinstance(selection.output_directory, Path)
+        or not selection.annual_sources
+        or not all(
+            isinstance(path, Path)
+            for path in (*selection.annual_sources, *selection.overlap_verifications)
+        )
+    ):
+        _reject()
+    annual_source_metadata = tuple(
+        _preflight_source(path) for path in selection.annual_sources
+    )
+    try:
+        overlap_verification_metadata = tuple(
+            _preflight_source(path) for path in selection.overlap_verifications
+        )
+    except InputPreflightError as error:
+        _reclassify_verification_preflight(error)
+    if len(annual_source_metadata) > MAX_ANNUAL_SOURCES:
+        _reject(
+            InputPreflightReasonCode.ANNUAL_SOURCE_COUNT_LIMIT_EXCEEDED,
+            FailureCategory.CAPACITY,
+        )
+    all_source_metadata = annual_source_metadata + overlap_verification_metadata
+    if any(source.size_bytes > MAX_RAW_INPUT_BYTES for source in all_source_metadata):
+        _reject(
+            InputPreflightReasonCode.RAW_INPUT_FILE_LIMIT_EXCEEDED,
+            FailureCategory.CAPACITY,
+        )
+    if sum(source.size_bytes for source in all_source_metadata) > MAX_AGGREGATE_RAW_INPUT_BYTES:
+        _reject(
+            InputPreflightReasonCode.AGGREGATE_RAW_INPUT_LIMIT_EXCEEDED,
+            FailureCategory.CAPACITY,
+        )
+    output_directory = preflight_desktop_output_directory(selection.output_directory)
+    for source in all_source_metadata:
+        _revalidate_source(source)
+    return PreflightedInputs(
+        annual_sources=tuple(source.resolved_path for source in annual_source_metadata),
+        overlap_verifications=tuple(
+            source.resolved_path for source in overlap_verification_metadata
+        ),
+        output_directory=output_directory,
+    )

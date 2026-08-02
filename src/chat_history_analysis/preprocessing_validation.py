@@ -23,6 +23,9 @@ from .message_capacity import (
     AggregateMessageCounter,
 )
 from .message_normalization import (
+    CanonicalEventCandidate,
+    CanonicalEventNormalizationConsumer,
+    CanonicalNormalizationSummary,
     MessageNormalizationConsumer,
     NormalizedMessage,
     NormalizationSummary,
@@ -82,8 +85,29 @@ class ValidationResult:
     aggregate_raw_message_count: int
     annual_staged_message_count: int
     verification_streamed_message_count: int
-    annual_normalization: NormalizationSummary
-    verification_normalization: NormalizationSummary
+    annual_normalization: NormalizationSummary | CanonicalNormalizationSummary
+    verification_normalization: NormalizationSummary | CanonicalNormalizationSummary
+    canonical_normalization: CanonicalNormalizationSummary | None = None
+
+
+class CanonicalStagingConsumer(Protocol):
+    """Stage the v2 canonical event stream without changing the v1 sink."""
+
+    def stage_annual_event(
+        self,
+        descriptor: ValidatedSourceDescriptor,
+        candidate: CanonicalEventCandidate,
+    ) -> None: ...
+
+    def observe_verification_event(
+        self,
+        descriptor: ValidatedSourceDescriptor,
+        candidate: CanonicalEventCandidate,
+    ) -> None: ...
+
+    def complete(self) -> None: ...
+
+    def abort(self) -> None: ...
 
 
 class StagingConsumer(Protocol):
@@ -297,6 +321,7 @@ def _validate_preflighted_inputs(
     *,
     message_limit: int = MAX_AGGREGATE_RAW_MESSAGES,
     staging_consumer: StagingConsumer | None = None,
+    canonical_event_consumer: CanonicalStagingConsumer | None = None,
 ) -> ValidationResult:
     """Run every digest, validation, ranking, and staging-stream pass."""
 
@@ -365,28 +390,46 @@ def _validate_preflighted_inputs(
     control.checkpoint(SESSION_VALIDATION_PHASE, "session-validation-after")
     control.phase_progress(SESSION_VALIDATION_PHASE, 1, 1, force=True)
     consumer = staging_consumer or DiscardingStagingConsumer()
-    normalizer = MessageNormalizationConsumer(
-        on_annual_eligible=lambda descriptor, record, platform_id, owner, peer: (
-            consumer.stage_annual_record(
-                descriptor,
-                record,
-                platform_id,
-                owner_identity=owner,
-                peer_identity=peer,
+    if canonical_event_consumer is None:
+        normalizer: MessageNormalizationConsumer | CanonicalEventNormalizationConsumer = (
+            MessageNormalizationConsumer(
+                on_annual_eligible=lambda descriptor, record, platform_id, owner, peer: (
+                    consumer.stage_annual_record(
+                        descriptor,
+                        record,
+                        platform_id,
+                        owner_identity=owner,
+                        peer_identity=peer,
+                    )
+                ),
+                on_verification_eligible=(
+                    lambda descriptor, record, platform_id, owner, peer: (
+                        consumer.observe_verification_record(
+                            descriptor,
+                            record,
+                            platform_id,
+                            owner_identity=owner,
+                            peer_identity=peer,
+                        )
+                    )
+                ),
             )
-        ),
-        on_verification_eligible=(
-            lambda descriptor, record, platform_id, owner, peer: (
-                consumer.observe_verification_record(
+        )
+    else:
+        normalizer = CanonicalEventNormalizationConsumer(
+            on_annual_event=(
+                lambda descriptor, candidate: canonical_event_consumer.stage_annual_event(
                     descriptor,
-                    record,
-                    platform_id,
-                    owner_identity=owner,
-                    peer_identity=peer,
+                    candidate,
                 )
-            )
-        ),
-    )
+            ),
+            on_verification_event=(
+                lambda descriptor, candidate: canonical_event_consumer.observe_verification_event(
+                    descriptor,
+                    candidate,
+                )
+            ),
+        )
 
     try:
         staged_descriptors = (*ranked_annual, *verification_descriptors)
@@ -439,7 +482,10 @@ def _validate_preflighted_inputs(
         normalizer.complete()
         control.phase_progress(DATASET_STAGING_PHASE, 0, 1, force=True)
         control.checkpoint(DATASET_STAGING_PHASE, "sqlite-commit-before")
-        consumer.complete()
+        if canonical_event_consumer is None:
+            consumer.complete()
+        else:
+            canonical_event_consumer.complete()
         control.checkpoint(DATASET_STAGING_PHASE, "sqlite-commit-after")
         control.phase_progress(DATASET_STAGING_PHASE, 1, 1, force=True)
     except BaseException:
@@ -451,6 +497,11 @@ def _validate_preflighted_inputs(
             consumer.abort()
         except BaseException:
             pass
+        if canonical_event_consumer is not None:
+            try:
+                canonical_event_consumer.abort()
+            except BaseException:
+                pass
         raise
 
     annual_staged = sum(
@@ -469,6 +520,11 @@ def _validate_preflighted_inputs(
         verification_streamed_message_count=verification_streamed,
         annual_normalization=normalizer.annual_summary,
         verification_normalization=normalizer.verification_summary,
+        canonical_normalization=(
+            normalizer.annual_summary
+            if canonical_event_consumer is not None
+            else None
+        ),
     )
 
 
@@ -494,4 +550,28 @@ def validate_preflighted_inputs(
                 staging_consumer.abort()
             except BaseException:
                 pass
+        raise
+
+
+def validate_preflighted_inputs_v2(
+    inputs: PreflightedInputs,
+    backend: BackendEvidence,
+    *,
+    canonical_event_consumer: CanonicalStagingConsumer,
+    message_limit: int = MAX_AGGREGATE_RAW_MESSAGES,
+) -> ValidationResult:
+    """Run the shared source passes with the canonical v2 event sink."""
+
+    try:
+        return _validate_preflighted_inputs(
+            inputs,
+            backend,
+            message_limit=message_limit,
+            canonical_event_consumer=canonical_event_consumer,
+        )
+    except BaseException:
+        try:
+            canonical_event_consumer.abort()
+        except BaseException:
+            pass
         raise
