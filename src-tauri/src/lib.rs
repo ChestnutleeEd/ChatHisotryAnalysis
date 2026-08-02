@@ -1,0 +1,79 @@
+use tauri::Manager;
+
+pub mod dataset_transport;
+pub mod ipc;
+pub mod security;
+pub mod trust_anchor;
+pub mod webview_permissions;
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .manage(ipc::IpcCoreState::default())
+        .manage(dataset_transport::DatasetTransportState::default())
+        .setup(|app| {
+            trust_anchor::verify_embedded_anchor()
+                .map_err(|code| std::io::Error::new(std::io::ErrorKind::InvalidData, code))?;
+            let transport = app
+                .state::<dataset_transport::DatasetTransportState>()
+                .inner()
+                .clone();
+            if let Ok(resource_dir) = app.path().resource_dir() {
+                let bundle_root = resource_dir.join(trust_anchor::SIDECAR_BUNDLE_DIRECTORY);
+                if trust_anchor::verify_sidecar_bundle(&bundle_root).is_ok() {
+                    transport.mark_sidecar_verified();
+                }
+            }
+            let window_config = app
+                .config()
+                .app
+                .windows
+                .iter()
+                .find(|window| window.label == security::MAIN_WINDOW_LABEL)
+                .ok_or_else(|| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        "missing main window configuration",
+                    )
+                })?;
+            let window = tauri::webview::WebviewWindowBuilder::from_config(app, window_config)?
+                .on_navigation(security::allow_navigation)
+                .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
+                .build()?;
+            webview_permissions::install(&window)?;
+            window.on_window_event({
+                let transport = transport.clone();
+                move |event| {
+                    if matches!(event, tauri::WindowEvent::Destroyed) {
+                        transport.close_window(security::MAIN_WINDOW_LABEL);
+                    }
+                }
+            });
+            Ok(())
+        })
+        .on_page_load(|webview, payload| {
+            if matches!(payload.event(), tauri::webview::PageLoadEvent::Started) {
+                webview
+                    .app_handle()
+                    .state::<dataset_transport::DatasetTransportState>()
+                    .close_window(webview.label());
+            }
+        })
+        .invoke_handler(tauri::generate_handler![
+            ipc::select_annual_sources,
+            ipc::select_verification_sources,
+            ipc::start_analysis,
+            ipc::cancel_analysis,
+            ipc::retry_analysis,
+            ipc::discard_session,
+            ipc::export_aggregate,
+            ipc::request_application_close,
+            dataset_transport::open_dataset_stream,
+            dataset_transport::receive_dataset_chunk,
+            dataset_transport::complete_dataset_stream,
+            dataset_transport::cancel_dataset_stream,
+            dataset_transport::close_dataset_stream,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running Chat History Analysis");
+}

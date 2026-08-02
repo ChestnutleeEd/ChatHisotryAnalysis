@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import io
+import sys
 from typing import Callable, Final
 
 from .backend import (
@@ -61,6 +62,11 @@ class StartupGate:
 
     def verify(self) -> BackendEvidence:
         """Fail closed in the approved deterministic order."""
+
+        if getattr(sys, "frozen", False):
+            from .frozen_runtime import verify_frozen_runtime
+
+            return verify_frozen_runtime()
 
         runtime = self._runtime_facts()
         self._verify_implementation(runtime)

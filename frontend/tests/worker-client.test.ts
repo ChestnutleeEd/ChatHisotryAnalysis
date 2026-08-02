@@ -11,6 +11,11 @@ import type {
   WorkerRequest,
   WorkerResponse,
 } from "../src/worker-analysis/protocol";
+import type {
+  DatasetId,
+  Generation,
+  SessionId,
+} from "../src/desktop/ipc-contract";
 
 const result: AnalysisResult = {
   words: [{ token: "synthetic", frequency: 2 }],
@@ -78,11 +83,15 @@ describe("analysis Worker client lifecycle", () => {
     expect(worker.messages).toContainEqual({
       type: "cancel",
       operationId: firstId,
+      generation: firstId,
+      sequence: 2,
     });
 
     worker.respond({
       type: "accepted",
       operationId: firstId,
+      generation: firstId,
+      sequence: 2,
       summary: {
         normalizedRecordCount: 1,
         minimumCalendarDate: "2025-01-01",
@@ -97,6 +106,8 @@ describe("analysis Worker client lifecycle", () => {
     worker.respond({
       type: "accepted",
       operationId: secondRequest.operationId,
+      generation: secondRequest.generation,
+      sequence: 2,
       summary: {
         normalizedRecordCount: 1,
         minimumCalendarDate: "2025-01-01",
@@ -111,6 +122,45 @@ describe("analysis Worker client lifecycle", () => {
     await expect(second).resolves.toMatchObject({ result });
   });
 
+  it("sends only the opaque desktop source capability through the client", async () => {
+    const worker = new FakeWorker();
+    const client = new AnalysisWorkerClient(() => worker);
+    const pending = client.loadDesktopDataset({
+      sessionId: "ses_00000000000000000000000000000001" as SessionId,
+      generation: 41 as Generation,
+      datasetId: "dat_00000000000000000000000000000001" as DatasetId,
+    });
+    const request = worker.messages[0] as Extract<
+      WorkerRequest,
+      { type: "load-dataset" }
+    >;
+    expect(request.source).toEqual({
+      kind: "desktop-dataset-source",
+      sessionId: "ses_00000000000000000000000000000001",
+      generation: 41,
+      datasetId: "dat_00000000000000000000000000000001",
+    });
+    expect(request.generation).toBe(41);
+    expect(JSON.stringify(request)).not.toMatch(/path|cwd|argv|env/u);
+    worker.respond({
+      type: "accepted",
+      operationId: request.operationId,
+      generation: request.generation,
+      sequence: 2,
+      summary: {
+        normalizedRecordCount: 1,
+        minimumCalendarDate: "2025-01-01",
+        maximumCalendarDate: "2025-01-01",
+        warningCount: 0,
+        warningsByReason: {},
+        chunkCount: 1,
+        pseudonymous: true,
+      },
+      result,
+    });
+    await expect(pending).resolves.toMatchObject({ result });
+  });
+
   it("cooperatively cancels and then terminates the Worker on Stop", async () => {
     const worker = new FakeWorker();
     worker.onPost = (message) => {
@@ -119,6 +169,8 @@ describe("analysis Worker client lifecycle", () => {
           worker.respond({
             type: "cancelled",
             operationId: message.operationId,
+            generation: message.generation,
+            sequence: message.sequence + 1,
           });
         });
       }

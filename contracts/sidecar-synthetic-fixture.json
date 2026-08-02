@@ -1,0 +1,35 @@
+{
+  "exportInfo": {
+    "format": "detailed-json",
+    "version": "synthetic-v1"
+  },
+  "session": {
+    "isGroup": false,
+    "type": "私聊",
+    "platform": "synthetic-platform",
+    "ownerId": "synthetic-owner",
+    "wxid": "synthetic-peer"
+  },
+  "messages": [
+    {
+      "createTime": 1735689600,
+      "formattedTime": "2025-01-01 08:00:00",
+      "senderUsername": "synthetic-owner",
+      "content": "synthetic hello",
+      "chatLabType": 0,
+      "type": "文本消息",
+      "localType": 1,
+      "isSend": 1
+    },
+    {
+      "createTime": 1735776000,
+      "formattedTime": "2025-01-02 08:00:00",
+      "senderUsername": "synthetic-peer",
+      "content": "synthetic reply",
+      "chatLabType": 0,
+      "type": "文本消息",
+      "localType": 1,
+      "isSend": 0
+    }
+  ]
+}

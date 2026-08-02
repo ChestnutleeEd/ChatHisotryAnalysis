@@ -2,6 +2,11 @@ import type {
   DatasetSummary,
   SenderFilter,
 } from "../normalized/schema";
+import type {
+  DatasetId,
+  Generation,
+  SessionId,
+} from "../desktop/ipc-contract";
 
 export const STOP_WORDS_VERSION =
   "chat-history-analysis.stopwords.zh-en.v1";
@@ -38,8 +43,10 @@ export type WorkerFailureCode =
   | "COUNT_MISMATCH"
   | "RANGE_MISMATCH"
   | "PRIVACY_VALIDATION_FAILED"
+  | "DATASET_TRANSPORT_INVALID"
   | "SETTINGS_INVALID"
-  | "NO_ACCEPTED_DATASET";
+  | "NO_ACCEPTED_DATASET"
+  | "STALE_OPERATION";
 
 export interface TokenizerSettings {
   readonly minimumTokenLength: number;
@@ -80,6 +87,8 @@ export interface AnalysisResult {
 export interface WorkerProgress {
   readonly type: "progress";
   readonly operationId: number;
+  readonly generation: number;
+  readonly sequence: number;
   readonly phase: WorkerPhase;
   readonly completed: number;
   readonly total: number;
@@ -88,21 +97,43 @@ export interface WorkerProgress {
   readonly chunkCount?: number;
 }
 
+export type BrowserFileSourceRequest = {
+  readonly kind: "browser-file-source";
+  readonly files: readonly File[];
+};
+
+export type DesktopDatasetSourceRequest = {
+  readonly kind: "desktop-dataset-source";
+  readonly sessionId: SessionId;
+  readonly generation: Generation;
+  readonly datasetId: DatasetId;
+};
+
+export type WorkerDatasetSourceRequest =
+  | BrowserFileSourceRequest
+  | DesktopDatasetSourceRequest;
+
 export type WorkerRequest =
   | {
       readonly type: "load-dataset";
       readonly operationId: number;
-      readonly files: readonly File[];
+      readonly generation: number;
+      readonly sequence: number;
+      readonly source: WorkerDatasetSourceRequest;
       readonly tokenizerSettings: TokenizerSettings;
     }
   | {
       readonly type: "analyze";
       readonly operationId: number;
+      readonly generation: number;
+      readonly sequence: number;
       readonly settings: AnalysisSettings;
     }
   | {
       readonly type: "cancel";
       readonly operationId: number;
+      readonly generation: number;
+      readonly sequence: number;
     }
   | {
       readonly type: "dispose";
@@ -113,21 +144,29 @@ export type WorkerResponse =
   | {
       readonly type: "accepted";
       readonly operationId: number;
+      readonly generation: number;
+      readonly sequence: number;
       readonly summary: DatasetSummary;
       readonly result: AnalysisResult;
     }
   | {
       readonly type: "result";
       readonly operationId: number;
+      readonly generation: number;
+      readonly sequence: number;
       readonly result: AnalysisResult;
     }
   | {
       readonly type: "cancelled";
       readonly operationId: number;
+      readonly generation: number;
+      readonly sequence: number;
     }
   | {
       readonly type: "error";
       readonly operationId: number;
+      readonly generation: number;
+      readonly sequence: number;
       readonly code: WorkerFailureCode;
       readonly phase: WorkerPhase;
       readonly chunkOrdinal?: number;

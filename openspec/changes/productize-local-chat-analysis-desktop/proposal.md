@@ -17,6 +17,31 @@ The implemented local word-cloud MVP still requires users to run a Python enviro
 - Record synthetic-only implementation gates and the dependency on the existing MVP Stage 13–15 authorization checkpoints without running, reordering, or marking any existing real-data task complete.
 - Keep Windows packaging, formal signing/notarization, automatic updates, accounts, upload, cloud analysis, external model APIs, database extraction, and relationship or psychological judgement out of this change.
 
+## Stage 1 Alpha foundation boundary
+
+The current productization Stage 1 is an unsigned local macOS Alpha foundation
+gate. It is intended to prove the one-click architecture, privacy boundary,
+host-owned opaque transport, production Worker integration, bounded lifecycle,
+browser compatibility, and clean-installable source build. It does not claim a
+public release or complete release evidence.
+
+Stage 1 Alpha MUST still enforce local-only processing, permanent isolation of
+`data/private`, renderer privilege minimization, explicit user selection,
+host-owned session/dataset authority, deterministic multi-file handling,
+Worker stale-operation suppression, bounded chunks/datasets/records/channels,
+basic cancellation and cleanup, pinned Python 3.12 dependencies, a true
+hash-locked install, and a buildable unsigned macOS arm64 path. All automated
+fixtures remain public or synthetic.
+
+The following remain explicit unchecked Beta/Release hardening work and do not
+block the unsigned local Alpha: packaged WebKit permission runtime proof,
+independent signed sidecar trust roots, complete tamper and lifecycle/crash
+matrices, formal codesign/notarization, `.app`/`.dmg` clean-machine release
+acceptance, exhaustive IPC conformance, 512 MiB peak-memory proof, release
+supply-chain evidence, and Windows hardening. These requirements are retained
+in the change's deferred task section and must be completed before a formal
+release claim.
+
 ## Capabilities
 
 ### New Capabilities

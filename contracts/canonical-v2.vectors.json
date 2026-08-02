@@ -1,0 +1,1654 @@
+ {
+   "validEvents": [
+     {
+       "name": "eligible-text",
+       "value": {
+         "createTime": 1735689600,
+         "formattedTime": "2025-01-01 08:00:00",
+         "calendarDate": "2025-01-01",
+         "senderScope": "owner",
+         "messageCategory": "text",
+         "textEligible": true,
+         "content": "synthetic text",
+         "fileRank": 0,
+         "sourceIndex": 0
+       },
+       "serialized": "{\"createTime\":1735689600,\"formattedTime\":\"2025-01-01 08:00:00\",\"calendarDate\":\"2025-01-01\",\"senderScope\":\"owner\",\"messageCategory\":\"text\",\"textEligible\":true,\"content\":\"synthetic text\",\"fileRank\":0,\"sourceIndex\":0}"
+     },
+     {
+       "name": "redacted-media",
+       "value": {
+         "createTime": 1735776000,
+         "formattedTime": "2025-01-02 08:00:00",
+         "calendarDate": "2025-01-02",
+         "senderScope": "other",
+         "messageCategory": "image",
+         "textEligible": false,
+         "content": null,
+         "fileRank": 0,
+         "sourceIndex": 1
+       },
+       "serialized": "{\"createTime\":1735776000,\"formattedTime\":\"2025-01-02 08:00:00\",\"calendarDate\":\"2025-01-02\",\"senderScope\":\"other\",\"messageCategory\":\"image\",\"textEligible\":false,\"content\":null,\"fileRank\":0,\"sourceIndex\":1}"
+     },
+     {
+       "name": "system",
+       "value": {
+         "createTime": 1735862400,
+         "formattedTime": "2025-01-03 08:00:00",
+         "calendarDate": "2025-01-03",
+         "senderScope": null,
+         "messageCategory": "system",
+         "textEligible": false,
+         "content": null,
+         "fileRank": 0,
+         "sourceIndex": 2
+       },
+       "serialized": "{\"createTime\":1735862400,\"formattedTime\":\"2025-01-03 08:00:00\",\"calendarDate\":\"2025-01-03\",\"senderScope\":null,\"messageCategory\":\"system\",\"textEligible\":false,\"content\":null,\"fileRank\":0,\"sourceIndex\":2}"
+     },
+     {
+       "name": "leap-year-february-29",
+       "value": {
+         "createTime": 1709164800,
+         "formattedTime": "2024-02-29 08:00:00",
+         "calendarDate": "2024-02-29",
+         "senderScope": "owner",
+         "messageCategory": "text",
+         "textEligible": true,
+         "content": "leap day",
+         "fileRank": 0,
+         "sourceIndex": 3
+       },
+       "serialized": "{\"createTime\":1709164800,\"formattedTime\":\"2024-02-29 08:00:00\",\"calendarDate\":\"2024-02-29\",\"senderScope\":\"owner\",\"messageCategory\":\"text\",\"textEligible\":true,\"content\":\"leap day\",\"fileRank\":0,\"sourceIndex\":3}"
+     },
+     {
+       "name": "utc-plus-8-before-midnight-boundary",
+       "value": {
+         "createTime": 1735689599,
+         "formattedTime": "2025-01-01 07:59:59",
+         "calendarDate": "2025-01-01",
+         "senderScope": "other",
+         "messageCategory": "text",
+         "textEligible": true,
+         "content": "before",
+         "fileRank": 0,
+         "sourceIndex": 4
+       },
+       "serialized": "{\"createTime\":1735689599,\"formattedTime\":\"2025-01-01 07:59:59\",\"calendarDate\":\"2025-01-01\",\"senderScope\":\"other\",\"messageCategory\":\"text\",\"textEligible\":true,\"content\":\"before\",\"fileRank\":0,\"sourceIndex\":4}"
+     },
+     {
+       "name": "utc-plus-8-after-midnight-boundary",
+       "value": {
+         "createTime": 1735689600,
+         "formattedTime": "2025-01-01 08:00:00",
+         "calendarDate": "2025-01-01",
+         "senderScope": "other",
+         "messageCategory": "text",
+         "textEligible": true,
+         "content": "after",
+         "fileRank": 0,
+         "sourceIndex": 5
+       },
+       "serialized": "{\"createTime\":1735689600,\"formattedTime\":\"2025-01-01 08:00:00\",\"calendarDate\":\"2025-01-01\",\"senderScope\":\"other\",\"messageCategory\":\"text\",\"textEligible\":true,\"content\":\"after\",\"fileRank\":0,\"sourceIndex\":5}"
+     },
+     {
+       "name": "minimum-create-time",
+       "value": {
+         "createTime": 0,
+         "formattedTime": "1970-01-01 08:00:00",
+         "calendarDate": "1970-01-01",
+         "senderScope": "owner",
+         "messageCategory": "text",
+         "textEligible": true,
+         "content": "epoch",
+         "fileRank": 0,
+         "sourceIndex": 6
+       },
+       "serialized": "{\"createTime\":0,\"formattedTime\":\"1970-01-01 08:00:00\",\"calendarDate\":\"1970-01-01\",\"senderScope\":\"owner\",\"messageCategory\":\"text\",\"textEligible\":true,\"content\":\"epoch\",\"fileRank\":0,\"sourceIndex\":6}"
+     },
+     {
+       "name": "maximum-safe-order-index",
+       "value": {
+         "createTime": 1735689600,
+         "formattedTime": "2025-01-01 08:00:00",
+         "calendarDate": "2025-01-01",
+         "senderScope": "owner",
+         "messageCategory": "text",
+         "textEligible": true,
+         "content": "safe",
+         "fileRank": 9007199254740991,
+         "sourceIndex": 9007199254740991
+       },
+       "serialized": "{\"createTime\":1735689600,\"formattedTime\":\"2025-01-01 08:00:00\",\"calendarDate\":\"2025-01-01\",\"senderScope\":\"owner\",\"messageCategory\":\"text\",\"textEligible\":true,\"content\":\"safe\",\"fileRank\":9007199254740991,\"sourceIndex\":9007199254740991}"
+     }
+   ],
+   "invalidEvents": [
+     {
+       "name": "impossible-non-leap-february-29",
+       "value": {
+         "createTime": 1677600000,
+         "formattedTime": "2023-02-29 00:00:00",
+         "calendarDate": "2023-02-29",
+         "senderScope": "owner",
+         "messageCategory": "text",
+         "textEligible": true,
+         "content": "synthetic text",
+         "fileRank": 0,
+         "sourceIndex": 0
+       }
+     },
+     {
+       "name": "timestamp-string-mismatch",
+       "value": {
+         "createTime": 1735689600,
+         "formattedTime": "2025-01-01 09:00:00",
+         "calendarDate": "2025-01-01",
+         "senderScope": "owner",
+         "messageCategory": "text",
+         "textEligible": true,
+         "content": "synthetic text",
+         "fileRank": 0,
+         "sourceIndex": 0
+       }
+     },
+     {
+       "name": "negative-timestamp",
+       "value": {
+         "createTime": -1,
+         "formattedTime": "2025-01-01 08:00:00",
+         "calendarDate": "2025-01-01",
+         "senderScope": "owner",
+         "messageCategory": "text",
+         "textEligible": true,
+         "content": "synthetic text",
+         "fileRank": 0,
+         "sourceIndex": 0
+       }
+     },
+     {
+       "name": "first-over-max-safe-timestamp",
+       "value": {
+         "createTime": 9007199254740992,
+         "formattedTime": "2025-01-01 08:00:00",
+         "calendarDate": "2025-01-01",
+         "senderScope": "owner",
+         "messageCategory": "text",
+         "textEligible": true,
+         "content": "synthetic text",
+         "fileRank": 0,
+         "sourceIndex": 0
+       }
+     },
+     {
+       "name": "first-over-max-safe-file-rank",
+       "value": {
+         "createTime": 1735689600,
+         "formattedTime": "2025-01-01 08:00:00",
+         "calendarDate": "2025-01-01",
+         "senderScope": "owner",
+         "messageCategory": "text",
+         "textEligible": true,
+         "content": "synthetic text",
+         "fileRank": 9007199254740992,
+         "sourceIndex": 0
+       }
+     },
+     {
+       "name": "unknown-message-category",
+       "value": {
+         "createTime": 1735689600,
+         "formattedTime": "2025-01-01 08:00:00",
+         "calendarDate": "2025-01-01",
+         "senderScope": "owner",
+         "messageCategory": "new-category",
+         "textEligible": true,
+         "content": "synthetic text",
+         "fileRank": 0,
+         "sourceIndex": 0
+       }
+     },
+     {
+       "name": "unknown-sender-bucket-rejected-at-event-level",
+       "value": {
+         "createTime": 1735689600,
+         "formattedTime": "2025-01-01 08:00:00",
+         "calendarDate": "2025-01-01",
+         "senderScope": null,
+         "messageCategory": "text",
+         "textEligible": false,
+         "content": null,
+         "fileRank": 0,
+         "sourceIndex": 0
+       }
+     },
+     {
+       "name": "eligible-text-without-content",
+       "value": {
+         "createTime": 1735689600,
+         "formattedTime": "2025-01-01 08:00:00",
+         "calendarDate": "2025-01-01",
+         "senderScope": "owner",
+         "messageCategory": "text",
+         "textEligible": true,
+         "content": null,
+         "fileRank": 0,
+         "sourceIndex": 0
+       }
+     },
+     {
+       "name": "media-content-leak",
+       "value": {
+         "createTime": 1735689600,
+         "formattedTime": "2025-01-01 08:00:00",
+         "calendarDate": "2025-01-01",
+         "senderScope": "owner",
+         "messageCategory": "image",
+         "textEligible": false,
+         "content": "redacted",
+         "fileRank": 0,
+         "sourceIndex": 0
+       }
+     },
+     {
+       "name": "system-sender-leak",
+       "value": {
+         "createTime": 1735689600,
+         "formattedTime": "2025-01-01 08:00:00",
+         "calendarDate": "2025-01-01",
+         "senderScope": "owner",
+         "messageCategory": "system",
+         "textEligible": false,
+         "content": null,
+         "fileRank": 0,
+         "sourceIndex": 0
+       }
+     },
+     {
+       "name": "unknown-event-field",
+       "value": {
+         "createTime": 1735689600,
+         "formattedTime": "2025-01-01 08:00:00",
+         "calendarDate": "2025-01-01",
+         "senderScope": "owner",
+         "messageCategory": "text",
+         "textEligible": true,
+         "content": "synthetic text",
+         "fileRank": 0,
+         "sourceIndex": 0,
+         "unexpected": true
+       }
+     }
+   ],
+   "validManifests": [
+     {
+       "name": "one-chunk-zero-based",
+       "value": {
+         "schemaVersion": "chat-history-analysis.manifest.v2",
+         "canonicalSchemaVersion": "chat-history-analysis.canonical-event.v2",
+         "preprocessorVersion": "0.1.0",
+         "timePolicy": "UTC+08:00",
+         "metricDefinitionVersions": {
+           "population": "chat-history-analysis.metric.population.v1",
+           "time": "chat-history-analysis.metric.time.utc-plus-8.v1",
+           "tokens": "chat-history-analysis.metric.tokens.jieba.v1",
+           "keywords": "chat-history-analysis.metric.keywords.log-odds.v1",
+           "sessions": "chat-history-analysis.metric.sessions.threshold.v1"
+         },
+         "chunks": [
+           {
+             "ordinal": 0,
+             "name": "chunk-0000.ndjson",
+             "byteSize": 27,
+             "recordCount": 1,
+             "sha256": "091a92f49807ba6bfa5c514a21d1d2cd707aca3c5c4accd7db4cd11751914d98"
+           }
+         ],
+         "aggregates": {
+           "eventCount": 1,
+           "userMessageCount": 1,
+           "eligibleTextCount": 1,
+           "systemEventCount": 0,
+           "chunkCount": 1,
+           "totalBytes": 27,
+           "warningCount": 0,
+           "messageCategoryCounts": {
+             "text": 1,
+             "image": 0,
+             "voice": 0,
+             "video": 0,
+             "file": 0,
+             "animated-emoji": 0,
+             "structured": 0,
+             "location": 0,
+             "call": 0,
+             "mini-program": 0,
+             "reply": 0,
+             "contact-card": 0,
+             "system": 0,
+             "other": 0,
+             "unknown": 0
+           },
+           "unknownSenderCount": 0
+         },
+         "limits": {
+           "maxEvents": 2000000,
+           "maxDatasetBytes": 536870912,
+           "maxChunkBytes": 33554432,
+           "maxChunkCount": 16384
+         },
+         "privacyValidation": {
+           "status": "passed",
+           "forbiddenFieldCount": 0,
+           "contentPolicy": "eligible-text-only"
+         }
+       },
+       "serialized": "{\"schemaVersion\":\"chat-history-analysis.manifest.v2\",\"canonicalSchemaVersion\":\"chat-history-analysis.canonical-event.v2\",\"preprocessorVersion\":\"0.1.0\",\"timePolicy\":\"UTC+08:00\",\"metricDefinitionVersions\":{\"population\":\"chat-history-analysis.metric.population.v1\",\"time\":\"chat-history-analysis.metric.time.utc-plus-8.v1\",\"tokens\":\"chat-history-analysis.metric.tokens.jieba.v1\",\"keywords\":\"chat-history-analysis.metric.keywords.log-odds.v1\",\"sessions\":\"chat-history-analysis.metric.sessions.threshold.v1\"},\"chunks\":[{\"ordinal\":0,\"name\":\"chunk-0000.ndjson\",\"byteSize\":27,\"recordCount\":1,\"sha256\":\"091a92f49807ba6bfa5c514a21d1d2cd707aca3c5c4accd7db4cd11751914d98\"}],\"aggregates\":{\"eventCount\":1,\"userMessageCount\":1,\"eligibleTextCount\":1,\"systemEventCount\":0,\"chunkCount\":1,\"totalBytes\":27,\"warningCount\":0,\"messageCategoryCounts\":{\"text\":1,\"image\":0,\"voice\":0,\"video\":0,\"file\":0,\"animated-emoji\":0,\"structured\":0,\"location\":0,\"call\":0,\"mini-program\":0,\"reply\":0,\"contact-card\":0,\"system\":0,\"other\":0,\"unknown\":0},\"unknownSenderCount\":0},\"limits\":{\"maxEvents\":2000000,\"maxDatasetBytes\":536870912,\"maxChunkBytes\":33554432,\"maxChunkCount\":16384},\"privacyValidation\":{\"status\":\"passed\",\"forbiddenFieldCount\":0,\"contentPolicy\":\"eligible-text-only\"}}"
+     },
+     {
+       "name": "two-chunk-ordinal-contiguous",
+       "value": {
+         "schemaVersion": "chat-history-analysis.manifest.v2",
+         "canonicalSchemaVersion": "chat-history-analysis.canonical-event.v2",
+         "preprocessorVersion": "0.1.0",
+         "timePolicy": "UTC+08:00",
+         "metricDefinitionVersions": {
+           "population": "chat-history-analysis.metric.population.v1",
+           "time": "chat-history-analysis.metric.time.utc-plus-8.v1",
+           "tokens": "chat-history-analysis.metric.tokens.jieba.v1",
+           "keywords": "chat-history-analysis.metric.keywords.log-odds.v1",
+           "sessions": "chat-history-analysis.metric.sessions.threshold.v1"
+         },
+         "chunks": [
+           {
+             "ordinal": 0,
+             "name": "chunk-0000.ndjson",
+             "byteSize": 10,
+             "recordCount": 1,
+             "sha256": "091a92f49807ba6bfa5c514a21d1d2cd707aca3c5c4accd7db4cd11751914d98"
+           },
+           {
+             "ordinal": 1,
+             "name": "chunk-0001.ndjson",
+             "byteSize": 20,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           }
+         ],
+         "aggregates": {
+           "eventCount": 2,
+           "userMessageCount": 2,
+           "eligibleTextCount": 1,
+           "systemEventCount": 0,
+           "chunkCount": 2,
+           "totalBytes": 30,
+           "warningCount": 0,
+           "messageCategoryCounts": {
+             "text": 1,
+             "image": 1,
+             "voice": 0,
+             "video": 0,
+             "file": 0,
+             "animated-emoji": 0,
+             "structured": 0,
+             "location": 0,
+             "call": 0,
+             "mini-program": 0,
+             "reply": 0,
+             "contact-card": 0,
+             "system": 0,
+             "other": 0,
+             "unknown": 0
+           },
+           "unknownSenderCount": 0
+         },
+         "limits": {
+           "maxEvents": 2000000,
+           "maxDatasetBytes": 536870912,
+           "maxChunkBytes": 33554432,
+           "maxChunkCount": 16384
+         },
+         "privacyValidation": {
+           "status": "passed",
+           "forbiddenFieldCount": 0,
+           "contentPolicy": "eligible-text-only"
+         }
+       },
+       "serialized": "{\"schemaVersion\":\"chat-history-analysis.manifest.v2\",\"canonicalSchemaVersion\":\"chat-history-analysis.canonical-event.v2\",\"preprocessorVersion\":\"0.1.0\",\"timePolicy\":\"UTC+08:00\",\"metricDefinitionVersions\":{\"population\":\"chat-history-analysis.metric.population.v1\",\"time\":\"chat-history-analysis.metric.time.utc-plus-8.v1\",\"tokens\":\"chat-history-analysis.metric.tokens.jieba.v1\",\"keywords\":\"chat-history-analysis.metric.keywords.log-odds.v1\",\"sessions\":\"chat-history-analysis.metric.sessions.threshold.v1\"},\"chunks\":[{\"ordinal\":0,\"name\":\"chunk-0000.ndjson\",\"byteSize\":10,\"recordCount\":1,\"sha256\":\"091a92f49807ba6bfa5c514a21d1d2cd707aca3c5c4accd7db4cd11751914d98\"},{\"ordinal\":1,\"name\":\"chunk-0001.ndjson\",\"byteSize\":20,\"recordCount\":1,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}],\"aggregates\":{\"eventCount\":2,\"userMessageCount\":2,\"eligibleTextCount\":1,\"systemEventCount\":0,\"chunkCount\":2,\"totalBytes\":30,\"warningCount\":0,\"messageCategoryCounts\":{\"text\":1,\"image\":1,\"voice\":0,\"video\":0,\"file\":0,\"animated-emoji\":0,\"structured\":0,\"location\":0,\"call\":0,\"mini-program\":0,\"reply\":0,\"contact-card\":0,\"system\":0,\"other\":0,\"unknown\":0},\"unknownSenderCount\":0},\"limits\":{\"maxEvents\":2000000,\"maxDatasetBytes\":536870912,\"maxChunkBytes\":33554432,\"maxChunkCount\":16384},\"privacyValidation\":{\"status\":\"passed\",\"forbiddenFieldCount\":0,\"contentPolicy\":\"eligible-text-only\"}}"
+     },
+     {
+       "name": "max-chunk-bytes",
+       "value": {
+         "schemaVersion": "chat-history-analysis.manifest.v2",
+         "canonicalSchemaVersion": "chat-history-analysis.canonical-event.v2",
+         "preprocessorVersion": "0.1.0",
+         "timePolicy": "UTC+08:00",
+         "metricDefinitionVersions": {
+           "population": "chat-history-analysis.metric.population.v1",
+           "time": "chat-history-analysis.metric.time.utc-plus-8.v1",
+           "tokens": "chat-history-analysis.metric.tokens.jieba.v1",
+           "keywords": "chat-history-analysis.metric.keywords.log-odds.v1",
+           "sessions": "chat-history-analysis.metric.sessions.threshold.v1"
+         },
+         "chunks": [
+           {
+             "ordinal": 0,
+             "name": "chunk-0000.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "091a92f49807ba6bfa5c514a21d1d2cd707aca3c5c4accd7db4cd11751914d98"
+           }
+         ],
+         "aggregates": {
+           "eventCount": 1,
+           "userMessageCount": 1,
+           "eligibleTextCount": 1,
+           "systemEventCount": 0,
+           "chunkCount": 1,
+           "totalBytes": 33554432,
+           "warningCount": 0,
+           "messageCategoryCounts": {
+             "text": 1,
+             "image": 0,
+             "voice": 0,
+             "video": 0,
+             "file": 0,
+             "animated-emoji": 0,
+             "structured": 0,
+             "location": 0,
+             "call": 0,
+             "mini-program": 0,
+             "reply": 0,
+             "contact-card": 0,
+             "system": 0,
+             "other": 0,
+             "unknown": 0
+           },
+           "unknownSenderCount": 0
+         },
+         "limits": {
+           "maxEvents": 2000000,
+           "maxDatasetBytes": 536870912,
+           "maxChunkBytes": 33554432,
+           "maxChunkCount": 16384
+         },
+         "privacyValidation": {
+           "status": "passed",
+           "forbiddenFieldCount": 0,
+           "contentPolicy": "eligible-text-only"
+         }
+       },
+       "serialized": "{\"schemaVersion\":\"chat-history-analysis.manifest.v2\",\"canonicalSchemaVersion\":\"chat-history-analysis.canonical-event.v2\",\"preprocessorVersion\":\"0.1.0\",\"timePolicy\":\"UTC+08:00\",\"metricDefinitionVersions\":{\"population\":\"chat-history-analysis.metric.population.v1\",\"time\":\"chat-history-analysis.metric.time.utc-plus-8.v1\",\"tokens\":\"chat-history-analysis.metric.tokens.jieba.v1\",\"keywords\":\"chat-history-analysis.metric.keywords.log-odds.v1\",\"sessions\":\"chat-history-analysis.metric.sessions.threshold.v1\"},\"chunks\":[{\"ordinal\":0,\"name\":\"chunk-0000.ndjson\",\"byteSize\":33554432,\"recordCount\":1,\"sha256\":\"091a92f49807ba6bfa5c514a21d1d2cd707aca3c5c4accd7db4cd11751914d98\"}],\"aggregates\":{\"eventCount\":1,\"userMessageCount\":1,\"eligibleTextCount\":1,\"systemEventCount\":0,\"chunkCount\":1,\"totalBytes\":33554432,\"warningCount\":0,\"messageCategoryCounts\":{\"text\":1,\"image\":0,\"voice\":0,\"video\":0,\"file\":0,\"animated-emoji\":0,\"structured\":0,\"location\":0,\"call\":0,\"mini-program\":0,\"reply\":0,\"contact-card\":0,\"system\":0,\"other\":0,\"unknown\":0},\"unknownSenderCount\":0},\"limits\":{\"maxEvents\":2000000,\"maxDatasetBytes\":536870912,\"maxChunkBytes\":33554432,\"maxChunkCount\":16384},\"privacyValidation\":{\"status\":\"passed\",\"forbiddenFieldCount\":0,\"contentPolicy\":\"eligible-text-only\"}}"
+     },
+     {
+       "name": "max-dataset-bytes",
+       "value": {
+         "schemaVersion": "chat-history-analysis.manifest.v2",
+         "canonicalSchemaVersion": "chat-history-analysis.canonical-event.v2",
+         "preprocessorVersion": "0.1.0",
+         "timePolicy": "UTC+08:00",
+         "metricDefinitionVersions": {
+           "population": "chat-history-analysis.metric.population.v1",
+           "time": "chat-history-analysis.metric.time.utc-plus-8.v1",
+           "tokens": "chat-history-analysis.metric.tokens.jieba.v1",
+           "keywords": "chat-history-analysis.metric.keywords.log-odds.v1",
+           "sessions": "chat-history-analysis.metric.sessions.threshold.v1"
+         },
+         "chunks": [
+           {
+             "ordinal": 0,
+             "name": "chunk-0000.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           },
+           {
+             "ordinal": 1,
+             "name": "chunk-0001.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           },
+           {
+             "ordinal": 2,
+             "name": "chunk-0002.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           },
+           {
+             "ordinal": 3,
+             "name": "chunk-0003.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           },
+           {
+             "ordinal": 4,
+             "name": "chunk-0004.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           },
+           {
+             "ordinal": 5,
+             "name": "chunk-0005.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           },
+           {
+             "ordinal": 6,
+             "name": "chunk-0006.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           },
+           {
+             "ordinal": 7,
+             "name": "chunk-0007.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           },
+           {
+             "ordinal": 8,
+             "name": "chunk-0008.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           },
+           {
+             "ordinal": 9,
+             "name": "chunk-0009.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           },
+           {
+             "ordinal": 10,
+             "name": "chunk-0010.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           },
+           {
+             "ordinal": 11,
+             "name": "chunk-0011.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           },
+           {
+             "ordinal": 12,
+             "name": "chunk-0012.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           },
+           {
+             "ordinal": 13,
+             "name": "chunk-0013.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           },
+           {
+             "ordinal": 14,
+             "name": "chunk-0014.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           },
+           {
+             "ordinal": 15,
+             "name": "chunk-0015.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           }
+         ],
+         "aggregates": {
+           "eventCount": 16,
+           "userMessageCount": 16,
+           "eligibleTextCount": 16,
+           "systemEventCount": 0,
+           "chunkCount": 16,
+           "totalBytes": 536870912,
+           "warningCount": 0,
+           "messageCategoryCounts": {
+             "text": 16,
+             "image": 0,
+             "voice": 0,
+             "video": 0,
+             "file": 0,
+             "animated-emoji": 0,
+             "structured": 0,
+             "location": 0,
+             "call": 0,
+             "mini-program": 0,
+             "reply": 0,
+             "contact-card": 0,
+             "system": 0,
+             "other": 0,
+             "unknown": 0
+           },
+           "unknownSenderCount": 0
+         },
+         "limits": {
+           "maxEvents": 2000000,
+           "maxDatasetBytes": 536870912,
+           "maxChunkBytes": 33554432,
+           "maxChunkCount": 16384
+         },
+         "privacyValidation": {
+           "status": "passed",
+           "forbiddenFieldCount": 0,
+           "contentPolicy": "eligible-text-only"
+         }
+       },
+       "serialized": "{\"schemaVersion\":\"chat-history-analysis.manifest.v2\",\"canonicalSchemaVersion\":\"chat-history-analysis.canonical-event.v2\",\"preprocessorVersion\":\"0.1.0\",\"timePolicy\":\"UTC+08:00\",\"metricDefinitionVersions\":{\"population\":\"chat-history-analysis.metric.population.v1\",\"time\":\"chat-history-analysis.metric.time.utc-plus-8.v1\",\"tokens\":\"chat-history-analysis.metric.tokens.jieba.v1\",\"keywords\":\"chat-history-analysis.metric.keywords.log-odds.v1\",\"sessions\":\"chat-history-analysis.metric.sessions.threshold.v1\"},\"chunks\":[{\"ordinal\":0,\"name\":\"chunk-0000.ndjson\",\"byteSize\":33554432,\"recordCount\":1,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},{\"ordinal\":1,\"name\":\"chunk-0001.ndjson\",\"byteSize\":33554432,\"recordCount\":1,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},{\"ordinal\":2,\"name\":\"chunk-0002.ndjson\",\"byteSize\":33554432,\"recordCount\":1,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},{\"ordinal\":3,\"name\":\"chunk-0003.ndjson\",\"byteSize\":33554432,\"recordCount\":1,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},{\"ordinal\":4,\"name\":\"chunk-0004.ndjson\",\"byteSize\":33554432,\"recordCount\":1,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},{\"ordinal\":5,\"name\":\"chunk-0005.ndjson\",\"byteSize\":33554432,\"recordCount\":1,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},{\"ordinal\":6,\"name\":\"chunk-0006.ndjson\",\"byteSize\":33554432,\"recordCount\":1,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},{\"ordinal\":7,\"name\":\"chunk-0007.ndjson\",\"byteSize\":33554432,\"recordCount\":1,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},{\"ordinal\":8,\"name\":\"chunk-0008.ndjson\",\"byteSize\":33554432,\"recordCount\":1,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},{\"ordinal\":9,\"name\":\"chunk-0009.ndjson\",\"byteSize\":33554432,\"recordCount\":1,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},{\"ordinal\":10,\"name\":\"chunk-0010.ndjson\",\"byteSize\":33554432,\"recordCount\":1,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},{\"ordinal\":11,\"name\":\"chunk-0011.ndjson\",\"byteSize\":33554432,\"recordCount\":1,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},{\"ordinal\":12,\"name\":\"chunk-0012.ndjson\",\"byteSize\":33554432,\"recordCount\":1,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},{\"ordinal\":13,\"name\":\"chunk-0013.ndjson\",\"byteSize\":33554432,\"recordCount\":1,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},{\"ordinal\":14,\"name\":\"chunk-0014.ndjson\",\"byteSize\":33554432,\"recordCount\":1,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},{\"ordinal\":15,\"name\":\"chunk-0015.ndjson\",\"byteSize\":33554432,\"recordCount\":1,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}],\"aggregates\":{\"eventCount\":16,\"userMessageCount\":16,\"eligibleTextCount\":16,\"systemEventCount\":0,\"chunkCount\":16,\"totalBytes\":536870912,\"warningCount\":0,\"messageCategoryCounts\":{\"text\":16,\"image\":0,\"voice\":0,\"video\":0,\"file\":0,\"animated-emoji\":0,\"structured\":0,\"location\":0,\"call\":0,\"mini-program\":0,\"reply\":0,\"contact-card\":0,\"system\":0,\"other\":0,\"unknown\":0},\"unknownSenderCount\":0},\"limits\":{\"maxEvents\":2000000,\"maxDatasetBytes\":536870912,\"maxChunkBytes\":33554432,\"maxChunkCount\":16384},\"privacyValidation\":{\"status\":\"passed\",\"forbiddenFieldCount\":0,\"contentPolicy\":\"eligible-text-only\"}}"
+     }
+   ],
+   "invalidManifests": [
+     {
+       "name": "v1-to-v2-version-confusion",
+       "value": {
+         "schemaVersion": "chat-history-analysis.manifest.v1",
+         "canonicalSchemaVersion": "chat-history-analysis.canonical-event.v2",
+         "preprocessorVersion": "0.1.0",
+         "timePolicy": "UTC+08:00",
+         "metricDefinitionVersions": {
+           "population": "chat-history-analysis.metric.population.v1",
+           "time": "chat-history-analysis.metric.time.utc-plus-8.v1",
+           "tokens": "chat-history-analysis.metric.tokens.jieba.v1",
+           "keywords": "chat-history-analysis.metric.keywords.log-odds.v1",
+           "sessions": "chat-history-analysis.metric.sessions.threshold.v1"
+         },
+         "chunks": [
+           {
+             "ordinal": 0,
+             "name": "chunk-0000.ndjson",
+             "byteSize": 27,
+             "recordCount": 1,
+             "sha256": "091a92f49807ba6bfa5c514a21d1d2cd707aca3c5c4accd7db4cd11751914d98"
+           }
+         ],
+         "aggregates": {
+           "eventCount": 1,
+           "userMessageCount": 1,
+           "eligibleTextCount": 1,
+           "systemEventCount": 0,
+           "chunkCount": 1,
+           "totalBytes": 27,
+           "warningCount": 0,
+           "messageCategoryCounts": {
+             "text": 1,
+             "image": 0,
+             "voice": 0,
+             "video": 0,
+             "file": 0,
+             "animated-emoji": 0,
+             "structured": 0,
+             "location": 0,
+             "call": 0,
+             "mini-program": 0,
+             "reply": 0,
+             "contact-card": 0,
+             "system": 0,
+             "other": 0,
+             "unknown": 0
+           },
+           "unknownSenderCount": 0
+         },
+         "limits": {
+           "maxEvents": 2000000,
+           "maxDatasetBytes": 536870912,
+           "maxChunkBytes": 33554432,
+           "maxChunkCount": 16384
+         },
+         "privacyValidation": {
+           "status": "passed",
+           "forbiddenFieldCount": 0,
+           "contentPolicy": "eligible-text-only"
+         }
+       }
+     },
+     {
+       "name": "v2-shorthand-version-confusion",
+       "value": {
+         "schemaVersion": "v2",
+         "canonicalSchemaVersion": "chat-history-analysis.canonical-event.v2",
+         "preprocessorVersion": "0.1.0",
+         "timePolicy": "UTC+08:00",
+         "metricDefinitionVersions": {
+           "population": "chat-history-analysis.metric.population.v1",
+           "time": "chat-history-analysis.metric.time.utc-plus-8.v1",
+           "tokens": "chat-history-analysis.metric.tokens.jieba.v1",
+           "keywords": "chat-history-analysis.metric.keywords.log-odds.v1",
+           "sessions": "chat-history-analysis.metric.sessions.threshold.v1"
+         },
+         "chunks": [
+           {
+             "ordinal": 0,
+             "name": "chunk-0000.ndjson",
+             "byteSize": 27,
+             "recordCount": 1,
+             "sha256": "091a92f49807ba6bfa5c514a21d1d2cd707aca3c5c4accd7db4cd11751914d98"
+           }
+         ],
+         "aggregates": {
+           "eventCount": 1,
+           "userMessageCount": 1,
+           "eligibleTextCount": 1,
+           "systemEventCount": 0,
+           "chunkCount": 1,
+           "totalBytes": 27,
+           "warningCount": 0,
+           "messageCategoryCounts": {
+             "text": 1,
+             "image": 0,
+             "voice": 0,
+             "video": 0,
+             "file": 0,
+             "animated-emoji": 0,
+             "structured": 0,
+             "location": 0,
+             "call": 0,
+             "mini-program": 0,
+             "reply": 0,
+             "contact-card": 0,
+             "system": 0,
+             "other": 0,
+             "unknown": 0
+           },
+           "unknownSenderCount": 0
+         },
+         "limits": {
+           "maxEvents": 2000000,
+           "maxDatasetBytes": 536870912,
+           "maxChunkBytes": 33554432,
+           "maxChunkCount": 16384
+         },
+         "privacyValidation": {
+           "status": "passed",
+           "forbiddenFieldCount": 0,
+           "contentPolicy": "eligible-text-only"
+         }
+       }
+     },
+     {
+       "name": "zero-events",
+       "value": {
+         "schemaVersion": "chat-history-analysis.manifest.v2",
+         "canonicalSchemaVersion": "chat-history-analysis.canonical-event.v2",
+         "preprocessorVersion": "0.1.0",
+         "timePolicy": "UTC+08:00",
+         "metricDefinitionVersions": {
+           "population": "chat-history-analysis.metric.population.v1",
+           "time": "chat-history-analysis.metric.time.utc-plus-8.v1",
+           "tokens": "chat-history-analysis.metric.tokens.jieba.v1",
+           "keywords": "chat-history-analysis.metric.keywords.log-odds.v1",
+           "sessions": "chat-history-analysis.metric.sessions.threshold.v1"
+         },
+         "chunks": [],
+         "aggregates": {
+           "eventCount": 0,
+           "userMessageCount": 0,
+           "eligibleTextCount": 0,
+           "systemEventCount": 0,
+           "chunkCount": 0,
+           "totalBytes": 0,
+           "warningCount": 0,
+           "messageCategoryCounts": {
+             "text": 0,
+             "image": 0,
+             "voice": 0,
+             "video": 0,
+             "file": 0,
+             "animated-emoji": 0,
+             "structured": 0,
+             "location": 0,
+             "call": 0,
+             "mini-program": 0,
+             "reply": 0,
+             "contact-card": 0,
+             "system": 0,
+             "other": 0,
+             "unknown": 0
+           },
+           "unknownSenderCount": 0
+         },
+         "limits": {
+           "maxEvents": 2000000,
+           "maxDatasetBytes": 536870912,
+           "maxChunkBytes": 33554432,
+           "maxChunkCount": 16384
+         },
+         "privacyValidation": {
+           "status": "passed",
+           "forbiddenFieldCount": 0,
+           "contentPolicy": "eligible-text-only"
+         }
+       }
+     },
+     {
+       "name": "zero-records",
+       "value": {
+         "schemaVersion": "chat-history-analysis.manifest.v2",
+         "canonicalSchemaVersion": "chat-history-analysis.canonical-event.v2",
+         "preprocessorVersion": "0.1.0",
+         "timePolicy": "UTC+08:00",
+         "metricDefinitionVersions": {
+           "population": "chat-history-analysis.metric.population.v1",
+           "time": "chat-history-analysis.metric.time.utc-plus-8.v1",
+           "tokens": "chat-history-analysis.metric.tokens.jieba.v1",
+           "keywords": "chat-history-analysis.metric.keywords.log-odds.v1",
+           "sessions": "chat-history-analysis.metric.sessions.threshold.v1"
+         },
+         "chunks": [
+           {
+             "ordinal": 0,
+             "name": "chunk-0000.ndjson",
+             "byteSize": 27,
+             "recordCount": 0,
+             "sha256": "091a92f49807ba6bfa5c514a21d1d2cd707aca3c5c4accd7db4cd11751914d98"
+           }
+         ],
+         "aggregates": {
+           "eventCount": 0,
+           "userMessageCount": 0,
+           "eligibleTextCount": 0,
+           "systemEventCount": 0,
+           "chunkCount": 1,
+           "totalBytes": 27,
+           "warningCount": 0,
+           "messageCategoryCounts": {
+             "text": 1,
+             "image": 0,
+             "voice": 0,
+             "video": 0,
+             "file": 0,
+             "animated-emoji": 0,
+             "structured": 0,
+             "location": 0,
+             "call": 0,
+             "mini-program": 0,
+             "reply": 0,
+             "contact-card": 0,
+             "system": 0,
+             "other": 0,
+             "unknown": 0
+           },
+           "unknownSenderCount": 0
+         },
+         "limits": {
+           "maxEvents": 2000000,
+           "maxDatasetBytes": 536870912,
+           "maxChunkBytes": 33554432,
+           "maxChunkCount": 16384
+         },
+         "privacyValidation": {
+           "status": "passed",
+           "forbiddenFieldCount": 0,
+           "contentPolicy": "eligible-text-only"
+         }
+       }
+     },
+     {
+       "name": "duplicate-ordinal",
+       "value": {
+         "schemaVersion": "chat-history-analysis.manifest.v2",
+         "canonicalSchemaVersion": "chat-history-analysis.canonical-event.v2",
+         "preprocessorVersion": "0.1.0",
+         "timePolicy": "UTC+08:00",
+         "metricDefinitionVersions": {
+           "population": "chat-history-analysis.metric.population.v1",
+           "time": "chat-history-analysis.metric.time.utc-plus-8.v1",
+           "tokens": "chat-history-analysis.metric.tokens.jieba.v1",
+           "keywords": "chat-history-analysis.metric.keywords.log-odds.v1",
+           "sessions": "chat-history-analysis.metric.sessions.threshold.v1"
+         },
+         "chunks": [
+           {
+             "ordinal": 0,
+             "name": "chunk-0000.ndjson",
+             "byteSize": 10,
+             "recordCount": 1,
+             "sha256": "091a92f49807ba6bfa5c514a21d1d2cd707aca3c5c4accd7db4cd11751914d98"
+           },
+           {
+             "ordinal": 0,
+             "name": "chunk-0001.ndjson",
+             "byteSize": 20,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           }
+         ],
+         "aggregates": {
+           "eventCount": 2,
+           "userMessageCount": 2,
+           "eligibleTextCount": 1,
+           "systemEventCount": 0,
+           "chunkCount": 2,
+           "totalBytes": 30,
+           "warningCount": 0,
+           "messageCategoryCounts": {
+             "text": 1,
+             "image": 1,
+             "voice": 0,
+             "video": 0,
+             "file": 0,
+             "animated-emoji": 0,
+             "structured": 0,
+             "location": 0,
+             "call": 0,
+             "mini-program": 0,
+             "reply": 0,
+             "contact-card": 0,
+             "system": 0,
+             "other": 0,
+             "unknown": 0
+           },
+           "unknownSenderCount": 0
+         },
+         "limits": {
+           "maxEvents": 2000000,
+           "maxDatasetBytes": 536870912,
+           "maxChunkBytes": 33554432,
+           "maxChunkCount": 16384
+         },
+         "privacyValidation": {
+           "status": "passed",
+           "forbiddenFieldCount": 0,
+           "contentPolicy": "eligible-text-only"
+         }
+       }
+     },
+     {
+       "name": "ordinal-gap",
+       "value": {
+         "schemaVersion": "chat-history-analysis.manifest.v2",
+         "canonicalSchemaVersion": "chat-history-analysis.canonical-event.v2",
+         "preprocessorVersion": "0.1.0",
+         "timePolicy": "UTC+08:00",
+         "metricDefinitionVersions": {
+           "population": "chat-history-analysis.metric.population.v1",
+           "time": "chat-history-analysis.metric.time.utc-plus-8.v1",
+           "tokens": "chat-history-analysis.metric.tokens.jieba.v1",
+           "keywords": "chat-history-analysis.metric.keywords.log-odds.v1",
+           "sessions": "chat-history-analysis.metric.sessions.threshold.v1"
+         },
+         "chunks": [
+           {
+             "ordinal": 0,
+             "name": "chunk-0000.ndjson",
+             "byteSize": 10,
+             "recordCount": 1,
+             "sha256": "091a92f49807ba6bfa5c514a21d1d2cd707aca3c5c4accd7db4cd11751914d98"
+           },
+           {
+             "ordinal": 2,
+             "name": "chunk-0002.ndjson",
+             "byteSize": 20,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           }
+         ],
+         "aggregates": {
+           "eventCount": 2,
+           "userMessageCount": 2,
+           "eligibleTextCount": 1,
+           "systemEventCount": 0,
+           "chunkCount": 2,
+           "totalBytes": 30,
+           "warningCount": 0,
+           "messageCategoryCounts": {
+             "text": 1,
+             "image": 1,
+             "voice": 0,
+             "video": 0,
+             "file": 0,
+             "animated-emoji": 0,
+             "structured": 0,
+             "location": 0,
+             "call": 0,
+             "mini-program": 0,
+             "reply": 0,
+             "contact-card": 0,
+             "system": 0,
+             "other": 0,
+             "unknown": 0
+           },
+           "unknownSenderCount": 0
+         },
+         "limits": {
+           "maxEvents": 2000000,
+           "maxDatasetBytes": 536870912,
+           "maxChunkBytes": 33554432,
+           "maxChunkCount": 16384
+         },
+         "privacyValidation": {
+           "status": "passed",
+           "forbiddenFieldCount": 0,
+           "contentPolicy": "eligible-text-only"
+         }
+       }
+     },
+     {
+       "name": "unknown-aggregate-field",
+       "value": {
+         "schemaVersion": "chat-history-analysis.manifest.v2",
+         "canonicalSchemaVersion": "chat-history-analysis.canonical-event.v2",
+         "preprocessorVersion": "0.1.0",
+         "timePolicy": "UTC+08:00",
+         "metricDefinitionVersions": {
+           "population": "chat-history-analysis.metric.population.v1",
+           "time": "chat-history-analysis.metric.time.utc-plus-8.v1",
+           "tokens": "chat-history-analysis.metric.tokens.jieba.v1",
+           "keywords": "chat-history-analysis.metric.keywords.log-odds.v1",
+           "sessions": "chat-history-analysis.metric.sessions.threshold.v1"
+         },
+         "chunks": [
+           {
+             "ordinal": 0,
+             "name": "chunk-0000.ndjson",
+             "byteSize": 27,
+             "recordCount": 1,
+             "sha256": "091a92f49807ba6bfa5c514a21d1d2cd707aca3c5c4accd7db4cd11751914d98"
+           }
+         ],
+         "aggregates": {
+           "eventCount": 1,
+           "userMessageCount": 1,
+           "eligibleTextCount": 1,
+           "systemEventCount": 0,
+           "chunkCount": 1,
+           "totalBytes": 27,
+           "warningCount": 0,
+           "messageCategoryCounts": {
+             "text": 1,
+             "image": 0,
+             "voice": 0,
+             "video": 0,
+             "file": 0,
+             "animated-emoji": 0,
+             "structured": 0,
+             "location": 0,
+             "call": 0,
+             "mini-program": 0,
+             "reply": 0,
+             "contact-card": 0,
+             "system": 0,
+             "other": 0,
+             "unknown": 0
+           },
+           "unknownSenderCount": 0,
+           "unexpected": 1
+         },
+         "limits": {
+           "maxEvents": 2000000,
+           "maxDatasetBytes": 536870912,
+           "maxChunkBytes": 33554432,
+           "maxChunkCount": 16384
+         },
+         "privacyValidation": {
+           "status": "passed",
+           "forbiddenFieldCount": 0,
+           "contentPolicy": "eligible-text-only"
+         }
+       }
+     },
+     {
+       "name": "category-count-sum-mismatch",
+       "value": {
+         "schemaVersion": "chat-history-analysis.manifest.v2",
+         "canonicalSchemaVersion": "chat-history-analysis.canonical-event.v2",
+         "preprocessorVersion": "0.1.0",
+         "timePolicy": "UTC+08:00",
+         "metricDefinitionVersions": {
+           "population": "chat-history-analysis.metric.population.v1",
+           "time": "chat-history-analysis.metric.time.utc-plus-8.v1",
+           "tokens": "chat-history-analysis.metric.tokens.jieba.v1",
+           "keywords": "chat-history-analysis.metric.keywords.log-odds.v1",
+           "sessions": "chat-history-analysis.metric.sessions.threshold.v1"
+         },
+         "chunks": [
+           {
+             "ordinal": 0,
+             "name": "chunk-0000.ndjson",
+             "byteSize": 27,
+             "recordCount": 1,
+             "sha256": "091a92f49807ba6bfa5c514a21d1d2cd707aca3c5c4accd7db4cd11751914d98"
+           }
+         ],
+         "aggregates": {
+           "eventCount": 1,
+           "userMessageCount": 1,
+           "eligibleTextCount": 1,
+           "systemEventCount": 0,
+           "chunkCount": 1,
+           "totalBytes": 27,
+           "warningCount": 0,
+           "messageCategoryCounts": {
+             "text": 0,
+             "image": 0,
+             "voice": 0,
+             "video": 0,
+             "file": 0,
+             "animated-emoji": 0,
+             "structured": 0,
+             "location": 0,
+             "call": 0,
+             "mini-program": 0,
+             "reply": 0,
+             "contact-card": 0,
+             "system": 0,
+             "other": 0,
+             "unknown": 0
+           },
+           "unknownSenderCount": 0
+         },
+         "limits": {
+           "maxEvents": 2000000,
+           "maxDatasetBytes": 536870912,
+           "maxChunkBytes": 33554432,
+           "maxChunkCount": 16384
+         },
+         "privacyValidation": {
+           "status": "passed",
+           "forbiddenFieldCount": 0,
+           "contentPolicy": "eligible-text-only"
+         }
+       }
+     },
+     {
+       "name": "user-system-sum-mismatch",
+       "value": {
+         "schemaVersion": "chat-history-analysis.manifest.v2",
+         "canonicalSchemaVersion": "chat-history-analysis.canonical-event.v2",
+         "preprocessorVersion": "0.1.0",
+         "timePolicy": "UTC+08:00",
+         "metricDefinitionVersions": {
+           "population": "chat-history-analysis.metric.population.v1",
+           "time": "chat-history-analysis.metric.time.utc-plus-8.v1",
+           "tokens": "chat-history-analysis.metric.tokens.jieba.v1",
+           "keywords": "chat-history-analysis.metric.keywords.log-odds.v1",
+           "sessions": "chat-history-analysis.metric.sessions.threshold.v1"
+         },
+         "chunks": [
+           {
+             "ordinal": 0,
+             "name": "chunk-0000.ndjson",
+             "byteSize": 27,
+             "recordCount": 1,
+             "sha256": "091a92f49807ba6bfa5c514a21d1d2cd707aca3c5c4accd7db4cd11751914d98"
+           }
+         ],
+         "aggregates": {
+           "eventCount": 1,
+           "userMessageCount": 1,
+           "eligibleTextCount": 1,
+           "systemEventCount": 1,
+           "chunkCount": 1,
+           "totalBytes": 27,
+           "warningCount": 0,
+           "messageCategoryCounts": {
+             "text": 0,
+             "image": 0,
+             "voice": 0,
+             "video": 0,
+             "file": 0,
+             "animated-emoji": 0,
+             "structured": 0,
+             "location": 0,
+             "call": 0,
+             "mini-program": 0,
+             "reply": 0,
+             "contact-card": 0,
+             "system": 1,
+             "other": 0,
+             "unknown": 0
+           },
+           "unknownSenderCount": 0
+         },
+         "limits": {
+           "maxEvents": 2000000,
+           "maxDatasetBytes": 536870912,
+           "maxChunkBytes": 33554432,
+           "maxChunkCount": 16384
+         },
+         "privacyValidation": {
+           "status": "passed",
+           "forbiddenFieldCount": 0,
+           "contentPolicy": "eligible-text-only"
+         }
+       }
+     },
+     {
+       "name": "first-over-chunk-bytes",
+       "value": {
+         "schemaVersion": "chat-history-analysis.manifest.v2",
+         "canonicalSchemaVersion": "chat-history-analysis.canonical-event.v2",
+         "preprocessorVersion": "0.1.0",
+         "timePolicy": "UTC+08:00",
+         "metricDefinitionVersions": {
+           "population": "chat-history-analysis.metric.population.v1",
+           "time": "chat-history-analysis.metric.time.utc-plus-8.v1",
+           "tokens": "chat-history-analysis.metric.tokens.jieba.v1",
+           "keywords": "chat-history-analysis.metric.keywords.log-odds.v1",
+           "sessions": "chat-history-analysis.metric.sessions.threshold.v1"
+         },
+         "chunks": [
+           {
+             "ordinal": 0,
+             "name": "chunk-0000.ndjson",
+             "byteSize": 33554433,
+             "recordCount": 1,
+             "sha256": "091a92f49807ba6bfa5c514a21d1d2cd707aca3c5c4accd7db4cd11751914d98"
+           }
+         ],
+         "aggregates": {
+           "eventCount": 1,
+           "userMessageCount": 1,
+           "eligibleTextCount": 1,
+           "systemEventCount": 0,
+           "chunkCount": 1,
+           "totalBytes": 33554433,
+           "warningCount": 0,
+           "messageCategoryCounts": {
+             "text": 1,
+             "image": 0,
+             "voice": 0,
+             "video": 0,
+             "file": 0,
+             "animated-emoji": 0,
+             "structured": 0,
+             "location": 0,
+             "call": 0,
+             "mini-program": 0,
+             "reply": 0,
+             "contact-card": 0,
+             "system": 0,
+             "other": 0,
+             "unknown": 0
+           },
+           "unknownSenderCount": 0
+         },
+         "limits": {
+           "maxEvents": 2000000,
+           "maxDatasetBytes": 536870912,
+           "maxChunkBytes": 33554432,
+           "maxChunkCount": 16384
+         },
+         "privacyValidation": {
+           "status": "passed",
+           "forbiddenFieldCount": 0,
+           "contentPolicy": "eligible-text-only"
+         }
+       }
+     },
+     {
+       "name": "first-over-event-limit",
+       "value": {
+         "schemaVersion": "chat-history-analysis.manifest.v2",
+         "canonicalSchemaVersion": "chat-history-analysis.canonical-event.v2",
+         "preprocessorVersion": "0.1.0",
+         "timePolicy": "UTC+08:00",
+         "metricDefinitionVersions": {
+           "population": "chat-history-analysis.metric.population.v1",
+           "time": "chat-history-analysis.metric.time.utc-plus-8.v1",
+           "tokens": "chat-history-analysis.metric.tokens.jieba.v1",
+           "keywords": "chat-history-analysis.metric.keywords.log-odds.v1",
+           "sessions": "chat-history-analysis.metric.sessions.threshold.v1"
+         },
+         "chunks": [
+           {
+             "ordinal": 0,
+             "name": "chunk-0000.ndjson",
+             "byteSize": 27,
+             "recordCount": 2000001,
+             "sha256": "091a92f49807ba6bfa5c514a21d1d2cd707aca3c5c4accd7db4cd11751914d98"
+           }
+         ],
+         "aggregates": {
+           "eventCount": 2000001,
+           "userMessageCount": 2000001,
+           "eligibleTextCount": 2000001,
+           "systemEventCount": 0,
+           "chunkCount": 1,
+           "totalBytes": 27,
+           "warningCount": 0,
+           "messageCategoryCounts": {
+             "text": 2000001,
+             "image": 0,
+             "voice": 0,
+             "video": 0,
+             "file": 0,
+             "animated-emoji": 0,
+             "structured": 0,
+             "location": 0,
+             "call": 0,
+             "mini-program": 0,
+             "reply": 0,
+             "contact-card": 0,
+             "system": 0,
+             "other": 0,
+             "unknown": 0
+           },
+           "unknownSenderCount": 0
+         },
+         "limits": {
+           "maxEvents": 2000000,
+           "maxDatasetBytes": 536870912,
+           "maxChunkBytes": 33554432,
+           "maxChunkCount": 16384
+         },
+         "privacyValidation": {
+           "status": "passed",
+           "forbiddenFieldCount": 0,
+           "contentPolicy": "eligible-text-only"
+         }
+       }
+     },
+     {
+       "name": "first-over-dataset-limit",
+       "value": {
+         "schemaVersion": "chat-history-analysis.manifest.v2",
+         "canonicalSchemaVersion": "chat-history-analysis.canonical-event.v2",
+         "preprocessorVersion": "0.1.0",
+         "timePolicy": "UTC+08:00",
+         "metricDefinitionVersions": {
+           "population": "chat-history-analysis.metric.population.v1",
+           "time": "chat-history-analysis.metric.time.utc-plus-8.v1",
+           "tokens": "chat-history-analysis.metric.tokens.jieba.v1",
+           "keywords": "chat-history-analysis.metric.keywords.log-odds.v1",
+           "sessions": "chat-history-analysis.metric.sessions.threshold.v1"
+         },
+         "chunks": [
+           {
+             "ordinal": 0,
+             "name": "chunk-0000.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           },
+           {
+             "ordinal": 1,
+             "name": "chunk-0001.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           },
+           {
+             "ordinal": 2,
+             "name": "chunk-0002.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           },
+           {
+             "ordinal": 3,
+             "name": "chunk-0003.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           },
+           {
+             "ordinal": 4,
+             "name": "chunk-0004.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           },
+           {
+             "ordinal": 5,
+             "name": "chunk-0005.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           },
+           {
+             "ordinal": 6,
+             "name": "chunk-0006.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           },
+           {
+             "ordinal": 7,
+             "name": "chunk-0007.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           },
+           {
+             "ordinal": 8,
+             "name": "chunk-0008.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           },
+           {
+             "ordinal": 9,
+             "name": "chunk-0009.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           },
+           {
+             "ordinal": 10,
+             "name": "chunk-0010.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           },
+           {
+             "ordinal": 11,
+             "name": "chunk-0011.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           },
+           {
+             "ordinal": 12,
+             "name": "chunk-0012.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           },
+           {
+             "ordinal": 13,
+             "name": "chunk-0013.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           },
+           {
+             "ordinal": 14,
+             "name": "chunk-0014.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           },
+           {
+             "ordinal": 15,
+             "name": "chunk-0015.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           },
+           {
+             "ordinal": 16,
+             "name": "chunk-0016.ndjson",
+             "byteSize": 33554432,
+             "recordCount": 1,
+             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           }
+         ],
+         "aggregates": {
+           "eventCount": 17,
+           "userMessageCount": 17,
+           "eligibleTextCount": 17,
+           "systemEventCount": 0,
+           "chunkCount": 17,
+           "totalBytes": 570425344,
+           "warningCount": 0,
+           "messageCategoryCounts": {
+             "text": 17,
+             "image": 0,
+             "voice": 0,
+             "video": 0,
+             "file": 0,
+             "animated-emoji": 0,
+             "structured": 0,
+             "location": 0,
+             "call": 0,
+             "mini-program": 0,
+             "reply": 0,
+             "contact-card": 0,
+             "system": 0,
+             "other": 0,
+             "unknown": 0
+           },
+           "unknownSenderCount": 0
+         },
+         "limits": {
+           "maxEvents": 2000000,
+           "maxDatasetBytes": 536870912,
+           "maxChunkBytes": 33554432,
+           "maxChunkCount": 16384
+         },
+         "privacyValidation": {
+           "status": "passed",
+           "forbiddenFieldCount": 0,
+           "contentPolicy": "eligible-text-only"
+         }
+       }
+     },
+     {
+       "name": "byte-count-mismatch",
+       "value": {
+         "schemaVersion": "chat-history-analysis.manifest.v2",
+         "canonicalSchemaVersion": "chat-history-analysis.canonical-event.v2",
+         "preprocessorVersion": "0.1.0",
+         "timePolicy": "UTC+08:00",
+         "metricDefinitionVersions": {
+           "population": "chat-history-analysis.metric.population.v1",
+           "time": "chat-history-analysis.metric.time.utc-plus-8.v1",
+           "tokens": "chat-history-analysis.metric.tokens.jieba.v1",
+           "keywords": "chat-history-analysis.metric.keywords.log-odds.v1",
+           "sessions": "chat-history-analysis.metric.sessions.threshold.v1"
+         },
+         "chunks": [
+           {
+             "ordinal": 0,
+             "name": "chunk-0000.ndjson",
+             "byteSize": 27,
+             "recordCount": 1,
+             "sha256": "091a92f49807ba6bfa5c514a21d1d2cd707aca3c5c4accd7db4cd11751914d98"
+           }
+         ],
+         "aggregates": {
+           "eventCount": 1,
+           "userMessageCount": 1,
+           "eligibleTextCount": 1,
+           "systemEventCount": 0,
+           "chunkCount": 1,
+           "totalBytes": 28,
+           "warningCount": 0,
+           "messageCategoryCounts": {
+             "text": 1,
+             "image": 0,
+             "voice": 0,
+             "video": 0,
+             "file": 0,
+             "animated-emoji": 0,
+             "structured": 0,
+             "location": 0,
+             "call": 0,
+             "mini-program": 0,
+             "reply": 0,
+             "contact-card": 0,
+             "system": 0,
+             "other": 0,
+             "unknown": 0
+           },
+           "unknownSenderCount": 0
+         },
+         "limits": {
+           "maxEvents": 2000000,
+           "maxDatasetBytes": 536870912,
+           "maxChunkBytes": 33554432,
+           "maxChunkCount": 16384
+         },
+         "privacyValidation": {
+           "status": "passed",
+           "forbiddenFieldCount": 0,
+           "contentPolicy": "eligible-text-only"
+         }
+       }
+     },
+     {
+       "name": "unsafe-aggregate-integer",
+       "value": {
+         "schemaVersion": "chat-history-analysis.manifest.v2",
+         "canonicalSchemaVersion": "chat-history-analysis.canonical-event.v2",
+         "preprocessorVersion": "0.1.0",
+         "timePolicy": "UTC+08:00",
+         "metricDefinitionVersions": {
+           "population": "chat-history-analysis.metric.population.v1",
+           "time": "chat-history-analysis.metric.time.utc-plus-8.v1",
+           "tokens": "chat-history-analysis.metric.tokens.jieba.v1",
+           "keywords": "chat-history-analysis.metric.keywords.log-odds.v1",
+           "sessions": "chat-history-analysis.metric.sessions.threshold.v1"
+         },
+         "chunks": [
+           {
+             "ordinal": 0,
+             "name": "chunk-0000.ndjson",
+             "byteSize": 27,
+             "recordCount": 1,
+             "sha256": "091a92f49807ba6bfa5c514a21d1d2cd707aca3c5c4accd7db4cd11751914d98"
+           }
+         ],
+         "aggregates": {
+           "eventCount": 1,
+           "userMessageCount": 1,
+           "eligibleTextCount": 1,
+           "systemEventCount": 0,
+           "chunkCount": 1,
+           "totalBytes": 27,
+           "warningCount": 0,
+           "messageCategoryCounts": {
+             "text": 1,
+             "image": 0,
+             "voice": 0,
+             "video": 0,
+             "file": 0,
+             "animated-emoji": 0,
+             "structured": 0,
+             "location": 0,
+             "call": 0,
+             "mini-program": 0,
+             "reply": 0,
+             "contact-card": 0,
+             "system": 0,
+             "other": 0,
+             "unknown": 0
+           },
+           "unknownSenderCount": 9007199254740992
+         },
+         "limits": {
+           "maxEvents": 2000000,
+           "maxDatasetBytes": 536870912,
+           "maxChunkBytes": 33554432,
+           "maxChunkCount": 16384
+         },
+         "privacyValidation": {
+           "status": "passed",
+           "forbiddenFieldCount": 0,
+           "contentPolicy": "eligible-text-only"
+         }
+       }
+     }
+   ]
+ }

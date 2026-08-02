@@ -315,6 +315,14 @@ The inclusive date filter SHALL include a session only when its opening user mes
 ### Requirement: Shared analytics Worker and aggregate layering
 All complete-dataset import, v1/v2 schema validation, chunk hashing, event indexing, text tokenization, base aggregation, sessionization, and derived metric calculation SHALL run in one dedicated analytics Worker, not the renderer main thread or desktop core. The preprocessor SHALL own raw validation, minimization, deduplication, canonical serialization, and manifest integrity but SHALL NOT precompute filter-dependent dashboard results. The renderer SHALL own only commands, aggregate state, selectors that format already-derived results, charts, accessible tables, and export requests.
 
+The Worker runtime SHALL accept an explicit runtime-validated request union:
+`browser-file-source` for the existing v1 `File[]` compatibility path and
+`desktop-dataset-source` for an opaque session/dataset capability plus session
+generation. The desktop variant SHALL contain no path, filename, `cwd`,
+`argv`, `env`, URL, or raw bytes. Both variants SHALL enter the same
+`analysis.worker.ts` → `worker-handler.ts` → `worker-runtime.ts` production
+path; a main-thread or fixed-chunk analysis fallback is forbidden.
+
 The Worker SHALL layer:
 
 1. exact source adapter and canonical record validation;
@@ -342,7 +350,13 @@ Each accepted record SHALL be tokenized at most once. Chunk text and buffers SHA
 - **THEN** the UI reports a content-free local failure and complete-dataset work does not move to another process or cloud service
 
 ### Requirement: Supported-scale and determinism gate
-Before the product analytics capability is declared complete, purely synthetic datasets SHALL exercise 2,000,000 raw/canonical events, 536,870,912 aggregate v2 bytes, 33,554,432 bytes per chunk, multiple years, maximum token-cache pressure, each metric, filter changes, threshold changes, cancellation, restart, and deterministic rerun. Evidence SHALL record application/browser engine version, macOS version, architecture, hardware memory, input bytes/events/tokens, exact retained typed-array bytes, peak Worker or renderer memory where measurable, main-thread heartbeat, phase durations, cancellation acknowledgement, cached-query latency, and pass/fail without private data.
+Before the product analytics capability is declared Release-complete, purely synthetic datasets SHALL exercise 2,000,000 raw/canonical events, 536,870,912 aggregate v2 bytes, 33,554,432 bytes per chunk, multiple years, maximum token-cache pressure, each metric, filter changes, threshold changes, cancellation, restart, and deterministic rerun. Evidence SHALL record application/browser engine version, macOS version, architecture, hardware memory, input bytes/events/tokens, exact retained typed-array bytes, peak Worker or renderer memory where measurable, main-thread heartbeat, phase durations, cancellation acknowledgement, cached-query latency, and pass/fail without private data.
+
+The unsigned Alpha foundation SHALL enforce those limits and bounded-memory
+directions, and SHALL run representative multi-chunk and cancellation tests,
+but it SHALL NOT claim the formal 512 MiB peak-memory or full 2,000,000-event
+performance proof. That proof remains an unchecked Beta/Release hardening task
+and must be completed before supported-scale or Release claims.
 
 On the reference macOS arm64 system with 16 GiB memory, the gate SHALL require no process termination, no unexplained memory growth, maximum main-thread heartbeat gap below 250 ms, cancellation acknowledgement below 1,000 ms, p95 cached global-filter query below 2,000 ms, and conservative renderer-process-tree RSS below 1.5 GiB. If any limit cannot pass with the specified compact or partitioned representation, implementation SHALL stop, leave the task incomplete, and revise OpenSpec before reducing limits or claiming support.
 

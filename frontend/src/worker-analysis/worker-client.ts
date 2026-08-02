@@ -7,6 +7,7 @@ import type {
   WorkerProgress,
   WorkerRequest,
   WorkerResponse,
+  DesktopDatasetSourceRequest,
 } from "./protocol";
 import { DEFAULT_TOKENIZER_SETTINGS } from "./protocol";
 
@@ -38,6 +39,8 @@ export class WorkerClientCancelledError extends Error {
 }
 
 interface PendingOperation<Result> {
+  readonly generation: number;
+  lastSequence: number;
   readonly resolve: (result: Result) => void;
   readonly reject: (error: Error) => void;
   readonly onProgress?: (progress: WorkerProgress) => void;
@@ -71,13 +74,40 @@ export class AnalysisWorkerClient {
     tokenizerSettings: TokenizerSettings = DEFAULT_TOKENIZER_SETTINGS,
   ): Promise<AcceptedDatasetResult> {
     return this.startOperation<AcceptedDatasetResult>(
-      (operationId) => ({
+      (operationId, generation, sequence) => ({
         type: "load-dataset",
         operationId,
-        files,
+        generation,
+        sequence,
+        source: {
+          kind: "browser-file-source",
+          files,
+        },
         tokenizerSettings,
       }),
       onProgress,
+    );
+  }
+
+  loadDesktopDataset(
+    source: Omit<DesktopDatasetSourceRequest, "kind">,
+    onProgress?: (progress: WorkerProgress) => void,
+    tokenizerSettings: TokenizerSettings = DEFAULT_TOKENIZER_SETTINGS,
+  ): Promise<AcceptedDatasetResult> {
+    return this.startOperation<AcceptedDatasetResult>(
+      (operationId, generation, sequence) => ({
+        type: "load-dataset",
+        operationId,
+        generation,
+        sequence,
+        source: {
+          kind: "desktop-dataset-source",
+          ...source,
+        },
+        tokenizerSettings,
+      }),
+      onProgress,
+      source.generation,
     );
   }
 
@@ -86,9 +116,11 @@ export class AnalysisWorkerClient {
     onProgress?: (progress: WorkerProgress) => void,
   ): Promise<AnalysisResult> {
     return this.startOperation<AnalysisResult>(
-      (operationId) => ({
+      (operationId, generation, sequence) => ({
         type: "analyze",
         operationId,
+        generation,
+        sequence,
         settings,
       }),
       onProgress,
@@ -101,7 +133,13 @@ export class AnalysisWorkerClient {
     if (worker === undefined || operationId === undefined) {
       return;
     }
-    worker.postMessage({ type: "cancel", operationId });
+    const pending = this.pending.get(operationId);
+    worker.postMessage({
+      type: "cancel",
+      operationId,
+      generation: pending?.generation ?? operationId,
+      sequence: (pending?.lastSequence ?? 1) + 1,
+    });
     this.rejectOperation(operationId, new WorkerClientCancelledError());
   }
 
@@ -120,7 +158,13 @@ export class AnalysisWorkerClient {
     const timedOut = new Promise<void>((resolve) => {
       timeout = globalThis.setTimeout(resolve, timeoutMilliseconds);
     });
-    worker.postMessage({ type: "cancel", operationId });
+    const pending = this.pending.get(operationId);
+    worker.postMessage({
+      type: "cancel",
+      operationId,
+      generation: pending?.generation ?? operationId,
+      sequence: (pending?.lastSequence ?? 1) + 1,
+    });
     await Promise.race([acknowledged, timedOut]);
     if (timeout !== undefined) {
       globalThis.clearTimeout(timeout);
@@ -142,8 +186,13 @@ export class AnalysisWorkerClient {
   }
 
   private startOperation<Result extends AcceptedDatasetResult | AnalysisResult>(
-    request: (operationId: number) => WorkerRequest,
+    request: (
+      operationId: number,
+      generation: number,
+      sequence: number,
+    ) => WorkerRequest,
     onProgress?: (progress: WorkerProgress) => void,
+    requestedGeneration?: number,
   ): Promise<Result> {
     let worker: WorkerPort;
     try {
@@ -156,12 +205,19 @@ export class AnalysisWorkerClient {
 
     if (this.activeOperationId !== undefined) {
       const staleId = this.activeOperationId;
-      worker.postMessage({ type: "cancel", operationId: staleId });
+      const stalePending = this.pending.get(staleId);
+      worker.postMessage({
+        type: "cancel",
+        operationId: staleId,
+        generation: stalePending?.generation ?? staleId,
+        sequence: (stalePending?.lastSequence ?? 1) + 1,
+      });
       this.rejectOperation(staleId, new WorkerClientCancelledError());
     }
 
     const operationId = this.nextOperationId;
     this.nextOperationId += 1;
+    const generation = requestedGeneration ?? operationId;
     this.activeOperationId = operationId;
     return new Promise<Result>((resolve, reject) => {
       const timeout = globalThis.setTimeout(() => {
@@ -172,6 +228,8 @@ export class AnalysisWorkerClient {
         this.terminateWorker(new WorkerClientError("WORKER_TIMEOUT"));
       }, 300_000);
       this.pending.set(operationId, {
+        generation,
+        lastSequence: 1,
         resolve: resolve as (
           result: AcceptedDatasetResult | AnalysisResult,
         ) => void,
@@ -180,7 +238,7 @@ export class AnalysisWorkerClient {
         timeout,
       });
       try {
-        worker.postMessage(request(operationId));
+        worker.postMessage(request(operationId, generation, 1));
       } catch {
         this.rejectOperation(
           operationId,
@@ -214,13 +272,27 @@ export class AnalysisWorkerClient {
   }
 
   private handleMessage(response: WorkerResponse): void {
+    const operation = this.pending.get(response.operationId);
+    if (
+      operation !== undefined &&
+      (response.generation !== operation.generation ||
+        response.sequence <= operation.lastSequence)
+    ) {
+      return;
+    }
     if (response.type === "progress") {
-      this.pending
-        .get(response.operationId)
-        ?.onProgress?.(response);
+      if (operation === undefined) {
+        return;
+      }
+      operation.lastSequence = response.sequence;
+      operation.onProgress?.(response);
       return;
     }
     if (response.type === "cancelled") {
+      if (operation === undefined) {
+        return;
+      }
+      operation.lastSequence = response.sequence;
       this.rejectOperation(
         response.operationId,
         new WorkerClientCancelledError(),
@@ -229,16 +301,20 @@ export class AnalysisWorkerClient {
       return;
     }
     if (response.type === "error") {
+      if (operation === undefined) {
+        return;
+      }
+      operation.lastSequence = response.sequence;
       this.rejectOperation(
         response.operationId,
         new WorkerClientError(response.code),
       );
       return;
     }
-    const operation = this.pending.get(response.operationId);
     if (operation === undefined) {
       return;
     }
+    operation.lastSequence = response.sequence;
     globalThis.clearTimeout(operation.timeout);
     this.pending.delete(response.operationId);
     if (this.activeOperationId === response.operationId) {

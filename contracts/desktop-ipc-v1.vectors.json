@@ -1,0 +1,949 @@
+ {
+   "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+   "commands": [
+     {
+       "name": "select-annual-sources",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "type": "select-annual-sources",
+         "requestId": "req_00000000000000000000000000000001"
+       }
+     },
+     {
+       "name": "select-verification-sources",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "type": "select-verification-sources",
+         "requestId": "req_00000000000000000000000000000002"
+       }
+     },
+     {
+       "name": "start-analysis",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "type": "start-analysis",
+         "requestId": "req_00000000000000000000000000000003",
+         "selectionId": "sel_00000000000000000000000000000001"
+       }
+     },
+     {
+       "name": "cancel-analysis",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "type": "cancel-analysis",
+         "requestId": "req_00000000000000000000000000000004",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1
+       }
+     },
+     {
+       "name": "retry-analysis",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "type": "retry-analysis",
+         "requestId": "req_00000000000000000000000000000005",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1
+       }
+     },
+     {
+       "name": "discard-session",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "type": "discard-session",
+         "requestId": "req_00000000000000000000000000000006",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1
+       }
+     },
+     {
+       "name": "export-aggregate",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "type": "export-aggregate",
+         "requestId": "req_00000000000000000000000000000007",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "reportFormat": "json",
+         "resultId": "res_00000000000000000000000000000001"
+       }
+     },
+     {
+       "name": "request-application-close",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "type": "request-application-close",
+         "requestId": "req_00000000000000000000000000000008",
+         "decision": "cancel-and-close"
+       }
+     },
+     {
+       "name": "generation-max-safe",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "type": "cancel-analysis",
+         "requestId": "req_00000000000000000000000000000010",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 9007199254740991
+       }
+     },
+     {
+       "name": "export-png",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "type": "export-aggregate",
+         "requestId": "req_00000000000000000000000000000011",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "reportFormat": "png",
+         "resultId": "res_00000000000000000000000000000002"
+       }
+     },
+     {
+       "name": "export-csv",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "type": "export-aggregate",
+         "requestId": "req_00000000000000000000000000000012",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "reportFormat": "csv",
+         "resultId": "res_00000000000000000000000000000003"
+       }
+     }
+   ],
+   "events": [
+     {
+       "name": "selection-ready-sessionless",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": null,
+         "generation": 0,
+         "sequence": 1,
+         "type": "selection-ready",
+         "payload": {
+           "selectionId": "sel_00000000000000000000000000000001",
+           "annualSourceCount": 1,
+           "verificationSourceCount": 0
+         }
+       }
+     },
+     {
+       "name": "state-ready",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 1,
+         "type": "state",
+         "payload": {
+           "state": "ready"
+         }
+       }
+     },
+     {
+       "name": "progress",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 2,
+         "type": "progress",
+         "payload": {
+           "phase": "preprocessing",
+           "completed": 1,
+           "total": 2,
+           "percentage": 50
+         }
+       }
+     },
+     {
+       "name": "dataset-ready",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 3,
+         "type": "dataset-ready",
+         "payload": {
+           "recordCount": 1,
+           "chunkCount": 1,
+           "minimumCalendarDate": "2025-01-01",
+           "maximumCalendarDate": "2025-01-01",
+           "pseudonymous": true
+         }
+       }
+     },
+     {
+       "name": "failure",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 4,
+         "type": "failure",
+         "payload": {
+           "code": "SIDECAR_CRASHED",
+           "retryable": true
+         }
+       }
+     },
+     {
+       "name": "cancelled",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 5,
+         "type": "cancelled",
+         "payload": {
+           "reason": "user"
+         }
+       }
+     },
+     {
+       "name": "cleanup",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 6,
+         "type": "cleanup",
+         "payload": {
+           "status": "complete",
+           "removedEntryCount": 3
+         }
+       }
+     },
+     {
+       "name": "exported",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 7,
+         "type": "exported",
+         "payload": {
+           "resultId": "res_00000000000000000000000000000001",
+           "reportFormat": "json"
+         }
+       }
+     },
+     {
+       "name": "closed",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 8,
+         "type": "closed",
+         "payload": {
+           "status": "complete"
+         }
+       }
+     },
+     {
+       "name": "max-safe-generation-sequence",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 9007199254740991,
+         "sequence": 9007199254740991,
+         "type": "state",
+         "payload": {
+           "state": "ready"
+         }
+       }
+     },
+     {
+       "name": "exported-png",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 9,
+         "type": "exported",
+         "payload": {
+           "resultId": "res_00000000000000000000000000000002",
+           "reportFormat": "png"
+         }
+       }
+     },
+     {
+       "name": "exported-csv",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 10,
+         "type": "exported",
+         "payload": {
+           "resultId": "res_00000000000000000000000000000003",
+           "reportFormat": "csv"
+         }
+       }
+     }
+   ],
+   "invalidCommands": [
+     {
+       "name": "unknown-command",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "type": "run-shell",
+         "requestId": "req_00000000000000000000000000000020",
+         "command": "synthetic"
+       }
+     },
+     {
+       "name": "unknown-field",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "type": "select-annual-sources",
+         "requestId": "req_00000000000000000000000000000001",
+         "path": "synthetic"
+       }
+     },
+     {
+       "name": "generation-zero",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "type": "cancel-analysis",
+         "requestId": "req_00000000000000000000000000000021",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 0
+       }
+     },
+     {
+       "name": "negative-generation",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "type": "cancel-analysis",
+         "requestId": "req_00000000000000000000000000000022",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": -1
+       }
+     },
+     {
+       "name": "first-over-max-safe-generation",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "type": "cancel-analysis",
+         "requestId": "req_00000000000000000000000000000023",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 9007199254740992
+       }
+     },
+     {
+       "name": "unsupported-protocol",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v0",
+         "type": "select-annual-sources",
+         "requestId": "req_00000000000000000000000000000001"
+       }
+     },
+     {
+       "name": "empty-request-id",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "type": "select-annual-sources",
+         "requestId": ""
+       }
+     },
+     {
+       "name": "short-request-id",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "type": "select-annual-sources",
+         "requestId": "req_1"
+       }
+     },
+     {
+       "name": "oversized-request-id",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "type": "select-annual-sources",
+         "requestId": "req_000000000000000000000000000000010"
+       }
+     },
+     {
+       "name": "missing-session-id",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "type": "cancel-analysis",
+         "requestId": "req_00000000000000000000000000000024",
+         "generation": 1
+       }
+     },
+     {
+       "name": "unknown-report-format",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "type": "export-aggregate",
+         "requestId": "req_00000000000000000000000000000025",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "reportFormat": "pdf",
+         "resultId": "res_00000000000000000000000000000001"
+       }
+     },
+     {
+       "name": "empty-result-id",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "type": "export-aggregate",
+         "requestId": "req_00000000000000000000000000000026",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "reportFormat": "json",
+         "resultId": ""
+       }
+     },
+     {
+       "name": "missing-export-result-id",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "type": "export-aggregate",
+         "requestId": "req_00000000000000000000000000000027",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "reportFormat": "json"
+       }
+     },
+     {
+       "name": "wrong-optional-selection-field",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "type": "select-annual-sources",
+         "requestId": "req_00000000000000000000000000000001",
+         "selectionId": "sel_00000000000000000000000000000001"
+       }
+     }
+   ],
+   "invalidEvents": [
+     {
+       "name": "unknown-field",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 1,
+         "type": "progress",
+         "payload": {
+           "phase": "preprocessing",
+           "completed": 1,
+           "total": 2,
+           "percentage": 50,
+           "path": "synthetic"
+         }
+       }
+     },
+     {
+       "name": "missing-payload",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 1,
+         "type": "progress"
+       }
+     },
+     {
+       "name": "zero-sequence",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 0,
+         "type": "progress",
+         "payload": {
+           "phase": "preprocessing",
+           "completed": 0,
+           "total": 1,
+           "percentage": 0
+         }
+       }
+     },
+     {
+       "name": "negative-generation",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": -1,
+         "sequence": 1,
+         "type": "progress",
+         "payload": {
+           "phase": "preprocessing",
+           "completed": 0,
+           "total": 1,
+           "percentage": 0
+         }
+       }
+     },
+     {
+       "name": "negative-sequence",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": -1,
+         "type": "progress",
+         "payload": {
+           "phase": "preprocessing",
+           "completed": 0,
+           "total": 1,
+           "percentage": 0
+         }
+       }
+     },
+     {
+       "name": "first-over-max-safe-sequence",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 9007199254740992,
+         "type": "progress",
+         "payload": {
+           "phase": "preprocessing",
+           "completed": 0,
+           "total": 1,
+           "percentage": 0
+         }
+       }
+     },
+     {
+       "name": "invalid-date",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 1,
+         "type": "dataset-ready",
+         "payload": {
+           "recordCount": 1,
+           "chunkCount": 1,
+           "minimumCalendarDate": "2025-02-29",
+           "maximumCalendarDate": "2025-03-01",
+           "pseudonymous": true
+         }
+       }
+     },
+     {
+       "name": "unknown-failure-code",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 1,
+         "type": "failure",
+         "payload": {
+           "code": "NEW_INTERNAL_ERROR",
+           "retryable": false
+         }
+       }
+     },
+     {
+       "name": "unknown-cancel-reason",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 1,
+         "type": "cancelled",
+         "payload": {
+           "reason": "timeout"
+         }
+       }
+     },
+     {
+       "name": "unknown-cleanup-status",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 1,
+         "type": "cleanup",
+         "payload": {
+           "status": "partial",
+           "removedEntryCount": 0
+         }
+       }
+     },
+     {
+       "name": "unknown-export-format",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 1,
+         "type": "exported",
+         "payload": {
+           "resultId": "res_00000000000000000000000000000001",
+           "reportFormat": "pdf"
+         }
+       }
+     },
+     {
+       "name": "unknown-closed-status",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 1,
+         "type": "closed",
+         "payload": {
+           "status": "partial"
+         }
+       }
+     },
+     {
+       "name": "sessionless-lifecycle",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": null,
+         "generation": 0,
+         "sequence": 1,
+         "type": "progress",
+         "payload": {
+           "phase": "preprocessing",
+           "completed": 0,
+           "total": 1,
+           "percentage": 0
+         }
+       }
+     },
+     {
+       "name": "sessionless-failure",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": null,
+         "generation": 0,
+         "sequence": 1,
+         "type": "failure",
+         "payload": {
+           "code": "SIDECAR_CRASHED",
+           "retryable": true
+         }
+       }
+     },
+     {
+       "name": "empty-session-id",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "",
+         "generation": 1,
+         "sequence": 1,
+         "type": "progress",
+         "payload": {
+           "phase": "preprocessing",
+           "completed": 0,
+           "total": 1,
+           "percentage": 0
+         }
+       }
+     },
+     {
+       "name": "oversized-session-id",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_000000000000000000000000000000010",
+         "generation": 1,
+         "sequence": 1,
+         "type": "progress",
+         "payload": {
+           "phase": "preprocessing",
+           "completed": 0,
+           "total": 1,
+           "percentage": 0
+         }
+       }
+     },
+     {
+       "name": "unsupported-protocol",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v0",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 2,
+         "type": "progress",
+         "payload": {
+           "phase": "preprocessing",
+           "completed": 1,
+           "total": 2,
+           "percentage": 50
+         }
+       }
+     },
+     {
+       "name": "selection-with-session",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 1,
+         "type": "selection-ready",
+         "payload": {
+           "selectionId": "sel_00000000000000000000000000000001",
+           "annualSourceCount": 1,
+           "verificationSourceCount": 0
+         }
+       }
+     },
+     {
+       "name": "selection-with-generation",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": null,
+         "generation": 1,
+         "sequence": 1,
+         "type": "selection-ready",
+         "payload": {
+           "selectionId": "sel_00000000000000000000000000000001",
+           "annualSourceCount": 1,
+           "verificationSourceCount": 0
+         }
+       }
+     },
+     {
+       "name": "wrong-payload-discriminant",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 1,
+         "type": "state",
+         "payload": {
+           "phase": "preprocessing",
+           "completed": 0,
+           "total": 1,
+           "percentage": 0
+         }
+       }
+     },
+     {
+       "name": "negative-progress-count",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 1,
+         "type": "progress",
+         "payload": {
+           "phase": "preprocessing",
+           "completed": -1,
+           "total": 1,
+           "percentage": 0
+         }
+       }
+     },
+     {
+       "name": "missing-required-payload-field",
+       "value": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 1,
+         "type": "progress",
+         "payload": {
+           "phase": "preprocessing",
+           "completed": 0,
+           "total": 1
+         }
+       }
+     }
+   ],
+   "raceVectors": [
+     {
+       "name": "future-generation",
+       "originWindowId": "main",
+       "cursor": {
+         "windowId": "main",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 1,
+         "state": "ready",
+         "terminal": false
+       },
+       "event": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 2,
+         "sequence": 2,
+         "type": "progress",
+         "payload": {"phase": "preprocessing", "completed": 1, "total": 2, "percentage": 50}
+       },
+       "expected": "STALE_GENERATION"
+     },
+     {
+       "name": "stale-generation",
+       "originWindowId": "main",
+       "cursor": {
+         "windowId": "main",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 2,
+         "sequence": 1,
+         "state": "ready",
+         "terminal": false
+       },
+       "event": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 2,
+         "type": "progress",
+         "payload": {"phase": "preprocessing", "completed": 1, "total": 2, "percentage": 50}
+       },
+       "expected": "STALE_GENERATION"
+     },
+     {
+       "name": "missing-session",
+       "originWindowId": "main",
+       "cursor": {
+         "windowId": "main",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 1,
+         "state": "ready",
+         "terminal": false
+       },
+       "event": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": null,
+         "generation": 0,
+         "sequence": 2,
+         "type": "progress",
+         "payload": {"phase": "preprocessing", "completed": 1, "total": 2, "percentage": 50}
+       },
+       "expected": "STALE_GENERATION"
+     },
+     {
+       "name": "wrong-sequence",
+       "originWindowId": "main",
+       "cursor": {
+         "windowId": "main",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 1,
+         "state": "ready",
+         "terminal": false
+       },
+       "event": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 3,
+         "type": "progress",
+         "payload": {"phase": "preprocessing", "completed": 1, "total": 2, "percentage": 50}
+       },
+       "expected": "STALE_EVENT"
+     },
+     {
+       "name": "unsupported-version",
+       "originWindowId": "main",
+       "cursor": {
+         "windowId": "main",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 1,
+         "state": "ready",
+         "terminal": false
+       },
+       "event": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v0",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 2,
+         "type": "progress",
+         "payload": {"phase": "preprocessing", "completed": 1, "total": 2, "percentage": 50}
+       },
+       "expected": "STALE_EVENT"
+     },
+     {
+       "name": "duplicate-terminal",
+       "originWindowId": "main",
+       "cursor": {
+         "windowId": "main",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 4,
+         "state": "complete",
+         "terminal": true,
+         "terminalOutcome": "complete"
+       },
+       "event": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 5,
+         "type": "state",
+         "payload": {"state": "complete"}
+       },
+       "expected": "STALE_EVENT"
+     },
+     {
+       "name": "progress-after-terminal",
+       "originWindowId": "main",
+       "cursor": {
+         "windowId": "main",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 4,
+         "state": "complete",
+         "terminal": true,
+         "terminalOutcome": "complete"
+       },
+       "event": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 5,
+         "type": "progress",
+         "payload": {"phase": "aggregation", "completed": 1, "total": 1, "percentage": 100}
+       },
+       "expected": "STALE_EVENT"
+     },
+     {
+       "name": "cleanup-before-terminal",
+       "originWindowId": "main",
+       "cursor": {
+         "windowId": "main",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 3,
+         "state": "analyzing",
+         "terminal": false
+       },
+       "event": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 4,
+         "type": "cleanup",
+         "payload": {"status": "complete", "removedEntryCount": 1}
+       },
+       "expected": "INVALID_STATE"
+     },
+     {
+       "name": "closed-before-cleanup",
+       "originWindowId": "main",
+       "cursor": {
+         "windowId": "main",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 4,
+         "state": "complete",
+         "terminal": true,
+         "terminalOutcome": "complete"
+       },
+       "event": {
+         "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+         "sessionId": "ses_00000000000000000000000000000001",
+         "generation": 1,
+         "sequence": 5,
+         "type": "closed",
+         "payload": {"status": "complete"}
+       },
+       "expected": "INVALID_STATE"
+     }
+   ]
+ }

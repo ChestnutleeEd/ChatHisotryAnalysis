@@ -5,11 +5,13 @@ import type {
   WorkerRequest,
   WorkerResponse,
 } from "./protocol";
+import { createAnalysisWorkerHandler } from "./worker-handler";
+import { AnalysisWorkerRuntime } from "./worker-runtime";
 import {
-  AnalysisWorkerRuntime,
-  WorkerAnalysisError,
-  WorkerCancellation,
-} from "./worker-runtime";
+  openTauriDatasetSource,
+  type DatasetTransportInvoker,
+} from "./desktop-dataset-source";
+import type { DesktopDatasetSourceRequest } from "./protocol";
 
 interface WorkerScope {
   onmessage: ((event: MessageEvent<WorkerRequest>) => void) | null;
@@ -33,73 +35,45 @@ const runtime = new AnalysisWorkerRuntime(
   },
 );
 
-function reportFailure(operationId: number, error: unknown): void {
-  if (error instanceof WorkerCancellation) {
-    workerScope.postMessage({
-      type: "cancelled",
-      operationId,
-    });
-    return;
-  }
-  const failure =
-    error instanceof WorkerAnalysisError
-      ? error
-      : new WorkerAnalysisError("WORKER_RUNTIME_FAILED", "records");
-  workerScope.postMessage({
-    type: "error",
-    operationId,
-    code: failure.code,
-    phase: failure.phase,
-    ...(failure.chunkOrdinal === undefined
-      ? {}
-      : { chunkOrdinal: failure.chunkOrdinal }),
-    ...(failure.lineOrdinal === undefined
-      ? {}
-      : { lineOrdinal: failure.lineOrdinal }),
-  });
+interface TauriWorkerInternals {
+  invoke<T>(command: string, args: unknown): Promise<T>;
 }
 
-workerScope.onmessage = (event): void => {
-  const request = event.data;
-  if (request.type === "dispose") {
-    runtime.dispose();
-    workerScope.close();
-    return;
+function tauriDatasetInvoker(): DatasetTransportInvoker {
+  const internals = (globalThis as typeof globalThis & {
+    readonly __TAURI_INTERNALS__?: TauriWorkerInternals;
+  }).__TAURI_INTERNALS__;
+  if (internals === undefined) {
+    throw new Error("DATASET_TRANSPORT_UNAVAILABLE");
   }
-  if (request.type === "cancel") {
-    runtime.cancel(request.operationId);
-    return;
-  }
-  if (request.type === "load-dataset") {
-    void runtime
-      .loadDataset(
-        request.operationId,
-        request.files,
-        request.tokenizerSettings,
-      )
-      .then((accepted) => {
-        workerScope.postMessage({
-          type: "accepted",
-          operationId: request.operationId,
-          summary: accepted.summary,
-          result: accepted.result,
-        });
-      })
-      .catch((error: unknown) => {
-        reportFailure(request.operationId, error);
-      });
-    return;
-  }
-  void runtime
-    .analyze(request.operationId, request.settings)
-    .then((result) => {
-      workerScope.postMessage({
-        type: "result",
-        operationId: request.operationId,
-        result,
-      });
+  return {
+    invoke<T>(
+      command:
+        | "open_dataset_stream"
+        | "receive_dataset_chunk"
+        | "complete_dataset_stream"
+        | "cancel_dataset_stream"
+        | "close_dataset_stream",
+      args: { readonly request: unknown },
+    ) {
+      return internals.invoke<T>(command, args);
+    },
+  };
+}
+
+async function createDesktopDatasetSource(
+  request: DesktopDatasetSourceRequest,
+) {
+  return (
+    await openTauriDatasetSource(tauriDatasetInvoker(), {
+      protocolVersion: "chat-history-analysis.desktop-ipc.v1",
+      sessionId: request.sessionId,
+      generation: request.generation,
+      datasetId: request.datasetId,
     })
-    .catch((error: unknown) => {
-      reportFailure(request.operationId, error);
-    });
-};
+  ).source;
+}
+
+workerScope.onmessage = createAnalysisWorkerHandler(workerScope, runtime, {
+  createDesktopDatasetSource,
+});

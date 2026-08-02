@@ -1,9 +1,7 @@
 import {
-  MANIFEST_FILE_NAME,
   MANIFEST_SCHEMA_VERSION,
   MAX_MANIFEST_BYTES,
   MAX_NORMALIZED_CHUNK_BYTES,
-  MAX_NORMALIZED_DATASET_BYTES,
   MAX_NORMALIZED_RECORDS,
   NORMALIZED_RECORD_FIELDS,
   NORMALIZED_SCHEMA_VERSION,
@@ -14,6 +12,12 @@ import {
   type NormalizedChunkDescriptor,
   type NormalizedTextRecord,
 } from "../normalized/schema";
+import {
+  BrowserFileDatasetSource,
+  DatasetByteSourceError,
+  type DatasetByteSource,
+  type RuntimeFile,
+} from "./dataset-byte-source";
 import type {
   AcceptedDatasetResult,
   AnalysisResult,
@@ -113,13 +117,7 @@ export interface TokenizerDependencies {
   cutWithoutHmm(text: string): readonly string[];
 }
 
-export interface RuntimeFile {
-  readonly name: string;
-  readonly size: number;
-  arrayBuffer(): Promise<ArrayBuffer>;
-  stream(): ReadableStream<Uint8Array>;
-  slice(start?: number, end?: number): Blob;
-}
+export type { RuntimeFile } from "./dataset-byte-source";
 
 export class WorkerAnalysisError extends Error {
   readonly code: WorkerFailureCode;
@@ -187,6 +185,19 @@ interface TokenCache {
   readonly tokenTable: readonly string[];
   readonly summary: DatasetSummary;
   readonly generation: number;
+}
+
+interface OperationMetadata {
+  readonly generation?: number;
+  readonly sequence?: number;
+}
+
+interface ActiveOperation {
+  readonly operationId: number;
+  readonly generation: number;
+  readonly requestSequence: number;
+  outputSequence: number;
+  terminal: boolean;
 }
 
 class GrowableUint32 {
@@ -420,7 +431,6 @@ function validateForbidden(value: JsonValue): void {
 
 function validateManifest(
   value: JsonValue,
-  selectedFiles: ReadonlyMap<string, RuntimeFile>,
 ): ValidatedManifest {
   if (
     isObject(value) &&
@@ -554,27 +564,12 @@ function validateManifest(
           "manifest",
         );
       }
-      const selected = selectedFiles.get(name);
-      if (selected === undefined || selected.size !== byteSize) {
-        throw new WorkerAnalysisError("FILE_SET_INVALID", "manifest");
-      }
       chunks.push({
         name,
         byteSize,
         recordCount: integer(item.recordCount, 1),
         sha256: hashValue(item.sha256),
       });
-    }
-
-    const expectedNames = new Set([
-      MANIFEST_FILE_NAME,
-      ...chunks.map((chunk) => chunk.name),
-    ]);
-    if (
-      expectedNames.size !== selectedFiles.size ||
-      [...selectedFiles.keys()].some((name) => !expectedNames.has(name))
-    ) {
-      throw new WorkerAnalysisError("FILE_SET_INVALID", "manifest");
     }
 
     const aggregates = exactObject(root.aggregates, AGGREGATE_FIELDS);
@@ -915,6 +910,8 @@ function looksLikeRawExportPrefix(value: string): boolean {
 export class AnalysisWorkerRuntime {
   private activeOperationId = 0;
   private readonly cancelled = new Set<number>();
+  private activeOperation: ActiveOperation | undefined;
+  private lastStartedGeneration = 0;
   private initialized = false;
   private initializationPromise: Promise<void> | undefined;
   private acceptedCache: TokenCache | undefined;
@@ -926,12 +923,23 @@ export class AnalysisWorkerRuntime {
     private readonly reportProgress: (progress: WorkerProgress) => void,
   ) {}
 
-  cancel(operationId: number): void {
-    this.cancelled.add(operationId);
+  cancel(operationId: number, generation = operationId, sequence?: number): void {
+    const active = this.activeOperation;
+    const effectiveSequence = sequence ?? (active?.outputSequence ?? 1) + 1;
+    if (
+      active?.operationId === operationId &&
+      active.generation === generation &&
+      Number.isSafeInteger(effectiveSequence) &&
+      effectiveSequence > active.outputSequence
+    ) {
+      active.outputSequence = effectiveSequence;
+      this.cancelled.add(operationId);
+    }
   }
 
   dispose(): void {
     this.activeOperationId += 1;
+    this.activeOperation = undefined;
     this.cancelled.clear();
     this.acceptedCache = undefined;
     this.initialized = false;
@@ -940,11 +948,17 @@ export class AnalysisWorkerRuntime {
 
   async loadDataset(
     operationId: number,
-    files: readonly RuntimeFile[],
+    sourceOrFiles: DatasetByteSource | readonly RuntimeFile[],
     tokenizerSettings: TokenizerSettings,
+    metadata: OperationMetadata = {},
   ): Promise<AcceptedDatasetResult> {
-    this.begin(operationId);
+    this.begin(operationId, metadata);
+    let source: DatasetByteSource | undefined;
     try {
+      const activeSource: DatasetByteSource = Array.isArray(sourceOrFiles)
+        ? new BrowserFileDatasetSource(sourceOrFiles)
+        : (sourceOrFiles as DatasetByteSource);
+      source = activeSource;
       if (
         !Number.isSafeInteger(tokenizerSettings.minimumTokenLength) ||
         tokenizerSettings.minimumTokenLength < 1 ||
@@ -960,39 +974,22 @@ export class AnalysisWorkerRuntime {
         this.stopWordAsset,
         tokenizerSettings.additionalStopWords,
       );
-      const selectedFiles = this.validateSelectedFiles(files);
-      const manifestFile = selectedFiles.get(MANIFEST_FILE_NAME);
-      if (manifestFile === undefined) {
-        throw new WorkerAnalysisError("FILE_SET_INVALID", "manifest");
-      }
       this.progress(operationId, "manifest", 0, 1, 1);
-
-      if (manifestFile.size > MAX_MANIFEST_BYTES) {
-        const prefix = await manifestFile.slice(0, 65_536).text();
-        if (looksLikeRawExportPrefix(prefix)) {
-          throw new WorkerAnalysisError(
-            "RAW_EXPORT_UNSUPPORTED",
-            "manifest",
-          );
-        }
+      let manifestBuffer: ArrayBuffer;
+      try {
+        manifestBuffer = await activeSource.readManifest(() =>
+          this.checkpoint(operationId, false),
+        );
+      } catch (error) {
+        throw this.mapSourceError(error, "manifest");
+      }
+      await this.checkpoint(operationId, false);
+      if (manifestBuffer.byteLength > MAX_MANIFEST_BYTES) {
         throw new WorkerAnalysisError(
           "DATASET_LIMIT_EXCEEDED",
           "manifest",
         );
       }
-      const manifestPrefix = await manifestFile.slice(0, 65_536).text();
-      await this.checkpoint(operationId, false);
-      if (looksLikeRawExportPrefix(manifestPrefix)) {
-        throw new WorkerAnalysisError(
-          "RAW_EXPORT_UNSUPPORTED",
-          "manifest",
-        );
-      }
-      const manifestBuffer = await this.readFileBuffer(
-        operationId,
-        manifestFile,
-        "manifest",
-      );
       const manifestBytes = new Uint8Array(manifestBuffer);
       if (
         manifestBytes.length === 0 ||
@@ -1001,13 +998,26 @@ export class AnalysisWorkerRuntime {
         throw new WorkerAnalysisError("MANIFEST_INVALID", "manifest");
       }
       const manifestText = decodeUtf8(manifestBuffer, "manifest");
+      if (looksLikeRawExportPrefix(manifestText.slice(0, 65_536))) {
+        throw new WorkerAnalysisError(
+          "RAW_EXPORT_UNSUPPORTED",
+          "manifest",
+        );
+      }
       let manifestJson: JsonValue;
       try {
         manifestJson = parseStrictJson(manifestText);
       } catch {
         throw new WorkerAnalysisError("MANIFEST_INVALID", "manifest");
       }
-      const manifest = validateManifest(manifestJson, selectedFiles);
+      const manifest = validateManifest(manifestJson);
+      try {
+        activeSource.assertManifestChunks?.(
+          manifest.chunks.map((chunk) => chunk.name),
+        );
+      } catch (error) {
+        throw this.mapSourceError(error, "manifest");
+      }
       this.progress(operationId, "manifest", 1, 1, 4);
       await this.checkpoint(operationId, true);
 
@@ -1024,16 +1034,16 @@ export class AnalysisWorkerRuntime {
 
       for (const [chunkIndex, chunk] of manifest.chunks.entries()) {
         const chunkOrdinal = chunkIndex + 1;
-        const file = selectedFiles.get(chunk.name);
-        if (file === undefined) {
-          throw new WorkerAnalysisError("FILE_SET_INVALID", "hash");
+        let buffer: ArrayBuffer;
+        try {
+          buffer = await activeSource.readChunk(
+            chunkOrdinal,
+            chunk.byteSize,
+            () => this.checkpoint(operationId, false),
+          );
+        } catch (error) {
+          throw this.mapSourceError(error, "hash", chunkOrdinal);
         }
-        const buffer = await this.readFileBuffer(
-          operationId,
-          file,
-          "hash",
-          chunkOrdinal,
-        );
         await this.checkpoint(operationId, false);
         const digest = bytesToHex(
           await crypto.subtle.digest("SHA-256", buffer),
@@ -1221,17 +1231,29 @@ export class AnalysisWorkerRuntime {
         defaultSettings,
       );
       await this.checkpoint(operationId, false);
+      await activeSource.complete?.();
+      await this.checkpoint(operationId, false);
       this.acceptedCache = candidateCache;
       this.cacheGeneration = generation;
+      this.finish(operationId, metadata.generation ?? operationId);
       this.cancelled.delete(operationId);
       return { summary, result };
     } catch (error) {
+      try {
+        await source?.cancel?.();
+      } catch {
+        // The original operation result remains authoritative.
+      }
+      this.finish(operationId, metadata.generation ?? operationId);
       this.cancelled.delete(operationId);
       if (
         error instanceof WorkerAnalysisError ||
         error instanceof WorkerCancellation
       ) {
         throw error;
+      }
+      if (error instanceof DatasetByteSourceError) {
+        throw this.mapSourceError(error, "manifest");
       }
       if (
         error instanceof RangeError ||
@@ -1241,26 +1263,37 @@ export class AnalysisWorkerRuntime {
         throw new WorkerAnalysisError("MEMORY_PRESSURE", "records");
       }
       throw new WorkerAnalysisError("WORKER_RUNTIME_FAILED", "records");
+    } finally {
+      try {
+        await source?.close();
+      } catch {
+        // A source close cannot replace a content-free operation result.
+      }
     }
   }
 
   async analyze(
     operationId: number,
     settings: AnalysisSettings,
+    metadata: OperationMetadata = {},
   ): Promise<AnalysisResult> {
-    this.begin(operationId);
+    this.begin(operationId, metadata);
     const cache = this.acceptedCache;
     if (cache === undefined) {
-      throw new WorkerAnalysisError(
+      const error = new WorkerAnalysisError(
         "NO_ACCEPTED_DATASET",
         "aggregation",
       );
+      this.finish(operationId, metadata.generation ?? operationId);
+      throw error;
     }
     try {
       const result = await this.aggregate(operationId, cache, settings);
+      this.finish(operationId, metadata.generation ?? operationId);
       this.cancelled.delete(operationId);
       return result;
     } catch (error) {
+      this.finish(operationId, metadata.generation ?? operationId);
       this.cancelled.delete(operationId);
       if (
         error instanceof WorkerAnalysisError ||
@@ -1281,94 +1314,103 @@ export class AnalysisWorkerRuntime {
     }
   }
 
-  private validateSelectedFiles(
-    files: readonly RuntimeFile[],
-  ): ReadonlyMap<string, RuntimeFile> {
-    if (files.length < 2) {
-      throw new WorkerAnalysisError("FILE_SET_INVALID", "manifest");
-    }
-    const result = new Map<string, RuntimeFile>();
-    let total = 0n;
-    for (const file of files) {
-      if (
-        file.name !== MANIFEST_FILE_NAME &&
-        !isNormalizedChunkName(file.name)
-      ) {
-        throw new WorkerAnalysisError("FILE_NAME_INVALID", "manifest");
-      }
-      if (
-        file.name.includes("/") ||
-        file.name.includes("\\") ||
-        file.name.includes("..") ||
-        result.has(file.name)
-      ) {
-        throw new WorkerAnalysisError("FILE_SET_INVALID", "manifest");
-      }
-      if (
-        isNormalizedChunkName(file.name) &&
-        file.size > MAX_NORMALIZED_CHUNK_BYTES
-      ) {
-        throw new WorkerAnalysisError(
-          "CHUNK_LIMIT_EXCEEDED",
-          "manifest",
-        );
-      }
-      result.set(file.name, file);
-      total += BigInt(file.size);
-      if (total > BigInt(MAX_NORMALIZED_DATASET_BYTES)) {
-        throw new WorkerAnalysisError(
-          "DATASET_LIMIT_EXCEEDED",
-          "manifest",
-        );
-      }
-    }
-    return result;
-  }
-
-  private async readFileBuffer(
-    operationId: number,
-    file: RuntimeFile,
+  private mapSourceError(
+    error: unknown,
     phase: WorkerPhase,
     chunkOrdinal?: number,
-  ): Promise<ArrayBuffer> {
-    const reader = file.stream().getReader();
-    const bytes = new Uint8Array(file.size);
-    let offset = 0;
-    try {
-      while (true) {
-        const part = await reader.read();
-        await this.checkpoint(operationId, false);
-        if (part.done) {
-          break;
-        }
-        if (offset + part.value.byteLength > bytes.byteLength) {
-          throw new WorkerAnalysisError("FILE_SET_INVALID", phase, {
-            chunkOrdinal,
-          });
-        }
-        bytes.set(part.value, offset);
-        offset += part.value.byteLength;
-      }
-      if (offset !== bytes.byteLength) {
-        throw new WorkerAnalysisError("FILE_SET_INVALID", phase, {
-          chunkOrdinal,
-        });
-      }
-      return bytes.buffer;
-    } catch (error) {
-      try {
-        await reader.cancel();
-      } catch {
-        // The public failure remains content-free and is determined below.
-      }
-      throw error;
-    } finally {
-      reader.releaseLock();
+  ): WorkerAnalysisError | WorkerCancellation {
+    if (
+      error instanceof WorkerAnalysisError ||
+      error instanceof WorkerCancellation
+    ) {
+      return error;
+    }
+    if (error instanceof DatasetByteSourceError) {
+      return new WorkerAnalysisError(error.code, phase, { chunkOrdinal });
+    }
+    if (
+      error instanceof RangeError ||
+      (typeof DOMException !== "undefined" &&
+        error instanceof DOMException &&
+        error.name === "QuotaExceededError")
+    ) {
+      return new WorkerAnalysisError("MEMORY_PRESSURE", phase, {
+        chunkOrdinal,
+      });
+    }
+    return new WorkerAnalysisError("WORKER_RUNTIME_FAILED", phase, {
+      chunkOrdinal,
+    });
+  }
+
+  isCurrentOperation(operationId: number, generation = operationId): boolean {
+    return (
+      this.activeOperation?.operationId === operationId &&
+      this.activeOperation.generation === generation
+    );
+  }
+
+  nextResponseMetadata(
+    operationId: number,
+    generation = operationId,
+  ): { readonly generation: number; readonly sequence: number } | undefined {
+    const active = this.activeOperation;
+    if (
+      active === undefined ||
+      active.operationId !== operationId ||
+      active.generation !== generation ||
+      !active.terminal
+    ) {
+      return undefined;
+    }
+    active.outputSequence = Math.max(
+      active.outputSequence + 1,
+      active.requestSequence + 1,
+    );
+    const metadata = {
+      generation: active.generation,
+      sequence: active.outputSequence,
+    };
+    this.activeOperation = undefined;
+    return metadata;
+  }
+
+  private finish(operationId: number, generation: number): void {
+    const active = this.activeOperation;
+    if (
+      active !== undefined &&
+      active.operationId === operationId &&
+      active.generation === generation
+    ) {
+      active.terminal = true;
     }
   }
 
-  private begin(operationId: number): void {
+  private begin(operationId: number, metadata: OperationMetadata): void {
+    const generation = metadata.generation ?? operationId;
+    const requestSequence = metadata.sequence ?? 1;
+    if (
+      !Number.isSafeInteger(operationId) ||
+      !Number.isSafeInteger(generation) ||
+      generation < 1 ||
+      !Number.isSafeInteger(requestSequence) ||
+      requestSequence < 1 ||
+      generation <= this.lastStartedGeneration
+    ) {
+      throw new WorkerAnalysisError("STALE_OPERATION", "manifest");
+    }
+    if (this.activeOperation !== undefined) {
+      this.cancelled.add(this.activeOperation.operationId);
+    }
     this.activeOperationId = operationId;
+    this.lastStartedGeneration = generation;
+    this.activeOperation = {
+      operationId,
+      generation,
+      requestSequence,
+      outputSequence: requestSequence,
+      terminal: false,
+    };
     for (const stale of this.cancelled) {
       if (stale < operationId) {
         this.cancelled.delete(stale);
@@ -1528,9 +1570,23 @@ export class AnalysisWorkerRuntime {
     chunkOrdinal?: number,
     chunkCount?: number,
   ): void {
+    const active = this.activeOperation;
+    if (
+      active === undefined ||
+      active.operationId !== operationId ||
+      active.terminal
+    ) {
+      return;
+    }
+    active.outputSequence = Math.max(
+      active.outputSequence + 1,
+      active.requestSequence + 1,
+    );
     this.reportProgress({
       type: "progress",
       operationId,
+      generation: active.generation,
+      sequence: active.outputSequence,
       phase,
       completed,
       total,
@@ -1551,6 +1607,8 @@ export class AnalysisWorkerRuntime {
     }
     if (
       this.activeOperationId !== operationId ||
+      this.activeOperation?.operationId !== operationId ||
+      this.activeOperation.terminal ||
       this.cancelled.has(operationId)
     ) {
       throw new WorkerCancellation();

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "build": {
+    "beforeDevCommand": "node -e \"const fs=require('node:fs');const path=require('node:path');const cp=require('node:child_process');let d=process.cwd();while(d!==path.dirname(d)&&!fs.existsSync(path.join(d,'frontend','package.json')))d=path.dirname(d);if(!fs.existsSync(path.join(d,'frontend','package.json')))process.exit(1);const r=cp.spawnSync(process.execPath,[path.join(d,'scripts','tauri-frontend-hook.mjs'),'dev'],{cwd:d,stdio:'inherit'});process.exit(r.status??1)\"",
+    "devUrl": "http://127.0.0.1:5173",
+    "frontendDist": "../frontend/dist"
+  },
+  "app": {
+    "security": {
+      "csp": "default-src 'self' http://127.0.0.1:5173; script-src 'self' 'unsafe-eval' http://127.0.0.1:5173; style-src 'self' 'unsafe-inline' http://127.0.0.1:5173; img-src 'self' data: blob:; font-src 'self'; connect-src ipc: http://127.0.0.1:5173; worker-src 'self' blob:; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"
+    },
+    "windows": [
+      {
+        "label": "main",
+        "title": "Chat History Analysis (development)",
+        "width": 1180,
+        "height": 760,
+        "minWidth": 1180,
+        "minHeight": 760,
+        "resizable": true,
+        "devtools": false,
+        "dragDropEnabled": false,
+        "fullscreen": false,
+        "create": false
+      }
+    ]
+  },
+  "bundle": {
+    "active": false
+  }
+}

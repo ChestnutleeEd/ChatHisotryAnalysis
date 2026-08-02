@@ -103,6 +103,8 @@ const FAILURE_MESSAGES: Readonly<Record<SafeFailureCode, string>> = {
   PRIVACY_VALIDATION_FAILED: "normalized privacy validation 失败。",
   SETTINGS_INVALID: "分析条件无效。",
   NO_ACCEPTED_DATASET: "Worker 中没有可分析的数据集，请重新开始。",
+  DATASET_TRANSPORT_INVALID: "桌面数据通道校验失败，候选数据集未被接受。",
+  STALE_OPERATION: "本地分析请求已过期，请重新开始。",
 };
 
 const PHASE_LABELS: Readonly<Record<WorkerProgress["phase"], string>> = {

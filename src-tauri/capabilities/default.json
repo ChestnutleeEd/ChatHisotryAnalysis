@@ -1,0 +1,6 @@
+{
+  "identifier": "main-window",
+  "description": "Minimum capability for the bundled main webview.",
+  "windows": ["main"],
+  "permissions": []
+}

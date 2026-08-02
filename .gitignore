@@ -35,4 +35,7 @@ frontend/.cache/ms-playwright/
 frontend/.npm-cache/
 .npm-cache/
 .chat-analysis-runtime/
+src-tauri/target/
+src-tauri/gen/
+src-tauri/icons/icon.png
 *.tgz

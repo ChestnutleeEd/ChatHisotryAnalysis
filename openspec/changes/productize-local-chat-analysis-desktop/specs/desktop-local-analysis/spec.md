@@ -1,5 +1,57 @@
 ## ADDED Requirements
 
+### Requirement: Alpha foundation gate and deferred release hardening
+Stage 1 SHALL be accepted as an unsigned local macOS arm64 Alpha only when
+local-only processing, `data/private` isolation, minimum renderer authority,
+explicit user selection, Rust-owned session/dataset authority, exact active
+generation correlation, production Worker integration, deterministic
+multi-file handling, bounded transport, basic cancellation/close cleanup,
+pinned Python 3.12 dependencies, true `pip install --require-hashes`, and a
+source-buildable unsigned path are verified with public or synthetic data.
+The Alpha gate SHALL enforce 32 MiB chunks, 512 MiB datasets, 2,000,000
+records, 16,384 chunks, and bounded channel capacity 2; it SHALL NOT claim
+formal release security or package acceptance.
+
+Packaged WebKit permission runtime proof, an independent signed sidecar trust
+root, a complete signed-manifest/bundle publication chain, the complete
+tamper and lifecycle/disconnect/crash matrices, formal codesign/notarization,
+clean-machine `.app`/`.dmg` release acceptance, exhaustive IPC conformance,
+formal 512 MiB peak-memory proof, release-grade supply-chain evidence, and
+Windows hardening SHALL remain explicit unchecked Beta/Release hardening work.
+Those requirements are deferred, not removed, and SHALL be completed before a
+formal release claim; none blocks the unsigned local Alpha.
+
+#### Scenario: Keep Alpha release claims narrow
+- **WHEN** the unsigned local Alpha is built and tested
+- **THEN** its result states local prototype scope and does not claim notarization, formal signing, release supply-chain proof, or Windows support
+
+#### Scenario: Keep deferred work visible
+- **WHEN** OpenSpec status is inspected after the Alpha batch
+- **THEN** every deferred hardening item remains an unchecked task and no release evidence is reported as complete
+
+### Requirement: Host-owned dataset registry and transport authority
+The Rust host SHALL create session and dataset IDs and SHALL derive record
+count, chunk count, chunk byte sizes, dataset size, and all host dataset
+metadata from a verified synthetic or normalized source held in a host-owned
+registry. Renderer commands SHALL carry only opaque IDs, session, generation,
+and a bounded chunk ordinal/expected-size request; they SHALL NOT accept
+renderer-supplied authoritative statistics, bytes, paths, `cwd`, `argv`, or
+`env`. The registry SHALL bind the trusted main `WebviewWindow`, session,
+generation, and dataset, publish through a capacity-two bounded channel, and
+release consumed chunks without retaining an extra complete dataset copy.
+
+#### Scenario: Reject renderer-supplied authority
+- **WHEN** a renderer supplies record count, chunk count, chunk size, dataset bytes, or host metadata to open a desktop stream
+- **THEN** schema validation rejects the command or ignores those fields before the host registry is accessed
+
+#### Scenario: Read host-owned chunks
+- **WHEN** the production Worker requests a valid opaque manifest or declared chunk ordinal
+- **THEN** the host registry returns the verified bytes for the active window/session/generation and no path or directory listing is exposed
+
+#### Scenario: Bound and release transport data
+- **WHEN** a chunk is consumed or a stream is cancelled/closed
+- **THEN** the consumed buffer is released, the channel remains bounded at capacity two, and the registry no longer retains the closed stream
+
 ### Requirement: One-click raw CipherTalk analysis
 The desktop product SHALL provide the default workflow `open application -> select one or more explicit CipherTalk detailed JSON files -> start analysis -> validate, normalize, deduplicate, and calculate locally -> show results`. Annual sources SHALL be selected explicitly and SHALL contribute to the dataset. An optional advanced verification selection SHALL remain separate and SHALL never contribute records or periods. The workflow SHALL NOT require an installed Python, virtual environment, Node.js, terminal command, manual preprocessor invocation, normalized-file selection, or manual temporary-file cleanup.
 
@@ -45,7 +97,15 @@ The product SHALL use a pinned Tauri 2 desktop shell around the existing React/T
 ### Requirement: Packaged Python preprocessor sidecar
 The macOS arm64 product SHALL bundle the production Python preprocessor as a pinned PyInstaller `onedir` sidecar built on macOS arm64 from hash-locked project, Python, PyInstaller, and `ijson` inputs. It SHALL NOT use PyInstaller `onefile`, a system Python, user `PATH`, a virtual environment, runtime package installation, or network download. The build SHALL emit a target-specific sidecar evidence manifest covering target triple, source revision, preprocessor version, Python version, PyInstaller version, `ijson` version, native backend identity, and hashes of executable and native runtime members.
 
-Development mode SHALL continue to use the installed CPython 3.12 startup gate already defined by the MVP. Packaged mode SHALL replace distribution-metadata assumptions that are unavailable in a frozen application with an equivalent frozen-runtime gate that verifies the signed bundle location, evidence manifest, embedded bytes, exact `yajl2_c` backend, parser probes, and target triple before opening an input. Both modes SHALL execute the same production preprocessing composition after their gate.
+Development mode SHALL continue to use the installed CPython 3.12 startup gate already defined by the MVP. Packaged mode SHALL replace distribution-metadata assumptions that are unavailable in a frozen application with an equivalent frozen-runtime gate that verifies bundle containment, evidence manifest, embedded bytes, exact `yajl2_c` backend, parser probes, and target triple before opening an input. Both modes SHALL execute the same production preprocessing composition after their gate.
+
+For the unsigned Alpha, the host gate MAY use a fixed expected bundle root,
+fixed evidence digest, and fixed build-input digest compiled into Rust. It
+SHALL run before source-open and reject a normal bundle, one-member mutation,
+evidence mutation, or root/anchor mismatch; a failed probe SHALL never create
+new `passed` evidence. Formal digital signatures, independent signed trust
+roots, complete tamper matrices, and release PKI SHALL remain deferred
+hardening requirements.
 
 #### Scenario: Run on a clean supported Mac
 - **WHEN** a clean macOS arm64 machine launches the packaged application without Python or Node.js installed
@@ -93,6 +153,16 @@ The Rust core SHALL spawn the sidecar directly without a shell. Private source a
 ### Requirement: Versioned desktop IPC and stale-event suppression
 Every renderer command and core event SHALL validate against an explicit versioned schema. Commands SHALL be limited to source selection, analysis start, cancellation, retry, session discard, aggregate export, and safe application-close decisions. Every session-bound message SHALL contain protocol version, opaque session ID, monotonically increasing generation, and command request ID or event sequence. The core SHALL bind opaque IDs to the originating main window and active generation. The renderer and core SHALL both discard stale, duplicate, out-of-order, wrong-window, unknown-session, and post-terminal messages.
 
+For an active session, event generation SHALL be exactly equal to the active
+cursor generation. A future generation SHALL never replace the cursor
+implicitly; only an explicit new start/load operation may create the next
+generation. Selection-ready MAY remain sessionless at generation zero. All
+other lifecycle events SHALL require session, nonzero generation, and the next
+sequence. Rust and TypeScript SHALL share invalid/race coverage for future and
+stale generation, missing session, wrong sequence, unsupported version,
+duplicate terminal, progress after terminal, cleanup before terminal, and
+closed before cleanup.
+
 #### Scenario: Accept a current command
 - **WHEN** the main window sends an allow-listed command with the current schema, session ID, and generation
 - **THEN** the core validates it once and performs only the named operation
@@ -108,6 +178,14 @@ Every renderer command and core event SHALL validate against an explicit version
 #### Scenario: Reject event reordering
 - **WHEN** the renderer observes a duplicate or non-increasing session event sequence
 - **THEN** it ignores that event and preserves the last valid state
+
+#### Scenario: Reject a future active-session generation
+- **WHEN** an event for the active session carries a generation greater than the active cursor
+- **THEN** both Rust and TypeScript reject it as stale/invalid and preserve the active cursor until an explicit new operation starts
+
+#### Scenario: Reject lifecycle race vectors consistently
+- **WHEN** shared vectors exercise stale generation, missing session, wrong sequence, unsupported version, duplicate terminal, progress after terminal, cleanup before terminal, or closed before cleanup
+- **THEN** Rust and TypeScript return the same rejection class and no privileged state changes
 
 ### Requirement: Supervised session and process lifecycle
 The desktop core SHALL implement the state machine `idle -> selecting -> ready -> preprocessing -> handoff -> analyzing -> complete`, with explicit `cancelling`, `failed`, `discarding`, and `closing` transitions. At most one analysis generation SHALL own a live sidecar and one analytics Worker. A retry SHALL create a new generation and an absent output destination. A terminal generation SHALL never return to a running state.
@@ -239,6 +317,14 @@ The packaged runtime SHALL have no application network command, telemetry, remot
 
 ### Requirement: macOS arm64 package prototype
 The first desktop target SHALL be macOS arm64. The implementation SHALL produce a locally runnable `.app` and `.dmg` prototype containing bundled frontend assets and the `onedir` sidecar, with correct nested executable permissions, target architecture, bundle resource resolution, quarantine behavior documentation, and ad-hoc signing suitable for local prototype verification. Nested sidecar executables, Python libraries, and native extensions SHALL be signed before the outer app. Formal Developer ID signing, notarization, stapling, and public distribution SHALL remain a later release gate and SHALL NOT be claimed by this change.
+
+The current Stage 1 Alpha gate is narrower: a local unsigned source build
+MUST pass `cargo build --release --locked` and
+`tauri build --no-bundle --ci` with synthetic/public tests. A packaged `.app`,
+`.dmg`, nested ad-hoc signing, clean-machine Finder launch, and release
+quarantine evidence are deferred until the release-hardening tasks below;
+their original requirements remain in force and are not considered complete
+by the Alpha gate.
 
 #### Scenario: Build a local app bundle
 - **WHEN** the documented macOS arm64 package command runs from locked inputs

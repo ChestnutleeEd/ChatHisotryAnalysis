@@ -21,6 +21,36 @@ The product gaps follow directly from those facts:
 
 This change is additive. The unarchived `implement-local-chat-wordcloud-mvp` change remains the v1 source of truth and keeps its task state. Productization does not claim that unchecked Stage 13–15 acceptance has happened.
 
+## Stage 1 Alpha foundation and deferred release hardening
+
+Stage 1 is now an Alpha foundation gate for an unsigned, locally runnable
+macOS arm64 prototype. The gate is deliberately narrow but hard on privacy and
+authority: no upload or cloud analysis, no renderer filesystem/shell/network
+privilege, explicit user selection, Rust-owned session and dataset metadata,
+opaque Worker transport, exact active-generation correlation, bounded
+32 MiB chunks/512 MiB datasets/2,000,000 records/16,384 chunks, bounded channel
+capacity, production Worker execution, browser-v1 compatibility, basic
+cancellation/close cleanup, pinned Python 3.12 dependencies, true
+`pip install --require-hashes`, and a source-buildable unsigned macOS path.
+
+The Alpha path may use a fixed expected sidecar bundle root, evidence digest,
+and build-input digest compiled into the Rust host. This is an integrity gate,
+not a digital signature or release trust root. It must run before source-open,
+must reject member/evidence/root mismatches, and must not expose a path to the
+renderer. The Alpha test records native WebKit permission wiring as compiled
+and auditable; a native callback test that cannot run on the test thread is
+explicitly skipped/unsupported, never passed by an early return.
+
+The following remain deferred, unchecked release-hardening tasks: packaged
+WebKit permission runtime verification; independent signed sidecar trust root
+and complete bundle-manifest publication chain; the full tamper matrix; the
+complete IPC/lifecycle/disconnect/crash matrix; formal codesign, notarization,
+and `.dmg` release acceptance; clean-machine release supply-chain evidence;
+exhaustive IPC vectors; formal 512 MiB peak-memory proof; and Windows process,
+packaging, signing, and clean-machine hardening. These requirements remain in
+the specifications and task list, and are not silently removed or treated as
+complete by the Alpha gate.
+
 ## Goals / Non-Goals
 
 **Goals:**
@@ -351,9 +381,41 @@ Adapters:
 
 The conceptual request is `chat-analysis-dataset://<session-id>/chunk/<ordinal>`. The protocol handler accepts only GET from the main bundled webview/Worker, exact active session/generation, `manifest` or a declared numeric ordinal, no query/fragment/redirect/range/traversal, and exact bounded bytes. It returns no directory listing and performs no socket networking.
 
-This transport receives an early Sol xHigh spike. If the target macOS WebView cannot fetch the custom protocol from the module Worker with streaming/cancellation, the already-defined fallback is a bounded Rust command/channel that returns one exact manifest or chunk buffer by ordinal through the same `DatasetByteSource`; arbitrary filesystem APIs remain forbidden. Failure of both transports is a stop gate and requires an OpenSpec update, not path exposure.
+The Alpha implementation selects the bounded Rust command/channel adapter. It
+returns one exact manifest or chunk buffer by ordinal through the same
+`DatasetByteSource`, while the registry remains the producer and owns all
+authoritative metadata. A custom protocol may be evaluated later, but it is
+not required for the unsigned Alpha gate; arbitrary filesystem APIs remain
+forbidden.
 
 The core validates containment, exact entry set, owner/mode/type, manifest size, and declared chunk names/sizes before granting the source. The Worker remains the independent authority for strict JSON, schema, hash, order, counts, time, and privacy validation.
+
+For the Alpha bounded-channel path, the Rust host creates the session and
+dataset identifiers and stores the verified synthetic/normalized bytes plus
+their metadata in a private registry before any renderer command can open a
+stream. `open`, `receive`, `cancel`, `complete`, and `close` accept only the
+opaque session/dataset capability and the trusted `WebviewWindow`; they do not
+accept renderer-supplied record counts, chunk counts, chunk sizes, dataset
+bytes, paths, or host metadata. The registry is the sole producer, uses a
+bounded capacity-two channel, releases consumed chunks, and binds window,
+session, generation, and dataset together. A renderer may request an opaque
+capability and later choose a chunk ordinal, but cannot define what the
+capability contains.
+
+The production Worker request union has two runtime-validated variants:
+`browser-file-source` carries the existing explicitly selected v1 `File[]`,
+and `desktop-dataset-source` carries only opaque session/dataset IDs and the
+generation. Both variants enter the same `analysis.worker.ts` →
+`worker-handler.ts` → `worker-runtime.ts` pipeline; desktop analysis never
+falls back to main-thread, Rust, Python, or fixed-chunk test logic.
+
+Generation handling is intentionally asymmetric. A new explicit start/load
+operation may advance the generation; an event belonging to the active
+session must have generation exactly equal to the active cursor. Future,
+stale, wrong-session, wrong-window, wrong-sequence, unsupported-version,
+duplicate-terminal, post-terminal-progress, cleanup-before-terminal, and
+closed-before-cleanup events are shared invalid/race cases in Rust and
+TypeScript. A future event never replaces the cursor implicitly.
 
 ### 9. Put analytics in one dedicated Worker with three layers
 
