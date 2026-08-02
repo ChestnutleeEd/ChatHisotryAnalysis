@@ -42,7 +42,7 @@
 - [x] 3.5 [Luna Max][desktop-local-analysis: Cancellation, close, crash, and orphan control] Implement macOS process-group ownership, cooperative SIGINT, revalidated TERM/KILL deadlines, stdin-EOF parent monitoring, Worker termination, and app-close interception; acceptance: cancellation at every safe phase, unresponsive child, PID reuse, wrong executable/group/nonce, parent crash, and handled full quit leave no signalled unrelated process or live owned child.
 - [x] 3.6 [Luna Max][desktop-local-analysis: Session cleanup, startup recovery, and explicit export] Implement supervisor failure/retry cleanup hooks that remove only one validated session entry at a time and preserve unsafe remnants; acceptance: crash, protocol failure, cancellation cleanup failure, and retry tests produce either an empty session or exact content-free cleanup-required state.
 - [x] 3.7 [Sol xHigh review][STOP GATE] Audit frozen source-unopened evidence, direct spawn, stdout/stderr containment, process identity, escalation, parent loss, and no-orphan results on macOS arm64; acceptance: no downstream one-click integration proceeds until approved.
-- [ ] 3.8 [Luna Max][BATCH GATE] Run dev and packaged sidecar unit/integration, Rust lifecycle, cancellation/escalation, parent-crash, offline, and content-leak suites; inspect build outputs remain outside Git, then commit/push only approved source/tests/docs/locks.
+- [x] 3.8 [Luna Max][BATCH GATE] Run dev and packaged sidecar unit/integration, Rust lifecycle, cancellation/escalation, parent-crash, offline, and content-leak suites; inspect build outputs remain outside Git, then commit/push only approved source/tests/docs/locks.
 
 ## 4. One-Click Raw JSON and Session Handoff
 
