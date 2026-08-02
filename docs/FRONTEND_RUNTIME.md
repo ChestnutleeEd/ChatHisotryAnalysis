@@ -138,6 +138,12 @@ process-name or port-owner kill.
 bundled-code notices. Vite copies it byte-for-byte to
 `dist/THIRD_PARTY_NOTICES.txt`; the shell exposes a same-origin local link.
 
-Direct `file://`, public binding, remote runtime assets, Electron/Tauri, and a
-business server are outside the supported model. The UI never renders selected
-file names, paths, raw participants, account identifiers, or message text.
+Direct `file://`, public binding, remote runtime assets, Electron, and a
+business server are outside the browser v1 supported model. The UI never
+renders selected file names, paths, raw participants, account identifiers, or
+message text.
+
+The Tauri desktop entry is a separate host-owned path. Its native source
+selection, supervised sidecar, owner-only session cache, verified opaque
+dataset transport, restart/replacement/quit lifecycle, and Stage 4 test matrix
+are documented in [Desktop local analysis: Stage 4](DESKTOP_LOCAL_ANALYSIS_STAGE4.md).

@@ -67,7 +67,18 @@ export type DesktopFailureCode =
   | "DATASET_TRANSPORT_INVALID"
   | "MEMORY_PRESSURE"
   | "WORKER_RUNTIME_FAILED"
-  | "CLEANUP_REQUIRED";
+  | "CLEANUP_REQUIRED"
+  | "NO_SOURCE_SELECTED"
+  | "SOURCE_COUNT_EXCEEDED"
+  | "UNSUPPORTED_FILE_TYPE"
+  | "SOURCE_UNREADABLE"
+  | "DUPLICATE_SOURCE"
+  | "SOURCE_SET_INVALID"
+  | "SELECTION_STALE"
+  | "DISK_SPACE_INSUFFICIENT"
+  | "DATASET_HANDOFF_INVALID"
+  | "DATASET_TAMPERED"
+  | "DIALOG_UNAVAILABLE";
 
 export type ReportFormat = "png" | "csv" | "json";
 
@@ -156,6 +167,8 @@ export type DesktopEvent =
   | DesktopEventEnvelope<
       "dataset-ready",
       {
+        readonly datasetId: DatasetId;
+        readonly resultId: ResultId;
         readonly recordCount: number;
         readonly chunkCount: number;
         readonly minimumCalendarDate: string;
@@ -450,11 +463,15 @@ export function parseDesktopEvent(value: unknown): DesktopEvent {
       if (
         !hasExactKeys(payload, [
           "chunkCount",
+          "datasetId",
           "maximumCalendarDate",
           "minimumCalendarDate",
           "pseudonymous",
           "recordCount",
+          "resultId",
         ]) ||
+        !isDatasetId(payload.datasetId) ||
+        !isResultId(payload.resultId) ||
         !isPositiveSafeInteger(payload.recordCount) ||
         !isPositiveSafeInteger(payload.chunkCount) ||
         !isCalendarDate(payload.minimumCalendarDate) ||
@@ -590,6 +607,17 @@ function isDesktopFailureCode(value: unknown): value is DesktopFailureCode {
       "MEMORY_PRESSURE",
       "WORKER_RUNTIME_FAILED",
       "CLEANUP_REQUIRED",
+      "NO_SOURCE_SELECTED",
+      "SOURCE_COUNT_EXCEEDED",
+      "UNSUPPORTED_FILE_TYPE",
+      "SOURCE_UNREADABLE",
+      "DUPLICATE_SOURCE",
+      "SOURCE_SET_INVALID",
+      "SELECTION_STALE",
+      "DISK_SPACE_INSUFFICIENT",
+      "DATASET_HANDOFF_INVALID",
+      "DATASET_TAMPERED",
+      "DIALOG_UNAVAILABLE",
     ].includes(value)
   );
 }
@@ -644,7 +672,14 @@ export function acceptDesktopEvent(
   if (originWindowId !== cursor.windowId) {
     return { accepted: false, code: "WINDOW_NOT_AUTHORIZED" };
   }
+  const isPotentialSelectionReset =
+    isRecord(eventValue) &&
+    eventValue.type === "selection-ready" &&
+    eventValue.sessionId === null &&
+    eventValue.generation === 0 &&
+    eventValue.sequence === 1;
   if (
+    !isPotentialSelectionReset &&
     isRecord(eventValue) &&
     Number.isSafeInteger(eventValue.generation) &&
     (eventValue.generation as number) < cursor.generation
@@ -657,22 +692,47 @@ export function acceptDesktopEvent(
   } catch {
     return { accepted: false, code: "STALE_EVENT" };
   }
+  const selectionReset =
+    event.sessionId === null &&
+    event.type === "selection-ready" &&
+    event.generation === 0 &&
+    event.sequence === 1 &&
+    (cursor.sessionId === null || cursor.terminal);
+  if (selectionReset) {
+    return {
+      accepted: true,
+      event,
+      cursor: {
+        windowId: cursor.windowId,
+        sessionId: null,
+        generation: cursor.generation,
+        sequence: 1,
+        state: "ready",
+        terminal: false,
+      },
+    };
+  }
   if (cursor.closed === true) {
     return { accepted: false, code: "STALE_EVENT" };
   }
-  if (event.sessionId !== cursor.sessionId) {
+  const newSession =
+    cursor.sessionId === null &&
+    event.sessionId !== null &&
+    event.sequence === 1 &&
+    event.generation > cursor.generation;
+  if (event.sessionId !== cursor.sessionId && !newSession) {
     return { accepted: false, code: "STALE_GENERATION" };
   }
   // A session-bound event belongs to exactly one active operation.  Only an
   // explicit new start/load command may advance the generation; accepting a
   // future event here would let a delayed producer replace the cursor.
-  if (event.sessionId !== null && event.generation !== cursor.generation) {
+  if (!newSession && event.sessionId !== null && event.generation !== cursor.generation) {
     return { accepted: false, code: "STALE_GENERATION" };
   }
-  if (event.sessionId === null && event.generation !== cursor.generation) {
+  if (!newSession && event.sessionId === null && event.generation !== cursor.generation) {
     return { accepted: false, code: "STALE_GENERATION" };
   }
-  if (event.generation === cursor.generation) {
+  if (!newSession && event.generation === cursor.generation) {
     if (event.sequence <= cursor.sequence) {
       return { accepted: false, code: "STALE_EVENT" };
     }
@@ -704,6 +764,8 @@ export function acceptDesktopEvent(
     } else {
       return { accepted: false, code: "STALE_EVENT" };
     }
+  } else if (event.type === "selection-ready") {
+    nextState = "ready";
   } else if (event.type === "state") {
     if (!isValidDesktopTransition(cursor.state, event.payload.state)) {
       return { accepted: false, code: "INVALID_STATE" };

@@ -164,9 +164,11 @@
          "sessionId": "ses_00000000000000000000000000000001",
          "generation": 1,
          "sequence": 3,
-         "type": "dataset-ready",
-         "payload": {
-           "recordCount": 1,
+        "type": "dataset-ready",
+        "payload": {
+          "datasetId": "dat_00000000000000000000000000000001",
+          "resultId": "res_00000000000000000000000000000001",
+          "recordCount": 1,
            "chunkCount": 1,
            "minimumCalendarDate": "2025-01-01",
            "maximumCalendarDate": "2025-01-01",

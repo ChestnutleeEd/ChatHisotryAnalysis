@@ -628,8 +628,8 @@ struct HostDataset {
     window_label: String,
     key: StreamKey,
     record_count: u64,
-    manifest: Vec<u8>,
-    chunks: Vec<Vec<u8>>,
+    manifest: Arc<Vec<u8>>,
+    chunks: Arc<Vec<Vec<u8>>>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -706,13 +706,84 @@ impl DatasetTransportState {
                     dataset_id: dataset_id.clone(),
                 },
                 record_count,
-                manifest,
-                chunks,
+                manifest: Arc::new(manifest),
+                chunks: Arc::new(chunks),
             },
         );
         Ok(HostDatasetCapability {
             protocol_version: PROTOCOL_VERSION,
             session_id,
+            generation,
+            dataset_id,
+            manifest_bytes,
+            record_count,
+            chunk_count: chunk_count as u64,
+            chunk_bytes: chunk_bytes as u64,
+        })
+    }
+
+    /// Register the verified bytes under an existing supervised session. The
+    /// session id is supplied by the supervisor; only the dataset capability
+    /// is minted here. This keeps a stale renderer from pairing bytes with a
+    /// different generation.
+    pub fn register_host_dataset_for_session(
+        &self,
+        trusted_window_label: &str,
+        session_id: &str,
+        generation: u64,
+        manifest: Vec<u8>,
+        chunks: Vec<Vec<u8>>,
+    ) -> Result<HostDatasetCapability, DatasetTransportError> {
+        if !valid_window_label(trusted_window_label)
+            || !valid_session_id(session_id)
+            || generation == 0
+            || generation > MAX_SAFE_INTEGER
+        {
+            return Err(DatasetTransportError::InvalidRequest);
+        }
+        let record_count = derive_host_record_count(&manifest)?;
+        validate_dataset_limits(manifest.len(), chunks.iter().map(Vec::len), record_count)?;
+        let manifest_bytes = manifest.len();
+        let chunk_count = chunks.len();
+        let chunk_bytes = chunks.iter().map(Vec::len).max().unwrap_or(0);
+        let sequence = self
+            .next_opaque_id
+            .fetch_add(1, Ordering::Relaxed)
+            .checked_add(1)
+            .ok_or(DatasetTransportError::LimitExceeded)?;
+        if sequence > MAX_SAFE_INTEGER {
+            return Err(DatasetTransportError::LimitExceeded);
+        }
+        let dataset_id = format!("dat_{sequence:032x}");
+        let key = StreamKey {
+            session_id: session_id.to_string(),
+            generation,
+            dataset_id: dataset_id.clone(),
+        };
+        let mut registry = self
+            .host_datasets
+            .lock()
+            .map_err(|_| DatasetTransportError::Closed)?;
+        if registry.values().any(|entry| {
+            entry.window_label == trusted_window_label
+                && entry.key.session_id == session_id
+                && entry.key.generation == generation
+        }) {
+            return Err(DatasetTransportError::InvalidRequest);
+        }
+        registry.insert(
+            key.clone(),
+            HostDataset {
+                window_label: trusted_window_label.to_string(),
+                key,
+                record_count,
+                manifest: Arc::new(manifest),
+                chunks: Arc::new(chunks),
+            },
+        );
+        Ok(HostDatasetCapability {
+            protocol_version: PROTOCOL_VERSION,
+            session_id: session_id.to_string(),
             generation,
             dataset_id,
             manifest_bytes,
@@ -753,7 +824,7 @@ impl DatasetTransportState {
             return Err(DatasetTransportError::InvalidRequest);
         }
 
-        let mut host_registry = self
+        let host_registry = self
             .host_datasets
             .lock()
             .map_err(|_| DatasetTransportError::Closed)?;
@@ -763,16 +834,11 @@ impl DatasetTransportState {
         if host_dataset.window_label != trusted_window_label {
             return Err(DatasetTransportError::WrongWindow);
         }
-        let host_dataset = host_registry
-            .remove(&key)
-            .ok_or(DatasetTransportError::UnknownSession)?;
-        let HostDataset {
-            window_label: host_window_label,
-            key: host_key,
-            record_count,
-            manifest,
-            chunks,
-        } = host_dataset;
+        let host_window_label = host_dataset.window_label.clone();
+        let host_key = host_dataset.key.clone();
+        let record_count = host_dataset.record_count;
+        let manifest = Arc::clone(&host_dataset.manifest);
+        let chunks = Arc::clone(&host_dataset.chunks);
         let manifest_bytes = manifest.len();
         let chunk_count = chunks.len() as u64;
         let chunk_bytes = chunks.iter().map(Vec::len).max().unwrap_or(0) as u64;
@@ -789,8 +855,8 @@ impl DatasetTransportState {
         let cancelled = Arc::new(AtomicBool::new(false));
         let cancellation = Arc::clone(&cancelled);
         let memory = Arc::new(Semaphore::new(MAX_IN_FLIGHT_BYTES));
-        let manifest_for_producer = manifest;
-        let chunks_for_producer = chunks;
+        let manifest_for_producer = Arc::clone(&manifest);
+        let chunks_for_producer = Arc::clone(&chunks);
         let producer = tokio::spawn(async move {
             let manifest_size = manifest_for_producer.len();
             if !send_frame(
@@ -800,17 +866,18 @@ impl DatasetTransportState {
                 StreamFrameKind::Manifest,
                 None,
                 manifest_size,
-                move || manifest_for_producer,
+                move || manifest_for_producer.as_ref().clone(),
             )
             .await
             {
                 return;
             }
-            for (index, chunk) in chunks_for_producer.into_iter().enumerate() {
+            for (index, chunk) in chunks_for_producer.iter().enumerate() {
                 if cancellation.load(Ordering::Acquire) {
                     return;
                 }
                 let ordinal = (index + 1) as u64;
+                let chunk = chunk.clone();
                 let size = chunk.len();
                 if !send_frame(
                     &sender,
@@ -1028,6 +1095,53 @@ impl DatasetTransportState {
         removed
     }
 
+    /// Drop every host dataset and active stream owned by one supervised
+    /// session/generation. This is host cleanup, not a renderer-controlled
+    /// filesystem operation.
+    pub fn close_session(
+        &self,
+        trusted_window_label: &str,
+        session_id: &str,
+        generation: u64,
+    ) -> usize {
+        if !valid_window_label(trusted_window_label)
+            || !valid_session_id(session_id)
+            || generation == 0
+            || generation > MAX_SAFE_INTEGER
+        {
+            return 0;
+        }
+        let mut removed = 0;
+        if let Ok(mut registry) = self.streams.lock() {
+            let keys = registry
+                .iter()
+                .filter(|(_, stream)| {
+                    stream.window_label == trusted_window_label
+                        && stream.key.session_id == session_id
+                        && stream.key.generation == generation
+                })
+                .map(|(key, _)| key.clone())
+                .collect::<Vec<_>>();
+            for key in keys {
+                if let Some(stream) = registry.remove(&key) {
+                    stream.cancelled.store(true, Ordering::Release);
+                    stream.abort_handle.abort();
+                    removed += 1;
+                }
+            }
+        }
+        if let Ok(mut registry) = self.host_datasets.lock() {
+            let before = registry.len();
+            registry.retain(|_, dataset| {
+                !(dataset.window_label == trusted_window_label
+                    && dataset.key.session_id == session_id
+                    && dataset.key.generation == generation)
+            });
+            removed += (before - registry.len()) as usize;
+        }
+        removed
+    }
+
     #[cfg(test)]
     fn active_count(&self) -> usize {
         self.streams.lock().map_or(0, |streams| streams.len())
@@ -1163,6 +1277,7 @@ fn derive_host_record_count(manifest: &[u8]) -> Result<u64, DatasetTransportErro
         serde_json::from_slice(manifest).map_err(|_| DatasetTransportError::InvalidRequest)?;
     let count = value
         .pointer("/aggregates/normalizedRecordCount")
+        .or_else(|| value.pointer("/aggregates/eventCount"))
         .or_else(|| value.get("recordCount"))
         .and_then(Value::as_u64)
         .ok_or(DatasetTransportError::InvalidRequest)?;
@@ -1560,6 +1675,36 @@ mod tests {
                     state
                         .receive("main", stream_read("manifest", None, None))
                         .await,
+                    Err(DatasetTransportError::UnknownSession)
+                );
+            });
+    }
+
+    #[test]
+    fn verified_dataset_can_be_reopened_after_worker_restart_until_session_close() {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let state = DatasetTransportState::default();
+                register_host_dataset(&state, 1);
+                state.mark_sidecar_verified();
+                state.open("main", open_request(1)).unwrap();
+                state.close("main", stream_control()).unwrap();
+
+                let reopened = state.open("main", open_request(1)).unwrap();
+                assert_eq!(reopened.chunk_count, 2);
+                let manifest = state
+                    .receive("main", stream_read("manifest", None, None))
+                    .await
+                    .unwrap();
+                assert_eq!(manifest, b"{\"recordCount\":3}\n");
+                state.close("main", stream_control()).unwrap();
+
+                assert_eq!(state.close_session("main", SESSION, 1), 1);
+                assert_eq!(
+                    state.open("main", open_request(1)),
                     Err(DatasetTransportError::UnknownSession)
                 );
             });

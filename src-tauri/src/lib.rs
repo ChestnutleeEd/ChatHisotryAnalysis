@@ -1,6 +1,8 @@
 use tauri::Manager;
 
+pub mod dataset_handoff;
 pub mod dataset_transport;
+pub mod desktop_selection;
 pub mod ipc;
 pub mod security;
 pub mod session_supervisor;
@@ -15,6 +17,16 @@ pub fn run() {
         .setup(|app| {
             trust_anchor::verify_embedded_anchor()
                 .map_err(|code| std::io::Error::new(std::io::ErrorKind::InvalidData, code))?;
+            let cache_root = app
+                .path()
+                .app_cache_dir()
+                .map_err(|_| std::io::Error::new(std::io::ErrorKind::NotFound, "cache"))?;
+            let recovery =
+                session_supervisor::recover_startup_sessions(&cache_root).map_err(|error| {
+                    std::io::Error::new(std::io::ErrorKind::PermissionDenied, error)
+                })?;
+            app.state::<ipc::IpcCoreState>()
+                .set_startup_cleanup_required(recovery.cleanup_required);
             let transport = app
                 .state::<dataset_transport::DatasetTransportState>()
                 .inner()

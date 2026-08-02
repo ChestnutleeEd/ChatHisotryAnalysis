@@ -17,7 +17,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::ipc::valid_state_transition;
 use crate::security::trusted_main_window_label;
@@ -34,6 +34,8 @@ pub const SIDECAR_EXECUTABLE_ARGUMENT: &str = "sidecar";
 pub const GRACEFUL_CANCEL_GRACE: Duration = Duration::from_millis(500);
 pub const TERM_CANCEL_GRACE: Duration = Duration::from_millis(500);
 pub const FINAL_KILL_WAIT: Duration = Duration::from_millis(750);
+pub const WATCHER_TERMINAL_WAIT: Duration = Duration::from_millis(3_000);
+pub const SESSION_MARKER_CONTENT: &[u8] = b"chat-history-analysis-session-v1\n";
 
 const SIDECAR_PROTOCOL_VERSION_FIELD: &str = "protocolVersion";
 const SIDECAR_EVIDENCE_ENV: &str = "CHAT_HISTORY_ANALYSIS_PARENT_NONCE";
@@ -57,6 +59,7 @@ pub enum SupervisorErrorCode {
     SessionCleanupFailed,
     CleanupRequired,
     ProcessIdentityMismatch,
+    DiskSpaceInsufficient,
 }
 
 impl SupervisorErrorCode {
@@ -79,6 +82,7 @@ impl SupervisorErrorCode {
             Self::SessionCleanupFailed => "SESSION_CLEANUP_FAILED",
             Self::CleanupRequired => "CLEANUP_REQUIRED",
             Self::ProcessIdentityMismatch => "PROCESS_IDENTITY_MISMATCH",
+            Self::DiskSpaceInsufficient => "DISK_SPACE_INSUFFICIENT",
         }
     }
 }
@@ -189,6 +193,7 @@ pub struct SessionSnapshot {
     pub state: SessionState,
     pub terminal: Option<SessionTerminal>,
     pub cleanup: Option<CleanupStatus>,
+    pub cancel_reason: Option<CancelReason>,
     pub events: Vec<SessionEvent>,
 }
 
@@ -215,6 +220,23 @@ impl SessionInput {
             application_cache_root,
             working_directory,
         }
+    }
+
+    pub(crate) fn total_source_bytes(&self) -> Result<u64, SupervisorError> {
+        let mut total = 0u64;
+        for path in self
+            .annual_sources
+            .iter()
+            .chain(self.verification_sources.iter())
+        {
+            let size = fs::symlink_metadata(path)
+                .map(|metadata| metadata.len())
+                .map_err(|_| SupervisorError::new(SupervisorErrorCode::InvalidRequest))?;
+            total = total
+                .checked_add(size)
+                .ok_or_else(|| SupervisorError::new(SupervisorErrorCode::DiskSpaceInsufficient))?;
+        }
+        Ok(total)
     }
 
     fn validate(&self) -> Result<(), SupervisorError> {
@@ -301,6 +323,27 @@ impl SidecarResolution {
         Ok(Self {
             executable,
             fixed_args: vec![SIDECAR_EXECUTABLE_ARGUMENT.to_string()],
+            packaged: false,
+        })
+    }
+
+    /// Development Python seam with a fixed host-owned entrypoint. The
+    /// entrypoint is not renderer-controlled and is never resolved from PATH.
+    pub fn development_python(
+        executable: PathBuf,
+        entrypoint: PathBuf,
+    ) -> Result<Self, SupervisorError> {
+        validate_executable(&executable)?;
+        validate_entrypoint(&entrypoint)?;
+        Ok(Self {
+            executable,
+            fixed_args: vec![
+                entrypoint
+                    .to_str()
+                    .ok_or_else(|| SupervisorError::new(SupervisorErrorCode::InvalidRequest))?
+                    .to_string(),
+                SIDECAR_EXECUTABLE_ARGUMENT.to_string(),
+            ],
             packaged: false,
         })
     }
@@ -413,6 +456,7 @@ struct ActiveSession {
     events: Vec<SessionEvent>,
     process: Arc<ProcessControl>,
     outcome_receiver: Option<Receiver<RunOutcome>>,
+    watcher_active: bool,
     cancel_reason: Option<CancelReason>,
     worker: Option<Arc<dyn WorkerTermination>>,
 }
@@ -479,13 +523,14 @@ impl SessionSupervisor {
                 SupervisorErrorCode::WindowNotAuthorized,
             ));
         }
-        input.validate()?;
         ensure_secure_directory(&input.application_cache_root)?;
         ensure_secure_directory(
             &input
                 .application_cache_root
                 .join(ANALYSIS_SESSIONS_DIRECTORY),
         )?;
+        ensure_secure_directory(&input.working_directory)?;
+        input.validate()?;
 
         // Reserve the only live-generation slot before spawning.  Keeping the
         // guard across spawn closes the check/spawn/insert race without ever
@@ -504,22 +549,34 @@ impl SessionSupervisor {
             .application_cache_root
             .join(ANALYSIS_SESSIONS_DIRECTORY)
             .join(&session_id);
-        if output_directory.exists() || output_directory.symlink_metadata().is_ok() {
-            return Err(SupervisorError::new(
-                SupervisorErrorCode::SidecarStartFailed,
-            ));
-        }
+        let normalized_directory = prepare_session_directory(
+            &output_directory,
+            &session_id,
+            generation,
+            input.total_source_bytes()?,
+        )?;
 
         let nonce = opaque_id("nonce_")?;
-        let configuration =
-            build_configuration(&session_id, generation, &nonce, &input, &output_directory)?;
+        let configuration = build_configuration(
+            &session_id,
+            generation,
+            &nonce,
+            &input,
+            &normalized_directory,
+        )?;
         let launch = SidecarLaunch {
             resolution,
             cwd: input.working_directory.clone(),
             configuration,
             nonce,
         };
-        let (process, receiver) = spawn_sidecar(launch, &session_id, generation)?;
+        let (process, receiver) = match spawn_sidecar(launch, &session_id, generation) {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = cleanup_session_directory(&output_directory, &session_id);
+                return Err(error);
+            }
+        };
 
         let mut events = Vec::with_capacity(8);
         events.push(SessionEvent::State(SessionState::Ready));
@@ -536,6 +593,7 @@ impl SessionSupervisor {
             events,
             process,
             outcome_receiver: Some(receiver),
+            watcher_active: false,
             cancel_reason: None,
             worker: None,
         });
@@ -586,6 +644,51 @@ impl SessionSupervisor {
         }
     }
 
+    /// Move the sidecar outcome receiver to a host watcher. This is the
+    /// production event path: the renderer command can request cancellation
+    /// while the watcher remains the sole consumer of the process outcome.
+    pub fn watch<F>(
+        &self,
+        window_label: &str,
+        session_id: &str,
+        generation: u64,
+        callback: F,
+    ) -> Result<(), SupervisorError>
+    where
+        F: FnOnce(Result<SessionSnapshot, SupervisorError>) + Send + 'static,
+    {
+        let receiver = {
+            let mut inner = self.lock_inner()?;
+            validate_active(&inner, window_label, session_id, generation)?;
+            let active = inner.active.as_mut().expect("validated active session");
+            if active.terminal.is_some() || active.watcher_active {
+                return Err(SupervisorError::new(SupervisorErrorCode::InvalidState));
+            }
+            active.watcher_active = true;
+            active
+                .outcome_receiver
+                .take()
+                .ok_or_else(|| SupervisorError::new(SupervisorErrorCode::InvalidState))?
+        };
+        let supervisor = self.clone();
+        let window_label = window_label.to_string();
+        let session_id = session_id.to_string();
+        thread::Builder::new()
+            .name("sidecar-outcome-watcher".to_string())
+            .spawn(move || {
+                let result = match receiver.recv() {
+                    Ok(outcome) => supervisor.apply_outcome(outcome),
+                    Err(_) => supervisor.apply_outcome(RunOutcome {
+                        terminal: Err(SupervisorErrorCode::SidecarCrashed),
+                    }),
+                };
+                callback(result);
+                let _ = (window_label, session_id, generation);
+            })
+            .map_err(|_| SupervisorError::new(SupervisorErrorCode::SidecarStartFailed))?;
+        Ok(())
+    }
+
     pub fn cancel(
         &self,
         window_label: &str,
@@ -593,6 +696,54 @@ impl SessionSupervisor {
         generation: u64,
         reason: CancelReason,
     ) -> Result<SessionSnapshot, SupervisorError> {
+        let watched_process = {
+            let mut inner = self.lock_inner()?;
+            validate_active(&inner, window_label, session_id, generation)?;
+            let active = inner.active.as_mut().expect("validated active session");
+            if active.terminal.is_some() {
+                return Ok(snapshot(active));
+            }
+            if !active.watcher_active {
+                None
+            } else {
+                if active.state != SessionState::Cancelling {
+                    transition(active, SessionState::Cancelling)?;
+                    active
+                        .events
+                        .push(SessionEvent::State(SessionState::Cancelling));
+                    active.cancel_reason = Some(reason);
+                }
+                Some(Arc::clone(&active.process))
+            }
+        };
+        if let Some(process) = watched_process {
+            self.request_worker_cancellation(session_id, generation);
+            if let Err(error) = process.signal(2) {
+                if error.code == SupervisorErrorCode::ProcessIdentityMismatch {
+                    self.mark_cleanup_required(session_id, generation);
+                }
+                return Err(error);
+            }
+            let escalation_process = Arc::clone(&process);
+            let escalation_supervisor = self.clone();
+            let escalation_session = session_id.to_string();
+            thread::spawn(move || {
+                thread::sleep(GRACEFUL_CANCEL_GRACE);
+                if process_is_alive(escalation_process.identity.pid) {
+                    escalation_supervisor.force_worker_termination(&escalation_session, generation);
+                    let _ = escalation_process.signal(15);
+                    thread::sleep(TERM_CANCEL_GRACE);
+                    if process_is_alive(escalation_process.identity.pid) {
+                        escalation_supervisor
+                            .force_worker_termination(&escalation_session, generation);
+                        let _ = escalation_process.force_kill();
+                    }
+                }
+            });
+            return self
+                .active_snapshot()
+                .ok_or_else(|| SupervisorError::new(SupervisorErrorCode::SessionStale));
+        }
         let (process, receiver) = {
             let mut inner = self.lock_inner()?;
             validate_active(&inner, window_label, session_id, generation)?;
@@ -722,12 +873,15 @@ impl SessionSupervisor {
         if self.active_snapshot().is_some_and(|snapshot| {
             snapshot.terminal.is_none() && snapshot.state != SessionState::Closing
         }) {
-            let _ = self.cancel(
+            let cancelled = self.cancel(
                 window_label,
                 session_id,
                 generation,
                 CancelReason::Replacement,
             )?;
+            if cancelled.terminal.is_none() {
+                self.wait_for_terminal(session_id, generation)?;
+            }
         }
         self.cleanup_and_maybe_remove(window_label, session_id, generation)
     }
@@ -740,12 +894,15 @@ impl SessionSupervisor {
     ) -> Result<SessionSnapshot, SupervisorError> {
         if let Some(active) = self.active_snapshot() {
             if active.terminal.is_none() && active.state != SessionState::Closing {
-                let _ = self.cancel(
+                let cancelled = self.cancel(
                     window_label,
                     &active.session_id,
                     active.generation,
                     CancelReason::Replacement,
                 )?;
+                if cancelled.terminal.is_none() {
+                    self.wait_for_terminal(&active.session_id, active.generation)?;
+                }
             }
             let _ =
                 self.cleanup_and_maybe_remove(window_label, &active.session_id, active.generation)?;
@@ -786,12 +943,15 @@ impl SessionSupervisor {
                 return Err(SupervisorError::new(SupervisorErrorCode::SessionStale));
             }
             if active.terminal.is_none() && active.state != SessionState::Closing {
-                let _ = self.cancel(
+                let cancelled = self.cancel(
                     window_label,
                     session_id,
                     generation,
                     CancelReason::ApplicationClose,
                 )?;
+                if cancelled.terminal.is_none() {
+                    self.wait_for_terminal(session_id, generation)?;
+                }
             }
             return self.cleanup_and_maybe_remove(window_label, session_id, generation);
         }
@@ -803,12 +963,16 @@ impl SessionSupervisor {
             return;
         };
         if active.terminal.is_none() && active.state != SessionState::Closing {
-            let _ = self.cancel(
+            if let Ok(cancelled) = self.cancel(
                 "main",
                 &active.session_id,
                 active.generation,
                 CancelReason::ApplicationClose,
-            );
+            ) {
+                if cancelled.terminal.is_none() {
+                    let _ = self.wait_for_terminal(&active.session_id, active.generation);
+                }
+            }
         }
         let _ = self.cleanup_and_maybe_remove("main", &active.session_id, active.generation);
     }
@@ -819,12 +983,66 @@ impl SessionSupervisor {
         }
     }
 
+    /// Convert a sidecar-successful but handoff-invalid generation into a
+    /// retryable failed generation while retaining its validated input.
+    /// Retry will create a fresh absent destination.
+    pub fn reject_handoff(
+        &self,
+        window_label: &str,
+        session_id: &str,
+        generation: u64,
+        reason: &str,
+    ) -> Result<SessionSnapshot, SupervisorError> {
+        let mut inner = self.lock_inner()?;
+        validate_active(&inner, window_label, session_id, generation)?;
+        let active = inner.active.as_mut().expect("validated active session");
+        if !matches!(active.terminal, Some(SessionTerminal::Complete(_))) {
+            return Err(SupervisorError::new(SupervisorErrorCode::InvalidState));
+        }
+        active.state = SessionState::Failed;
+        let terminal = SessionTerminal::Failed(reason.to_string());
+        active
+            .events
+            .push(SessionEvent::State(SessionState::Failed));
+        active.events.push(SessionEvent::Terminal(terminal.clone()));
+        active.terminal = Some(terminal);
+        let cleanup = cleanup_session_directory(&active.output_directory, &active.session_id)
+            .unwrap_or(CleanupStatus::Required);
+        active.cleanup = Some(cleanup.clone());
+        active.events.push(SessionEvent::Cleanup(cleanup));
+        Ok(snapshot(active))
+    }
+
+    fn wait_for_terminal(
+        &self,
+        session_id: &str,
+        generation: u64,
+    ) -> Result<SessionSnapshot, SupervisorError> {
+        let deadline = Instant::now() + WATCHER_TERMINAL_WAIT;
+        loop {
+            let snapshot = self
+                .active_snapshot()
+                .ok_or_else(|| SupervisorError::new(SupervisorErrorCode::SessionStale))?;
+            if snapshot.session_id != session_id || snapshot.generation != generation {
+                return Err(SupervisorError::new(SupervisorErrorCode::SessionStale));
+            }
+            if snapshot.terminal.is_some() {
+                return Ok(snapshot);
+            }
+            if Instant::now() >= deadline {
+                return Err(SupervisorError::new(SupervisorErrorCode::CleanupRequired));
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+
     fn apply_outcome(&self, outcome: RunOutcome) -> Result<SessionSnapshot, SupervisorError> {
         let mut inner = self.lock_inner()?;
         let active = inner
             .active
             .as_mut()
             .ok_or_else(|| SupervisorError::new(SupervisorErrorCode::SessionStale))?;
+        active.watcher_active = false;
         if active.terminal.is_some() {
             return Ok(snapshot(active));
         }
@@ -896,6 +1114,9 @@ impl SessionSupervisor {
         let mut inner = self.lock_inner()?;
         validate_active(&inner, window_label, session_id, generation)?;
         let active = inner.active.as_mut().expect("validated active session");
+        if active.watcher_active && active.terminal.is_none() {
+            return Err(SupervisorError::new(SupervisorErrorCode::CleanupRequired));
+        }
         if active.state == SessionState::Closing && process_is_alive(active.process.identity.pid) {
             active.cleanup = Some(CleanupStatus::Required);
             return Err(SupervisorError::new(SupervisorErrorCode::CleanupRequired));
@@ -1023,6 +1244,7 @@ fn snapshot(active: &ActiveSession) -> SessionSnapshot {
         state: active.state,
         terminal: active.terminal.clone(),
         cleanup: active.cleanup.clone(),
+        cancel_reason: active.cancel_reason,
         events: active.events.clone(),
     }
 }
@@ -1717,6 +1939,22 @@ fn validate_executable(path: &Path) -> Result<(), SupervisorError> {
     Ok(())
 }
 
+fn validate_entrypoint(path: &Path) -> Result<(), SupervisorError> {
+    if !absolute_path(path) || !path_has_no_symlink_components(path) {
+        return Err(SupervisorError::new(
+            SupervisorErrorCode::SidecarUnavailable,
+        ));
+    }
+    let metadata = fs::symlink_metadata(path)
+        .map_err(|_| SupervisorError::new(SupervisorErrorCode::SidecarUnavailable))?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err(SupervisorError::new(
+            SupervisorErrorCode::SidecarUnavailable,
+        ));
+    }
+    Ok(())
+}
+
 fn absolute_path(path: &Path) -> bool {
     path.is_absolute()
         && path.to_str().is_some()
@@ -1829,6 +2067,226 @@ fn opaque_id(prefix: &str) -> Result<String, SupervisorError> {
     Ok(value)
 }
 
+const MINIMUM_SESSION_FREE_BYTES: u64 = 128 * 1024 * 1024;
+const SESSION_OVERHEAD_BYTES: u64 = 64 * 1024 * 1024;
+
+pub fn free_space_satisfies(available_bytes: u64, required_bytes: u64) -> bool {
+    available_bytes >= required_bytes
+}
+
+fn required_session_bytes(raw_bytes: u64) -> u64 {
+    raw_bytes
+        .saturating_mul(2)
+        .saturating_add(SESSION_OVERHEAD_BYTES)
+        .max(MINIMUM_SESSION_FREE_BYTES)
+}
+
+fn available_free_bytes(path: &Path) -> Result<u64, SupervisorError> {
+    #[cfg(unix)]
+    {
+        let path = std::ffi::CString::new(path.to_string_lossy().as_bytes())
+            .map_err(|_| SupervisorError::new(SupervisorErrorCode::DiskSpaceInsufficient))?;
+        let mut statistics = std::mem::MaybeUninit::<libc::statvfs>::uninit();
+        let result = unsafe { libc::statvfs(path.as_ptr(), statistics.as_mut_ptr()) };
+        if result != 0 {
+            return Err(SupervisorError::new(
+                SupervisorErrorCode::DiskSpaceInsufficient,
+            ));
+        }
+        let statistics = unsafe { statistics.assume_init() };
+        let block_size = u64::from(statistics.f_frsize.max(statistics.f_bsize));
+        return block_size
+            .checked_mul(u64::from(statistics.f_bavail))
+            .ok_or_else(|| SupervisorError::new(SupervisorErrorCode::DiskSpaceInsufficient));
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        Err(SupervisorError::new(
+            SupervisorErrorCode::DiskSpaceInsufficient,
+        ))
+    }
+}
+
+fn create_private_file(path: &Path, contents: &[u8]) -> Result<(), SupervisorError> {
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .map_err(|_| SupervisorError::new(SupervisorErrorCode::SidecarStartFailed))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600))
+            .map_err(|_| SupervisorError::new(SupervisorErrorCode::SidecarStartFailed))?;
+    }
+    file.write_all(contents)
+        .and_then(|_| file.sync_all())
+        .map_err(|_| SupervisorError::new(SupervisorErrorCode::SidecarStartFailed))
+}
+
+fn read_private_file(path: &Path, maximum: usize) -> Result<Vec<u8>, ()> {
+    if !is_secure_regular_file(path) {
+        return Err(());
+    }
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW);
+    }
+    let mut file = options.open(path).map_err(|_| ())?;
+    let metadata = file.metadata().map_err(|_| ())?;
+    if !is_secure_regular_metadata(&metadata) || metadata.len() > maximum as u64 {
+        return Err(());
+    }
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    file.read_to_end(&mut bytes).map_err(|_| ())?;
+    if bytes.len() > maximum {
+        return Err(());
+    }
+    Ok(bytes)
+}
+
+fn prepare_session_directory(
+    session_directory: &Path,
+    session_id: &str,
+    generation: u64,
+    raw_bytes: u64,
+) -> Result<PathBuf, SupervisorError> {
+    let parent = session_directory
+        .parent()
+        .ok_or_else(|| SupervisorError::new(SupervisorErrorCode::SidecarStartFailed))?;
+    if !secure_directory(parent)
+        || session_directory
+            .file_name()
+            .and_then(|value| value.to_str())
+            != Some(session_id)
+    {
+        return Err(SupervisorError::new(
+            SupervisorErrorCode::SidecarStartFailed,
+        ));
+    }
+    let free_bytes = available_free_bytes(parent)?;
+    if !free_space_satisfies(free_bytes, required_session_bytes(raw_bytes)) {
+        return Err(SupervisorError::new(
+            SupervisorErrorCode::DiskSpaceInsufficient,
+        ));
+    }
+    if session_directory.exists() || session_directory.symlink_metadata().is_ok() {
+        return Err(SupervisorError::new(
+            SupervisorErrorCode::SidecarStartFailed,
+        ));
+    }
+    fs::create_dir(session_directory)
+        .map_err(|_| SupervisorError::new(SupervisorErrorCode::SidecarStartFailed))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if fs::set_permissions(session_directory, fs::Permissions::from_mode(0o700)).is_err() {
+            let _ = fs::remove_dir(session_directory);
+            return Err(SupervisorError::new(
+                SupervisorErrorCode::SidecarStartFailed,
+            ));
+        }
+    }
+    if let Err(error) = create_private_file(
+        &session_directory.join(".session-marker"),
+        SESSION_MARKER_CONTENT,
+    )
+    .and_then(|_| {
+        create_private_file(
+            &session_directory.join("session-state"),
+            format!("sessionId={session_id}\ngeneration={generation}\n").as_bytes(),
+        )
+    }) {
+        let _ = fs::remove_file(session_directory.join(".session-marker"));
+        let _ = fs::remove_file(session_directory.join("session-state"));
+        let _ = fs::remove_dir(session_directory);
+        return Err(error);
+    }
+    Ok(session_directory.join("normalized"))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct StartupRecovery {
+    pub recognized_session_count: u64,
+    pub cleaned_session_count: u64,
+    pub cleanup_required: bool,
+}
+
+/// Inspect only direct children of the application-owned session root and
+/// clean recognized remnants entry by entry. Unknown, unsafe, or malformed
+/// entries are left untouched and reported through a stable boolean.
+pub fn recover_startup_sessions(
+    application_cache_root: &Path,
+) -> Result<StartupRecovery, SupervisorError> {
+    ensure_secure_directory(application_cache_root)?;
+    let sessions_root = application_cache_root.join(ANALYSIS_SESSIONS_DIRECTORY);
+    ensure_secure_directory(&sessions_root)?;
+    let entries = fs::read_dir(&sessions_root)
+        .map_err(|_| SupervisorError::new(SupervisorErrorCode::SessionCleanupFailed))?;
+    let mut recovery = StartupRecovery::default();
+    for entry in entries {
+        let Ok(entry) = entry else {
+            recovery.cleanup_required = true;
+            continue;
+        };
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let metadata = match fs::symlink_metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(_) => {
+                recovery.cleanup_required = true;
+                continue;
+            }
+        };
+        if !valid_session_id(&name)
+            || metadata.file_type().is_symlink()
+            || !metadata.is_dir()
+            || !secure_directory(&path)
+            || !recognized_session_state(&path, &name)
+        {
+            recovery.cleanup_required = true;
+            continue;
+        }
+        recovery.recognized_session_count += 1;
+        match cleanup_session_directory(&path, &name) {
+            Ok(CleanupStatus::Complete { .. }) => recovery.cleaned_session_count += 1,
+            Ok(CleanupStatus::Required) | Err(_) => recovery.cleanup_required = true,
+        }
+    }
+    Ok(recovery)
+}
+
+fn valid_session_id(value: &str) -> bool {
+    value.len() == 36
+        && value.starts_with("ses_")
+        && value[4..]
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+}
+
+fn recognized_session_state(directory: &Path, session_id: &str) -> bool {
+    let marker = directory.join(".session-marker");
+    let state = directory.join("session-state");
+    let expected_state = format!("sessionId={session_id}\ngeneration=");
+    read_private_file(&marker, SESSION_MARKER_CONTENT.len())
+        .ok()
+        .as_deref()
+        == Some(SESSION_MARKER_CONTENT)
+        && read_private_file(&state, 256).ok().is_some_and(|contents| {
+            contents.starts_with(expected_state.as_bytes())
+                && contents.ends_with(b"\n")
+                && contents.len() > expected_state.len() + 1
+                && std::str::from_utf8(&contents[expected_state.len()..contents.len() - 1])
+                    .ok()
+                    .and_then(|value| value.parse::<u64>().ok())
+                    .is_some_and(|generation| generation > 0)
+        })
+}
+
 fn fill_random(bytes: &mut [u8]) -> io::Result<()> {
     #[cfg(unix)]
     {
@@ -1875,17 +2333,19 @@ fn cleanup_session_directory(
     {
         return Ok(CleanupStatus::Required);
     }
+    if !recognized_session_state(directory, session_id) {
+        return Ok(CleanupStatus::Required);
+    }
     let mut removed = 0u64;
     let mut unsafe_entry = false;
     let entries = match fs::read_dir(directory) {
-        Ok(entries) => entries,
+        Ok(entries) => entries.collect::<Result<Vec<_>, _>>(),
         Err(_) => return Ok(CleanupStatus::Required),
     };
-    for entry in entries {
-        let Ok(entry) = entry else {
-            unsafe_entry = true;
-            continue;
-        };
+    let Ok(entries) = entries else {
+        return Ok(CleanupStatus::Required);
+    };
+    for entry in &entries {
         let path = entry.path();
         let Ok(entry_metadata) = fs::symlink_metadata(&path) else {
             unsafe_entry = true;
@@ -1894,19 +2354,17 @@ fn cleanup_session_directory(
         let name = entry.file_name().to_string_lossy().into_owned();
         if entry_metadata.file_type().is_symlink() {
             unsafe_entry = true;
-            continue;
-        }
-        if entry_metadata.is_file() && is_secure_regular_file(&path) && is_known_session_file(&name)
+        } else if entry_metadata.is_file()
+            && is_secure_regular_file(&path)
+            && is_known_session_file(&name)
         {
-            if fs::remove_file(&path).is_ok() {
-                removed += 1;
-            } else {
+        } else if entry_metadata.is_dir() && name == "normalized" {
+            if validate_known_directory(&path).is_err() {
                 unsafe_entry = true;
             }
-        } else if entry_metadata.is_dir() && name == "normalized" {
-            match cleanup_known_directory(&path) {
-                Ok(count) => removed += count,
-                Err(()) => unsafe_entry = true,
+        } else if entry_metadata.is_dir() && is_known_staging_directory(&name) {
+            if validate_known_staging_directory(&path).is_err() {
+                unsafe_entry = true;
             }
         } else {
             unsafe_entry = true;
@@ -1914,6 +2372,33 @@ fn cleanup_session_directory(
     }
     if unsafe_entry {
         return Ok(CleanupStatus::Required);
+    }
+    for entry in entries {
+        let path = entry.path();
+        let Ok(entry_metadata) = fs::symlink_metadata(&path) else {
+            return Ok(CleanupStatus::Required);
+        };
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if entry_metadata.is_file() {
+            if fs::remove_file(&path).is_err() {
+                return Ok(CleanupStatus::Required);
+            }
+            removed += 1;
+        } else if name == "normalized" {
+            let count = cleanup_known_directory(&path).map_err(|_| ());
+            if let Ok(count) = count {
+                removed += count;
+            } else {
+                return Ok(CleanupStatus::Required);
+            }
+        } else if is_known_staging_directory(&name) {
+            let count = cleanup_known_staging_directory(&path).map_err(|_| ());
+            if let Ok(count) = count {
+                removed += count;
+            } else {
+                return Ok(CleanupStatus::Required);
+            }
+        }
     }
     let mut entries = match fs::read_dir(directory) {
         Ok(entries) => entries,
@@ -1930,6 +2415,37 @@ fn cleanup_session_directory(
     } else {
         Ok(CleanupStatus::Required)
     }
+}
+
+fn validate_known_directory(path: &Path) -> Result<(), ()> {
+    if !secure_directory(path) {
+        return Err(());
+    }
+    for entry in fs::read_dir(path).map_err(|_| ())? {
+        let entry = entry.map_err(|_| ())?;
+        let entry_path = entry.path();
+        if !is_secure_regular_file(&entry_path)
+            || !is_known_session_file(&entry.file_name().to_string_lossy())
+        {
+            return Err(());
+        }
+    }
+    Ok(())
+}
+
+fn validate_known_staging_directory(path: &Path) -> Result<(), ()> {
+    if !secure_directory(path) {
+        return Err(());
+    }
+    for entry in fs::read_dir(path).map_err(|_| ())? {
+        let entry = entry.map_err(|_| ())?;
+        let entry_path = entry.path();
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if !is_secure_regular_file(&entry_path) || !is_known_staging_file(&name) {
+            return Err(());
+        }
+    }
+    Ok(())
 }
 
 fn cleanup_known_directory(path: &Path) -> Result<u64, ()> {
@@ -1953,10 +2469,36 @@ fn cleanup_known_directory(path: &Path) -> Result<u64, ()> {
     Ok(removed + 1)
 }
 
+fn cleanup_known_staging_directory(path: &Path) -> Result<u64, ()> {
+    if !secure_directory(path) {
+        return Err(());
+    }
+    let mut removed = 0u64;
+    for entry in fs::read_dir(path).map_err(|_| ())? {
+        let entry = entry.map_err(|_| ())?;
+        let entry_path = entry.path();
+        if !is_secure_regular_file(&entry_path) {
+            return Err(());
+        }
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if !is_known_staging_file(&name) {
+            return Err(());
+        }
+        fs::remove_file(entry_path).map_err(|_| ())?;
+        removed += 1;
+    }
+    fs::remove_dir(path).map_err(|_| ())?;
+    Ok(removed + 1)
+}
+
 fn is_secure_regular_file(path: &Path) -> bool {
     let Ok(metadata) = fs::symlink_metadata(path) else {
         return false;
     };
+    is_secure_regular_metadata(&metadata)
+}
+
+fn is_secure_regular_metadata(metadata: &fs::Metadata) -> bool {
     if metadata.file_type().is_symlink() || !metadata.is_file() {
         return false;
     }
@@ -1975,10 +2517,25 @@ fn is_known_session_file(name: &str) -> bool {
         ".session-marker" | "session-state" | "manifest.json" | ".cleanup-required"
     ) || (name.starts_with("chunk-")
         && name.ends_with(".ndjson")
-        && name[6..name.len() - 6].len() >= 4
-        && name[6..name.len() - 6]
+        && name.len() > 6 + ".ndjson".len()
+        && name[6..name.len() - ".ndjson".len()].len() >= 4
+        && name[6..name.len() - ".ndjson".len()]
             .bytes()
             .all(|byte| byte.is_ascii_digit()))
+}
+
+fn is_known_staging_directory(name: &str) -> bool {
+    name.starts_with(".chathistoryanalysis-stage-v2-")
+        && name.len() == ".chathistoryanalysis-stage-v2-".len() + 32
+        && name[".chathistoryanalysis-stage-v2-".len()..]
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+}
+
+fn is_known_staging_file(name: &str) -> bool {
+    name == ".chathistoryanalysis-private-stage-v2"
+        || name == ".staging-events.sqlite3"
+        || is_known_session_file(name)
 }
 
 fn process_identity_status(identity: &ProcessIdentity) -> IdentityStatus {
@@ -2283,6 +2840,7 @@ mod tests {
                 forced: AtomicBool::new(false),
             }),
             outcome_receiver: None,
+            watcher_active: false,
             cancel_reason: None,
             worker: None,
         };

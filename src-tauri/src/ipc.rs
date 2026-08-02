@@ -1,7 +1,10 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeSet;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+
+use tauri::{Emitter, Manager};
 
 use crate::security::trusted_main_window_label;
 
@@ -38,6 +41,17 @@ pub enum FailureCode {
     MemoryPressure,
     WorkerRuntimeFailed,
     CleanupRequired,
+    NoSourceSelected,
+    SourceCountExceeded,
+    UnsupportedFileType,
+    SourceUnreadable,
+    DuplicateSource,
+    SourceSetInvalid,
+    SelectionStale,
+    DiskSpaceInsufficient,
+    DatasetHandoffInvalid,
+    DatasetTampered,
+    DialogUnavailable,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -366,6 +380,8 @@ pub struct ProgressPayload {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DatasetReadyPayload {
+    pub dataset_id: String,
+    pub result_id: String,
     pub record_count: u64,
     pub chunk_count: u64,
     pub minimum_calendar_date: String,
@@ -490,6 +506,17 @@ fn valid_failure_code(value: &str) -> bool {
             | "MEMORY_PRESSURE"
             | "WORKER_RUNTIME_FAILED"
             | "CLEANUP_REQUIRED"
+            | "NO_SOURCE_SELECTED"
+            | "SOURCE_COUNT_EXCEEDED"
+            | "UNSUPPORTED_FILE_TYPE"
+            | "SOURCE_UNREADABLE"
+            | "DUPLICATE_SOURCE"
+            | "SOURCE_SET_INVALID"
+            | "SELECTION_STALE"
+            | "DISK_SPACE_INSUFFICIENT"
+            | "DATASET_HANDOFF_INVALID"
+            | "DATASET_TAMPERED"
+            | "DIALOG_UNAVAILABLE"
     )
 }
 
@@ -554,7 +581,9 @@ pub fn validate_event(value: &Value) -> Result<EventEnvelope, IpcError> {
             }
         }
         (EventType::DatasetReady, EventPayload::DatasetReady(payload)) => {
-            if payload.record_count == 0
+            if !valid_id(&payload.dataset_id, "dat_")
+                || !valid_id(&payload.result_id, "res_")
+                || payload.record_count == 0
                 || payload.chunk_count == 0
                 || payload.record_count > MAX_SAFE_INTEGER
                 || payload.chunk_count > MAX_SAFE_INTEGER
@@ -698,15 +727,32 @@ struct SessionRegistry {
 
 #[derive(Debug)]
 pub struct IpcCoreState {
-    registry: Mutex<SessionRegistry>,
+    registry: Arc<Mutex<SessionRegistry>>,
+    selection: Arc<Mutex<crate::desktop_selection::SelectionRegistry>>,
     supervisor: crate::session_supervisor::SessionSupervisor,
+    startup_cleanup_required: Arc<AtomicBool>,
 }
 
 impl Default for IpcCoreState {
     fn default() -> Self {
         Self {
-            registry: Mutex::new(SessionRegistry::default()),
+            registry: Arc::new(Mutex::new(SessionRegistry::default())),
+            selection: Arc::new(Mutex::new(
+                crate::desktop_selection::SelectionRegistry::default(),
+            )),
             supervisor: crate::session_supervisor::SessionSupervisor::default(),
+            startup_cleanup_required: Arc::new(AtomicBool::new(false)),
+        }
+    }
+}
+
+impl Clone for IpcCoreState {
+    fn clone(&self) -> Self {
+        Self {
+            registry: Arc::clone(&self.registry),
+            selection: Arc::clone(&self.selection),
+            supervisor: self.supervisor.clone(),
+            startup_cleanup_required: Arc::clone(&self.startup_cleanup_required),
         }
     }
 }
@@ -722,6 +768,233 @@ impl IpcCoreState {
 
     pub fn shutdown(&self) {
         self.supervisor.shutdown();
+    }
+
+    pub fn set_startup_cleanup_required(&self, required: bool) {
+        self.startup_cleanup_required
+            .store(required, Ordering::Release);
+    }
+
+    pub fn startup_cleanup_required(&self) -> bool {
+        self.startup_cleanup_required.load(Ordering::Acquire)
+    }
+
+    pub fn replace_selection(
+        &self,
+        role: crate::desktop_selection::SourceRole,
+        paths: Vec<std::path::PathBuf>,
+    ) -> Result<crate::desktop_selection::SelectionSummary, FailureCode> {
+        self.selection
+            .lock()
+            .map_err(|_| FailureCode::InvalidState)?
+            .replace_role(role, paths)
+            .map_err(selection_failure_code)
+    }
+
+    pub fn current_selection(
+        &self,
+        selection_id: &str,
+    ) -> Result<crate::desktop_selection::SelectionRecord, FailureCode> {
+        let selection = self
+            .selection
+            .lock()
+            .map_err(|_| FailureCode::InvalidState)?
+            .current()
+            .ok_or(FailureCode::NoSourceSelected)?;
+        if selection.selection_id() != selection_id {
+            return Err(FailureCode::SelectionStale);
+        }
+        Ok(selection)
+    }
+
+    pub fn clear_selection(&self) {
+        if let Ok(mut selection) = self.selection.lock() {
+            selection.clear();
+        }
+    }
+
+    pub fn replace_registered_session(
+        &self,
+        trusted_window_label: &str,
+        session_id: &str,
+        generation: u64,
+    ) -> Result<(), FailureCode> {
+        if !trusted_main_window_label(trusted_window_label)
+            || !valid_id(session_id, "ses_")
+            || generation == 0
+            || generation > MAX_SAFE_INTEGER
+        {
+            return Err(FailureCode::WindowNotAuthorized);
+        }
+        let mut registry = self
+            .registry
+            .lock()
+            .map_err(|_| FailureCode::InvalidState)?;
+        registry.active = Some(SessionRecord::new(
+            trusted_window_label,
+            session_id,
+            generation,
+        ));
+        Ok(())
+    }
+
+    pub fn publish_selection_ready(
+        &self,
+        window: &tauri::WebviewWindow,
+        summary: &crate::desktop_selection::SelectionSummary,
+    ) -> Result<(), FailureCode> {
+        let value = serde_json::json!({
+            "protocolVersion": PROTOCOL_VERSION,
+            "sessionId": null,
+            "generation": 0,
+            "sequence": 1,
+            "type": "selection-ready",
+            "payload": {
+                "selectionId": summary.selection_id,
+                "annualSourceCount": summary.annual_source_count,
+                "verificationSourceCount": summary.verification_source_count,
+            },
+        });
+        validate_event(&value).map_err(|error| error.code)?;
+        window
+            .emit("desktop-event", &value)
+            .map_err(|_| FailureCode::InvalidState)
+    }
+
+    pub fn publish_state(
+        &self,
+        window: &tauri::WebviewWindow,
+        state: &str,
+    ) -> Result<(), FailureCode> {
+        self.publish_session_value(window, "state", serde_json::json!({ "state": state }))
+    }
+
+    pub fn publish_progress(
+        &self,
+        window: &tauri::WebviewWindow,
+        phase: &str,
+        completed: u64,
+        total: u64,
+        percentage: f64,
+    ) -> Result<(), FailureCode> {
+        self.publish_session_value(
+            window,
+            "progress",
+            serde_json::json!({
+                "phase": phase,
+                "completed": completed,
+                "total": total,
+                "percentage": percentage,
+            }),
+        )
+    }
+
+    pub fn publish_dataset_ready(
+        &self,
+        window: &tauri::WebviewWindow,
+        dataset_id: &str,
+        result_id: &str,
+        record_count: u64,
+        chunk_count: u64,
+        minimum_calendar_date: &str,
+        maximum_calendar_date: &str,
+    ) -> Result<(), FailureCode> {
+        self.publish_session_value(
+            window,
+            "dataset-ready",
+            serde_json::json!({
+                "datasetId": dataset_id,
+                "resultId": result_id,
+                "recordCount": record_count,
+                "chunkCount": chunk_count,
+                "minimumCalendarDate": minimum_calendar_date,
+                "maximumCalendarDate": maximum_calendar_date,
+                "pseudonymous": true,
+            }),
+        )
+    }
+
+    pub fn publish_failure(
+        &self,
+        window: &tauri::WebviewWindow,
+        code: FailureCode,
+        retryable: bool,
+    ) -> Result<(), FailureCode> {
+        self.publish_session_value(
+            window,
+            "failure",
+            serde_json::json!({
+                "code": code,
+                "retryable": retryable,
+            }),
+        )
+    }
+
+    pub fn publish_cancelled(
+        &self,
+        window: &tauri::WebviewWindow,
+        reason: &str,
+    ) -> Result<(), FailureCode> {
+        self.publish_session_value(window, "cancelled", serde_json::json!({ "reason": reason }))
+    }
+
+    pub fn publish_cleanup(
+        &self,
+        window: &tauri::WebviewWindow,
+        status: &str,
+        removed_entry_count: u64,
+    ) -> Result<(), FailureCode> {
+        self.publish_session_value(
+            window,
+            "cleanup",
+            serde_json::json!({
+                "status": status,
+                "removedEntryCount": removed_entry_count,
+            }),
+        )
+    }
+
+    pub fn publish_closed(
+        &self,
+        window: &tauri::WebviewWindow,
+        status: &str,
+    ) -> Result<(), FailureCode> {
+        self.publish_session_value(window, "closed", serde_json::json!({ "status": status }))
+    }
+
+    fn publish_session_value(
+        &self,
+        window: &tauri::WebviewWindow,
+        event_type: &str,
+        payload: Value,
+    ) -> Result<(), FailureCode> {
+        let (session_id, generation, sequence) = {
+            let registry = self
+                .registry
+                .lock()
+                .map_err(|_| FailureCode::InvalidState)?;
+            let active = registry
+                .active
+                .as_ref()
+                .ok_or(FailureCode::InvalidSession)?;
+            (
+                active.session_id.clone(),
+                active.generation,
+                active.expected_sequence,
+            )
+        };
+        let value = serde_json::json!({
+            "protocolVersion": PROTOCOL_VERSION,
+            "sessionId": session_id,
+            "generation": generation,
+            "sequence": sequence,
+            "type": event_type,
+            "payload": payload,
+        });
+        self.accept_event(window.label(), &value)?;
+        window
+            .emit("desktop-event", &value)
+            .map_err(|_| FailureCode::InvalidState)
     }
 }
 
@@ -899,37 +1172,488 @@ impl IpcCoreState {
     }
 }
 
-fn command_result(
-    window: &tauri::WebviewWindow,
-    state: &tauri::State<'_, IpcCoreState>,
-    value: Value,
-    expected_type: &str,
-) -> Result<CommandAck, IpcError> {
-    if !trusted_main_window_label(window.label()) {
-        return Err(IpcError::with_code(None, FailureCode::WindowNotAuthorized));
+fn command_ack(request_id: String) -> CommandAck {
+    CommandAck {
+        protocol_version: PROTOCOL_VERSION,
+        request_id,
+        accepted: true,
     }
-    let request_id = validate_command(&value)?;
-    if value.get("type").and_then(Value::as_str) != Some(expected_type) {
-        return Err(IpcError::invalid(Some(request_id)));
+}
+
+fn selection_failure_code(error: crate::desktop_selection::SelectionError) -> FailureCode {
+    match error.code {
+        crate::desktop_selection::SelectionErrorCode::NoSourceSelected => {
+            FailureCode::NoSourceSelected
+        }
+        crate::desktop_selection::SelectionErrorCode::SourceCountExceeded => {
+            FailureCode::SourceCountExceeded
+        }
+        crate::desktop_selection::SelectionErrorCode::UnsupportedFileType => {
+            FailureCode::UnsupportedFileType
+        }
+        crate::desktop_selection::SelectionErrorCode::SourceUnreadable => {
+            FailureCode::SourceUnreadable
+        }
+        crate::desktop_selection::SelectionErrorCode::DuplicateSource => {
+            FailureCode::DuplicateSource
+        }
+        crate::desktop_selection::SelectionErrorCode::SelectionStale => FailureCode::SelectionStale,
+        crate::desktop_selection::SelectionErrorCode::DialogUnavailable => {
+            FailureCode::DialogUnavailable
+        }
+        crate::desktop_selection::SelectionErrorCode::InvalidSelection => {
+            FailureCode::SourceSetInvalid
+        }
     }
-    if expected_type == "cancel-analysis"
-        || expected_type == "retry-analysis"
-        || expected_type == "discard-session"
-        || expected_type == "export-aggregate"
+}
+
+fn map_supervisor_code(code: crate::session_supervisor::SupervisorErrorCode) -> FailureCode {
+    use crate::session_supervisor::SupervisorErrorCode;
+    match code {
+        SupervisorErrorCode::InvalidRequest => FailureCode::InvalidRequest,
+        SupervisorErrorCode::InvalidState => FailureCode::InvalidState,
+        SupervisorErrorCode::WindowNotAuthorized => FailureCode::WindowNotAuthorized,
+        SupervisorErrorCode::SessionBusy => FailureCode::SessionBusy,
+        SupervisorErrorCode::SessionStale => FailureCode::SessionStale,
+        SupervisorErrorCode::SidecarUnavailable => FailureCode::SidecarUnavailable,
+        SupervisorErrorCode::SidecarVerificationFailed => FailureCode::SidecarVerificationFailed,
+        SupervisorErrorCode::SidecarStartFailed => FailureCode::SidecarStartFailed,
+        SupervisorErrorCode::SidecarHandshakeTimeout => FailureCode::SidecarHandshakeTimeout,
+        SupervisorErrorCode::SidecarProtocolMismatch => FailureCode::SidecarProtocolMismatch,
+        SupervisorErrorCode::SidecarProtocolInvalid => FailureCode::SidecarProtocolInvalid,
+        SupervisorErrorCode::SidecarCrashed => FailureCode::SidecarCrashed,
+        SupervisorErrorCode::SidecarExited => FailureCode::SidecarExited,
+        SupervisorErrorCode::SessionCancelled => FailureCode::SessionCancelled,
+        SupervisorErrorCode::SessionCleanupFailed => FailureCode::SessionCleanupFailed,
+        SupervisorErrorCode::CleanupRequired => FailureCode::CleanupRequired,
+        SupervisorErrorCode::ProcessIdentityMismatch => FailureCode::ProcessIdentityMismatch,
+        SupervisorErrorCode::DiskSpaceInsufficient => FailureCode::DiskSpaceInsufficient,
+    }
+}
+
+fn map_sidecar_reason(reason: &str) -> FailureCode {
+    match reason {
+        "SOURCE_MUTATED" => FailureCode::SourceUnreadable,
+        "OUTPUT_DESTINATION_EXISTS"
+        | "OUTPUT_PARENT_UNSAFE"
+        | "OUTPUT_STAGING_FAILED"
+        | "OUTPUT_WRITE_FAILED"
+        | "OUTPUT_FLUSH_FAILED"
+        | "OUTPUT_INTEGRITY_FAILED"
+        | "OUTPUT_CLEANUP_FAILED"
+        | "OUTPUT_PROMOTION_FAILED"
+        | "CANONICAL_SCHEMA_INVALID"
+        | "CANONICAL_PRIVACY_VALIDATION_FAILED"
+        | "CANONICAL_DATASET_LIMIT_EXCEEDED"
+        | "CANONICAL_CHUNK_LIMIT_EXCEEDED"
+        | "CANONICAL_EVENT_LIMIT_EXCEEDED"
+        | "CANONICAL_NO_EVENTS" => FailureCode::DatasetHandoffInvalid,
+        "INPUT_PREFLIGHT_FAILED"
+        | "RAW_INPUT_FILE_LIMIT_EXCEEDED"
+        | "ANNUAL_SOURCE_COUNT_LIMIT_EXCEEDED"
+        | "AGGREGATE_RAW_INPUT_LIMIT_EXCEEDED"
+        | "UNSUPPORTED_EXPORT_FORMAT"
+        | "NO_ELIGIBLE_TEXT_RECORDS" => FailureCode::SourceSetInvalid,
+        "USER_CANCELLED" => FailureCode::SessionCancelled,
+        "SIDECAR_CRASHED" => FailureCode::SidecarCrashed,
+        _ => FailureCode::SidecarProtocolInvalid,
+    }
+}
+
+fn code_as_reason(code: &FailureCode) -> &'static str {
+    match code {
+        FailureCode::DatasetTampered => "DATASET_TAMPERED",
+        FailureCode::DatasetHandoffInvalid => "DATASET_HANDOFF_INVALID",
+        _ => "DATASET_HANDOFF_INVALID",
+    }
+}
+
+fn retryable_failure(code: &FailureCode) -> bool {
+    matches!(
+        code,
+        FailureCode::SessionCleanupFailed
+            | FailureCode::CleanupRequired
+            | FailureCode::SidecarUnavailable
+            | FailureCode::SidecarVerificationFailed
+            | FailureCode::SidecarStartFailed
+            | FailureCode::SidecarHandshakeTimeout
+            | FailureCode::SidecarProtocolMismatch
+            | FailureCode::SidecarExited
+            | FailureCode::SidecarProtocolInvalid
+            | FailureCode::SidecarCrashed
+            | FailureCode::DatasetHandoffInvalid
+            | FailureCode::DatasetTampered
+            | FailureCode::DiskSpaceInsufficient
+            | FailureCode::MemoryPressure
+            | FailureCode::WorkerRuntimeFailed
+    )
+}
+
+fn opaque_ipc_id(prefix: &str) -> Result<String, IpcError> {
+    let mut bytes = [0u8; 16];
+    #[cfg(unix)]
     {
-        let session_id = value
-            .get("sessionId")
-            .and_then(Value::as_str)
-            .ok_or_else(|| IpcError::invalid(Some(request_id.clone())))?;
-        let generation = value
-            .get("generation")
-            .and_then(Value::as_u64)
-            .ok_or_else(|| IpcError::invalid(Some(request_id.clone())))?;
-        state
-            .validate_owned_session(window.label(), session_id, generation)
-            .map_err(|code| IpcError::with_code(Some(request_id.clone()), code))?;
+        use std::io::Read;
+        std::fs::File::open("/dev/urandom")
+            .and_then(|mut file| file.read_exact(&mut bytes))
+            .map_err(|_| IpcError::with_code(None, FailureCode::InvalidState))?;
     }
-    Err(IpcError::contract_only(Some(request_id)))
+    #[cfg(not(unix))]
+    {
+        let _ = bytes;
+        return Err(IpcError::with_code(None, FailureCode::InvalidState));
+    }
+    let mut value = prefix.to_string();
+    for byte in bytes {
+        value.push_str(&format!("{byte:02x}"));
+    }
+    Ok(value)
+}
+
+fn app_cache_paths(
+    window: &tauri::WebviewWindow,
+) -> Result<(std::path::PathBuf, std::path::PathBuf), IpcError> {
+    let cache_root = window
+        .app_handle()
+        .path()
+        .app_cache_dir()
+        .map_err(|_| IpcError::with_code(None, FailureCode::InvalidState))?;
+    let working_directory = cache_root.join("sidecar-work");
+    Ok((cache_root, working_directory))
+}
+
+fn retry_startup_recovery(
+    window: &tauri::WebviewWindow,
+    state: &IpcCoreState,
+) -> Result<(), IpcError> {
+    if !state.startup_cleanup_required() {
+        return Ok(());
+    }
+    let cache_root = window
+        .app_handle()
+        .path()
+        .app_cache_dir()
+        .map_err(|_| IpcError::with_code(None, FailureCode::SessionCleanupFailed))?;
+    let recovery = crate::session_supervisor::recover_startup_sessions(&cache_root)
+        .map_err(|_| IpcError::with_code(None, FailureCode::SessionCleanupFailed))?;
+    state.set_startup_cleanup_required(recovery.cleanup_required);
+    if recovery.cleanup_required {
+        Err(IpcError::with_code(None, FailureCode::CleanupRequired))
+    } else {
+        Ok(())
+    }
+}
+
+fn resolve_sidecar(
+    window: &tauri::WebviewWindow,
+) -> Result<crate::session_supervisor::SidecarResolution, IpcError> {
+    if let Ok(resource_directory) = window.app_handle().path().resource_dir() {
+        if let Ok(resolution) =
+            crate::session_supervisor::SidecarResolution::packaged(&resource_directory)
+        {
+            return Ok(resolution);
+        }
+    }
+    #[cfg(debug_assertions)]
+    {
+        let python = std::env::var_os("CHAT_HISTORY_ANALYSIS_DEV_PYTHON")
+            .map(std::path::PathBuf::from)
+            .or_else(|| {
+                let candidate = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("../.venv/bin/python");
+                candidate.exists().then_some(candidate)
+            });
+        let entrypoint = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../scripts/sidecar/sidecar_entry.py");
+        if let Some(python) = python {
+            if let Ok(resolution) =
+                crate::session_supervisor::SidecarResolution::development_python(python, entrypoint)
+            {
+                return Ok(resolution);
+            }
+        }
+    }
+    Err(IpcError::with_code(None, FailureCode::SidecarUnavailable))
+}
+
+fn cleanup_count(snapshot: &crate::session_supervisor::SessionSnapshot) -> (String, u64) {
+    match snapshot.cleanup {
+        Some(crate::session_supervisor::CleanupStatus::Complete {
+            removed_entry_count,
+        }) => ("complete".to_string(), removed_entry_count),
+        Some(crate::session_supervisor::CleanupStatus::Required) | None => {
+            ("required".to_string(), 0)
+        }
+    }
+}
+
+fn publish_snapshot_cleanup(
+    core: &IpcCoreState,
+    window: &tauri::WebviewWindow,
+    snapshot: &crate::session_supervisor::SessionSnapshot,
+) {
+    let (status, count) = cleanup_count(snapshot);
+    let _ = core.publish_cleanup(window, &status, count);
+}
+
+fn phase_for_sidecar(value: &str) -> &'static str {
+    match value {
+        "output-verification" | "output-promotion" => "handoff",
+        "input-preflight"
+        | "source-digest"
+        | "source-validation"
+        | "session-validation"
+        | "source-staging"
+        | "dataset-staging"
+        | "output-serialization" => "preprocessing",
+        _ => "preprocessing",
+    }
+}
+
+fn handle_watched_session(
+    core: IpcCoreState,
+    window: tauri::WebviewWindow,
+    transport: crate::dataset_transport::DatasetTransportState,
+    cache_root: std::path::PathBuf,
+    session_id: String,
+    generation: u64,
+    result: Result<
+        crate::session_supervisor::SessionSnapshot,
+        crate::session_supervisor::SupervisorError,
+    >,
+) {
+    let snapshot = match result {
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            let code = map_supervisor_code(error.code);
+            transport.close_session(&window.label(), &session_id, generation);
+            let _ = core.publish_failure(&window, code.clone(), retryable_failure(&code));
+            if let Some(snapshot) = core.supervisor.active_snapshot() {
+                publish_snapshot_cleanup(&core, &window, &snapshot);
+            }
+            return;
+        }
+    };
+    match snapshot.terminal.clone() {
+        Some(crate::session_supervisor::SessionTerminal::Complete(_)) => {
+            for event in &snapshot.events {
+                if let crate::session_supervisor::SessionEvent::Progress(progress) = event {
+                    let total = progress.capacity_value.max(1);
+                    let completed = progress.aggregate_count.min(total);
+                    let _ = core.publish_progress(
+                        &window,
+                        phase_for_sidecar(&progress.phase),
+                        completed,
+                        total,
+                        f64::from(progress.percentage),
+                    );
+                }
+            }
+            let _ = core.publish_state(&window, "handoff");
+            let session_root = cache_root
+                .join(crate::session_supervisor::ANALYSIS_SESSIONS_DIRECTORY)
+                .join(&session_id);
+            let verified = match crate::dataset_handoff::verify_session_dataset(
+                &session_root,
+                &session_id,
+                generation,
+            ) {
+                Ok(verified) => verified,
+                Err(error) => {
+                    let code = if error.code
+                        == crate::dataset_handoff::HandoffErrorCode::TamperedDataset
+                    {
+                        FailureCode::DatasetTampered
+                    } else {
+                        FailureCode::DatasetHandoffInvalid
+                    };
+                    let _ = core.publish_failure(&window, code.clone(), true);
+                    if let Ok(cleaned) = core.supervisor.reject_handoff(
+                        window.label(),
+                        &session_id,
+                        generation,
+                        code_as_reason(&code),
+                    ) {
+                        publish_snapshot_cleanup(&core, &window, &cleaned);
+                    }
+                    return;
+                }
+            };
+            transport.mark_sidecar_verified();
+            let capability = match transport.register_host_dataset_for_session(
+                window.label(),
+                &session_id,
+                generation,
+                verified.manifest,
+                verified.chunks,
+            ) {
+                Ok(capability) => capability,
+                Err(_) => {
+                    let _ =
+                        core.publish_failure(&window, FailureCode::DatasetTransportInvalid, true);
+                    if let Ok(cleaned) = core.supervisor.reject_handoff(
+                        window.label(),
+                        &session_id,
+                        generation,
+                        "DATASET_TRANSPORT_INVALID",
+                    ) {
+                        publish_snapshot_cleanup(&core, &window, &cleaned);
+                    }
+                    return;
+                }
+            };
+            let result_id = match opaque_ipc_id("res_") {
+                Ok(result_id) => result_id,
+                Err(_) => {
+                    transport.close_session(&window.label(), &session_id, generation);
+                    let _ = core.publish_failure(&window, FailureCode::InvalidState, true);
+                    if let Ok(cleaned) = core.supervisor.reject_handoff(
+                        window.label(),
+                        &session_id,
+                        generation,
+                        "RESULT_ID_FAILED",
+                    ) {
+                        publish_snapshot_cleanup(&core, &window, &cleaned);
+                    }
+                    return;
+                }
+            };
+            if core
+                .publish_dataset_ready(
+                    &window,
+                    &capability.dataset_id,
+                    &result_id,
+                    verified.record_count,
+                    verified.chunk_count,
+                    &verified.minimum_calendar_date,
+                    &verified.maximum_calendar_date,
+                )
+                .is_err()
+            {
+                transport.close_session(&window.label(), &session_id, generation);
+                return;
+            }
+            let _ = core.publish_state(&window, "analyzing");
+            let _ = core.publish_state(&window, "complete");
+        }
+        Some(crate::session_supervisor::SessionTerminal::Failed(reason)) => {
+            let code = map_sidecar_reason(&reason);
+            transport.close_session(&window.label(), &session_id, generation);
+            let _ = core.publish_failure(&window, code.clone(), retryable_failure(&code));
+            publish_snapshot_cleanup(&core, &window, &snapshot);
+        }
+        Some(crate::session_supervisor::SessionTerminal::Cancelled) => {
+            transport.close_session(&window.label(), &session_id, generation);
+            let reason = match snapshot.cancel_reason {
+                Some(crate::session_supervisor::CancelReason::Replacement) => "replacement",
+                Some(crate::session_supervisor::CancelReason::ApplicationClose) => {
+                    "application-close"
+                }
+                Some(crate::session_supervisor::CancelReason::User) | None => "user",
+            };
+            let _ = core.publish_cancelled(&window, reason);
+            publish_snapshot_cleanup(&core, &window, &snapshot);
+            if reason != "user" {
+                let _ = core.publish_closed(
+                    &window,
+                    if matches!(
+                        snapshot.cleanup,
+                        Some(crate::session_supervisor::CleanupStatus::Complete { .. })
+                    ) {
+                        "complete"
+                    } else {
+                        "cleanup-required"
+                    },
+                );
+                let _ = core
+                    .supervisor
+                    .discard(window.label(), &session_id, generation);
+            }
+        }
+        None => {
+            let _ = core.publish_failure(&window, FailureCode::SidecarCrashed, true);
+            transport.close_session(&window.label(), &session_id, generation);
+            if let Some(snapshot) = core.supervisor.active_snapshot() {
+                publish_snapshot_cleanup(&core, &window, &snapshot);
+            }
+        }
+    }
+}
+
+fn start_session(
+    window: &tauri::WebviewWindow,
+    state: &IpcCoreState,
+    selection_id: &str,
+) -> Result<(String, u64), IpcError> {
+    retry_startup_recovery(window, state)?;
+    let selection = state
+        .current_selection(selection_id)
+        .map_err(|code| IpcError::with_code(None, code))?;
+    if selection.annual_sources().is_empty() {
+        return Err(IpcError::with_code(None, FailureCode::NoSourceSelected));
+    }
+    let (cache_root, working_directory) = app_cache_paths(window)?;
+    let resolution = resolve_sidecar(window)?;
+    let input = crate::session_supervisor::SessionInput::new(
+        selection.annual_sources().to_vec(),
+        selection.verification_sources().to_vec(),
+        cache_root.clone(),
+        working_directory,
+    );
+    let snapshot = state
+        .supervisor
+        .start(window.label(), resolution, input)
+        .map_err(|error| IpcError::with_code(None, map_supervisor_code(error.code)))?;
+    if let Err(code) =
+        state.register_session(window.label(), &snapshot.session_id, snapshot.generation)
+    {
+        let _ = state
+            .supervisor
+            .discard(window.label(), &snapshot.session_id, snapshot.generation);
+        return Err(IpcError::with_code(None, code));
+    }
+    if let Err(code) = state
+        .publish_state(window, "ready")
+        .and_then(|_| state.publish_state(window, "preprocessing"))
+    {
+        let _ = state
+            .supervisor
+            .discard(window.label(), &snapshot.session_id, snapshot.generation);
+        return Err(IpcError::with_code(None, code));
+    }
+    let core = state.clone();
+    let watcher_window = window.clone();
+    let transport = window
+        .app_handle()
+        .state::<crate::dataset_transport::DatasetTransportState>()
+        .inner()
+        .clone();
+    let cache_for_watcher = cache_root;
+    let session_id = snapshot.session_id.clone();
+    let generation = snapshot.generation;
+    let watch_session = session_id.clone();
+    if let Err(error) =
+        state
+            .supervisor
+            .watch(window.label(), &session_id, generation, move |result| {
+                handle_watched_session(
+                    core,
+                    watcher_window,
+                    transport,
+                    cache_for_watcher,
+                    watch_session,
+                    generation,
+                    result,
+                );
+            })
+    {
+        let _ = state
+            .supervisor
+            .discard(window.label(), &session_id, generation);
+        return Err(IpcError::with_code(None, map_supervisor_code(error.code)));
+    }
+    state.clear_selection();
+    Ok((session_id, generation))
 }
 
 #[tauri::command]
@@ -938,7 +1662,31 @@ pub fn select_annual_sources(
     state: tauri::State<'_, IpcCoreState>,
     request: Value,
 ) -> Result<CommandAck, IpcError> {
-    command_result(&window, &state, request, "select-annual-sources")
+    let request_id = validate_command(&request)?;
+    if request.get("type").and_then(Value::as_str) != Some("select-annual-sources") {
+        return Err(IpcError::invalid(Some(request_id)));
+    }
+    retry_startup_recovery(&window, state.inner()).map_err(|mut error| {
+        error.request_id = Some(request_id.clone());
+        error
+    })?;
+    let Some(paths) = crate::desktop_selection::choose_sources(
+        &window,
+        crate::desktop_selection::SourceRole::Annual,
+    )
+    .map_err(|error| {
+        IpcError::with_code(Some(request_id.clone()), selection_failure_code(error))
+    })?
+    else {
+        return Ok(command_ack(request_id));
+    };
+    let summary = state
+        .replace_selection(crate::desktop_selection::SourceRole::Annual, paths)
+        .map_err(|code| IpcError::with_code(Some(request_id.clone()), code))?;
+    state
+        .publish_selection_ready(&window, &summary)
+        .map_err(|code| IpcError::with_code(Some(request_id.clone()), code))?;
+    Ok(command_ack(request_id))
 }
 
 #[tauri::command]
@@ -947,7 +1695,31 @@ pub fn select_verification_sources(
     state: tauri::State<'_, IpcCoreState>,
     request: Value,
 ) -> Result<CommandAck, IpcError> {
-    command_result(&window, &state, request, "select-verification-sources")
+    let request_id = validate_command(&request)?;
+    if request.get("type").and_then(Value::as_str) != Some("select-verification-sources") {
+        return Err(IpcError::invalid(Some(request_id)));
+    }
+    retry_startup_recovery(&window, state.inner()).map_err(|mut error| {
+        error.request_id = Some(request_id.clone());
+        error
+    })?;
+    let Some(paths) = crate::desktop_selection::choose_sources(
+        &window,
+        crate::desktop_selection::SourceRole::Verification,
+    )
+    .map_err(|error| {
+        IpcError::with_code(Some(request_id.clone()), selection_failure_code(error))
+    })?
+    else {
+        return Ok(command_ack(request_id));
+    };
+    let summary = state
+        .replace_selection(crate::desktop_selection::SourceRole::Verification, paths)
+        .map_err(|code| IpcError::with_code(Some(request_id.clone()), code))?;
+    state
+        .publish_selection_ready(&window, &summary)
+        .map_err(|code| IpcError::with_code(Some(request_id.clone()), code))?;
+    Ok(command_ack(request_id))
 }
 
 #[tauri::command]
@@ -956,7 +1728,18 @@ pub fn start_analysis(
     state: tauri::State<'_, IpcCoreState>,
     request: Value,
 ) -> Result<CommandAck, IpcError> {
-    command_result(&window, &state, request, "start-analysis")
+    let request_id = validate_command(&request)?;
+    let selection_id = request
+        .get("selectionId")
+        .and_then(Value::as_str)
+        .ok_or_else(|| IpcError::invalid(Some(request_id.clone())))?;
+    start_session(&window, state.inner(), selection_id).map_err(|mut error| {
+        if error.request_id.is_none() {
+            error.request_id = Some(request_id.clone());
+        }
+        error
+    })?;
+    Ok(command_ack(request_id))
 }
 
 #[tauri::command]
@@ -965,7 +1748,33 @@ pub fn cancel_analysis(
     state: tauri::State<'_, IpcCoreState>,
     request: Value,
 ) -> Result<CommandAck, IpcError> {
-    command_result(&window, &state, request, "cancel-analysis")
+    let request_id = validate_command(&request)?;
+    let session_id = request
+        .get("sessionId")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let generation = request
+        .get("generation")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    state
+        .validate_owned_session(window.label(), session_id, generation)
+        .map_err(|code| IpcError::with_code(Some(request_id.clone()), code))?;
+    let cancelled = state
+        .supervisor
+        .cancel(
+            window.label(),
+            session_id,
+            generation,
+            crate::session_supervisor::CancelReason::User,
+        )
+        .map_err(|error| {
+            IpcError::with_code(Some(request_id.clone()), map_supervisor_code(error.code))
+        })?;
+    if cancelled.terminal.is_none() {
+        let _ = state.publish_state(&window, "cancelling");
+    }
+    Ok(command_ack(request_id))
 }
 
 #[tauri::command]
@@ -974,7 +1783,79 @@ pub fn retry_analysis(
     state: tauri::State<'_, IpcCoreState>,
     request: Value,
 ) -> Result<CommandAck, IpcError> {
-    command_result(&window, &state, request, "retry-analysis")
+    let request_id = validate_command(&request)?;
+    let session_id = request
+        .get("sessionId")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let generation = request
+        .get("generation")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    state
+        .validate_owned_session(window.label(), session_id, generation)
+        .map_err(|code| IpcError::with_code(Some(request_id.clone()), code))?;
+    let resolution = resolve_sidecar(&window)?;
+    let snapshot = state
+        .supervisor
+        .retry(window.label(), session_id, generation, resolution)
+        .map_err(|error| {
+            IpcError::with_code(Some(request_id.clone()), map_supervisor_code(error.code))
+        })?;
+    if let Err(code) =
+        state.replace_registered_session(window.label(), &snapshot.session_id, snapshot.generation)
+    {
+        let _ = state
+            .supervisor
+            .discard(window.label(), &snapshot.session_id, snapshot.generation);
+        return Err(IpcError::with_code(Some(request_id.clone()), code));
+    }
+    if let Err(code) = state
+        .publish_state(&window, "ready")
+        .and_then(|_| state.publish_state(&window, "preprocessing"))
+    {
+        let _ = state
+            .supervisor
+            .discard(window.label(), &snapshot.session_id, snapshot.generation);
+        return Err(IpcError::with_code(Some(request_id.clone()), code));
+    }
+    let core = state.inner().clone();
+    let watcher_window = window.clone();
+    let transport = window
+        .app_handle()
+        .state::<crate::dataset_transport::DatasetTransportState>()
+        .inner()
+        .clone();
+    let cache_root = app_cache_paths(&window)?.0;
+    let new_session_id = snapshot.session_id.clone();
+    let new_generation = snapshot.generation;
+    let watch_session_arg = new_session_id.clone();
+    let watched_session_id = new_session_id.clone();
+    if let Err(error) = state.supervisor.watch(
+        window.label(),
+        &watch_session_arg,
+        new_generation,
+        move |result| {
+            handle_watched_session(
+                core,
+                watcher_window,
+                transport,
+                cache_root,
+                watched_session_id,
+                new_generation,
+                result,
+            );
+        },
+    ) {
+        let _ = state
+            .supervisor
+            .discard(window.label(), &new_session_id, new_generation);
+        return Err(IpcError::with_code(
+            Some(request_id.clone()),
+            map_supervisor_code(error.code),
+        ));
+    }
+    Ok(command_ack(request_id))
 }
 
 #[tauri::command]
@@ -983,7 +1864,75 @@ pub fn discard_session(
     state: tauri::State<'_, IpcCoreState>,
     request: Value,
 ) -> Result<CommandAck, IpcError> {
-    command_result(&window, &state, request, "discard-session")
+    let request_id = validate_command(&request)?;
+    let session_id = request
+        .get("sessionId")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let generation = request
+        .get("generation")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    state
+        .validate_owned_session(window.label(), session_id, generation)
+        .map_err(|code| IpcError::with_code(Some(request_id.clone()), code))?;
+    if let Some(active) = state.supervisor.active_snapshot() {
+        if active.session_id == session_id
+            && active.generation == generation
+            && active.terminal.is_none()
+            && active.state != crate::session_supervisor::SessionState::Closing
+        {
+            state
+                .supervisor
+                .cancel(
+                    window.label(),
+                    session_id,
+                    generation,
+                    crate::session_supervisor::CancelReason::Replacement,
+                )
+                .map_err(|error| {
+                    IpcError::with_code(Some(request_id.clone()), map_supervisor_code(error.code))
+                })?;
+            let _ = state.publish_state(&window, "cancelling");
+            return Ok(command_ack(request_id));
+        }
+    }
+    let snapshot = state
+        .supervisor
+        .discard(window.label(), session_id, generation)
+        .map_err(|error| {
+            IpcError::with_code(Some(request_id.clone()), map_supervisor_code(error.code))
+        })?;
+    window
+        .app_handle()
+        .state::<crate::dataset_transport::DatasetTransportState>()
+        .close_session(window.label(), session_id, generation);
+    let cleanup_already_published = state
+        .registry
+        .lock()
+        .ok()
+        .and_then(|registry| {
+            registry
+                .active
+                .as_ref()
+                .and_then(|active| active.cleanup_status.clone())
+        })
+        .is_some();
+    if !cleanup_already_published {
+        publish_snapshot_cleanup(state.inner(), &window, &snapshot);
+    }
+    let _ = state.publish_closed(
+        &window,
+        if matches!(
+            snapshot.cleanup,
+            Some(crate::session_supervisor::CleanupStatus::Complete { .. })
+        ) {
+            "complete"
+        } else {
+            "cleanup-required"
+        },
+    );
+    Ok(command_ack(request_id))
 }
 
 #[tauri::command]
@@ -992,7 +1941,19 @@ pub fn export_aggregate(
     state: tauri::State<'_, IpcCoreState>,
     request: Value,
 ) -> Result<CommandAck, IpcError> {
-    command_result(&window, &state, request, "export-aggregate")
+    let request_id = validate_command(&request)?;
+    let session_id = request
+        .get("sessionId")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let generation = request
+        .get("generation")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    state
+        .validate_owned_session(window.label(), session_id, generation)
+        .map_err(|code| IpcError::with_code(Some(request_id.clone()), code))?;
+    Err(IpcError::contract_only(Some(request_id)))
 }
 
 #[tauri::command]
@@ -1001,7 +1962,52 @@ pub fn request_application_close(
     state: tauri::State<'_, IpcCoreState>,
     request: Value,
 ) -> Result<CommandAck, IpcError> {
-    command_result(&window, &state, request, "request-application-close")
+    let request_id = validate_command(&request)?;
+    if request.get("decision").and_then(Value::as_str) == Some("cancel-and-close") {
+        if let Some(snapshot) = state.supervisor.active_snapshot() {
+            if snapshot.terminal.is_none()
+                && snapshot.state != crate::session_supervisor::SessionState::Closing
+            {
+                state
+                    .supervisor
+                    .cancel(
+                        window.label(),
+                        &snapshot.session_id,
+                        snapshot.generation,
+                        crate::session_supervisor::CancelReason::ApplicationClose,
+                    )
+                    .map_err(|error| {
+                        IpcError::with_code(
+                            Some(request_id.clone()),
+                            map_supervisor_code(error.code),
+                        )
+                    })?;
+                let _ = state.publish_state(&window, "cancelling");
+            } else if let Ok(cleaned) =
+                state
+                    .supervisor
+                    .close(window.label(), &snapshot.session_id, snapshot.generation)
+            {
+                window
+                    .app_handle()
+                    .state::<crate::dataset_transport::DatasetTransportState>()
+                    .close_session(window.label(), &snapshot.session_id, snapshot.generation);
+                publish_snapshot_cleanup(state.inner(), &window, &cleaned);
+                let _ = state.publish_closed(
+                    &window,
+                    if matches!(
+                        cleaned.cleanup,
+                        Some(crate::session_supervisor::CleanupStatus::Complete { .. })
+                    ) {
+                        "complete"
+                    } else {
+                        "cleanup-required"
+                    },
+                );
+            }
+        }
+    }
+    Ok(command_ack(request_id))
 }
 
 #[cfg(test)]

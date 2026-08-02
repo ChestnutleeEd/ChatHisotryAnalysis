@@ -254,6 +254,73 @@ h2 {
   font-size: 0.82rem;
 }
 
+.desktop-shell {
+  max-width: 1180px;
+}
+
+.desktop-masthead {
+  min-height: 360px;
+}
+
+.desktop-selection-panel {
+  min-height: 230px;
+}
+
+.desktop-status-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 28px;
+  align-items: center;
+  margin-top: 20px;
+  padding: 34px 42px;
+  background: rgb(232 220 199 / 82%);
+}
+
+.desktop-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.desktop-result-panel {
+  margin-top: 20px;
+  padding: 34px 42px;
+  background: rgb(232 220 199 / 82%);
+}
+
+.desktop-result-panel p:last-child {
+  max-width: 760px;
+  margin-bottom: 0;
+  line-height: 1.7;
+}
+
+.desktop-dataset-details {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 26px 0;
+}
+
+.desktop-dataset-details div {
+  padding: 18px;
+  border-radius: 16px;
+  background: rgb(139 157 131 / 38%);
+}
+
+.desktop-dataset-details dt {
+  color: var(--accent-ink);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.desktop-dataset-details dd {
+  margin: 8px 0 0;
+  font-size: 1.2rem;
+}
+
 .attempt-status {
   display: grid;
   grid-template-columns: minmax(180px, 0.6fr) minmax(260px, 1fr) auto;

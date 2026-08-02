@@ -159,10 +159,21 @@ def validate_configuration(value: object) -> SidecarConfiguration:
     output = _safe_path(value["outputDirectory"])
     normalized_cache = Path(os.path.abspath(os.fspath(cache_root)))
     normalized_output = Path(os.path.abspath(os.fspath(output)))
+    nested_output = normalized_output.name == "normalized"
+    session_directory = normalized_output.parent if nested_output else normalized_output
+    session_parent = session_directory.parent
     if (
-        normalized_output.name != session_id
-        or normalized_output.parent.name != "analysis-sessions"
-        or normalized_output.parent.parent != normalized_cache
+        session_directory.name != session_id
+        or session_parent.name != "analysis-sessions"
+        or session_parent.parent != normalized_cache
+        or (
+            nested_output
+            and (
+                not session_directory.is_dir()
+                or not (session_directory / ".session-marker").is_file()
+                or not (session_directory / "session-state").is_file()
+            )
+        )
     ):
         raise SidecarProtocolError()
     return SidecarConfiguration(

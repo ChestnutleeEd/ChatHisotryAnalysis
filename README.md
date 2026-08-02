@@ -136,6 +136,18 @@ compact cache 的生产表示选择、合成边界数据和实测阈值见
 生产构建随附的完整第三方文本来自
 `frontend/public/THIRD_PARTY_NOTICES.txt`。
 
+## Tauri 桌面本地分析 Stage 4
+
+桌面运行时提供原生年度源/可选验证源选择、Rust 监督的本地 sidecar、
+owner-only per-session cache，以及经 Rust 独立校验后交给 Worker 的 opaque
+dataset handoff。渲染层只接收 opaque ID、数量、状态和安全汇总；不会接触
+文件名、路径或原始正文。浏览器 v1 入口仍保持不变。
+
+Stage 4 的边界、生命周期、startup recovery、Worker restart 和合成验证命令
+见 [Desktop local analysis: Stage 4](docs/DESKTOP_LOCAL_ANALYSIS_STAGE4.md)。
+完整 analytics、aggregate export、codesign/notarization、DMG/Windows 和真实
+数据验收不属于本阶段。
+
 ## 验证
 
 快速单元测试：

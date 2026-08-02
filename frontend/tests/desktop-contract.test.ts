@@ -141,6 +141,45 @@ describe("versioned desktop IPC contract", () => {
     }
   });
 
+  it("allows a fresh sessionless source selection after a closed terminal run", () => {
+    const selection = vectors.events[0].value;
+    const result = acceptDesktopEvent(
+      {
+        windowId: "main",
+        sessionId: SESSION,
+        generation: GENERATION,
+        sequence: 7,
+        state: "complete",
+        terminal: true,
+        terminalOutcome: "complete",
+        cleanupStatus: "complete",
+        closed: true,
+      },
+      selection,
+      "main",
+    );
+    expect(result).toMatchObject({
+      accepted: true,
+      cursor: {
+        sessionId: null,
+        generation: GENERATION,
+        sequence: 1,
+        state: "ready",
+        terminal: false,
+      },
+    });
+    if (!result.accepted) {
+      throw new Error("selection reset was rejected");
+    }
+    expect(
+      acceptDesktopEvent(
+        result.cursor,
+        vectors.events[2].value,
+        "main",
+      ),
+    ).toEqual({ accepted: false, code: "STALE_GENERATION" });
+  });
+
   it("maps typed methods to the finite Tauri command names", async () => {
     const invoke = {
       invoke: async <T>(

@@ -20,6 +20,7 @@
     "test:browser:preview": "npm run build && node scripts/run-browser-tests.mjs production"
   },
   "dependencies": {
+    "@tauri-apps/api": "^2.11.1",
     "echarts": "5.6.0",
     "echarts-wordcloud": "2.1.0",
     "jieba-wasm": "2.4.0",

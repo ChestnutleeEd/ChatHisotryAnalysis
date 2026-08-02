@@ -646,21 +646,32 @@ def preflight_desktop_output_directory(path: Path) -> Path:
     if not isinstance(path, Path):
         _reject()
     candidate = _lexical_absolute(path)
-    session_root = candidate.parent
+    # Stage 4 publishes into <opaque-session>/normalized. Keep accepting the
+    # direct opaque session candidate for the existing CLI/unit-test contract.
+    nested_normalized = candidate.name == "normalized"
+    session_directory = candidate.parent if nested_normalized else candidate
+    session_root = session_directory.parent if nested_normalized else candidate.parent
     cache_root = session_root.parent
     if (
         session_root.name != DESKTOP_SESSION_ROOT_NAME
-        or not _DESKTOP_SESSION_ID_PATTERN.fullmatch(candidate.name)
+        or not _DESKTOP_SESSION_ID_PATTERN.fullmatch(session_directory.name)
     ):
         _reject()
     try:
         lexical_cache_metadata = os.lstat(cache_root)
         lexical_session_metadata = os.lstat(session_root)
+        session_directory_metadata = (
+            os.lstat(session_directory) if nested_normalized else None
+        )
         resolved_cache_root = cache_root.resolve(strict=True)
         resolved_session_root = session_root.resolve(strict=True)
+        resolved_session_directory = session_directory.resolve(strict=nested_normalized)
         resolved_candidate = candidate.resolve(strict=False)
         root_metadata = os.lstat(resolved_cache_root)
         sessions_metadata = os.lstat(resolved_session_root)
+        expected_candidate_parent = (
+            resolved_session_directory if nested_normalized else resolved_session_root
+        )
         if (
             stat.S_ISLNK(lexical_cache_metadata.st_mode)
             or stat.S_ISLNK(lexical_session_metadata.st_mode)
@@ -675,8 +686,21 @@ def preflight_desktop_output_directory(path: Path) -> Path:
             or sessions_metadata.st_uid != os.getuid()
             or stat.S_IMODE(sessions_metadata.st_mode) != 0o700
             or resolved_session_root.parent != resolved_cache_root
-            or resolved_candidate.parent != resolved_session_root
+            or resolved_candidate.parent != expected_candidate_parent
             or resolved_candidate.name != candidate.name
+            or (
+                nested_normalized
+                and (
+                    resolved_session_directory.parent != resolved_session_root
+                    or resolved_session_directory.name != session_directory.name
+                    or session_directory_metadata is None
+                    or stat.S_ISLNK(session_directory_metadata.st_mode)
+                    or not stat.S_ISDIR(session_directory_metadata.st_mode)
+                    or session_directory_metadata.st_uid != os.getuid()
+                    or stat.S_IMODE(session_directory_metadata.st_mode) != 0o700
+                    or not _is_private_session_marker_set(session_directory)
+                )
+            )
         ):
             _reject()
         if os.path.lexists(candidate):
@@ -686,6 +710,26 @@ def preflight_desktop_output_directory(path: Path) -> Path:
     except (OSError, RuntimeError, ValueError):
         _reject()
     return resolved_candidate
+
+
+def _is_private_session_marker_set(session_directory: Path) -> bool:
+    try:
+        marker = os.lstat(session_directory / ".session-marker")
+        state = os.lstat(session_directory / "session-state")
+    except OSError:
+        return False
+    if (
+        stat.S_ISLNK(marker.st_mode)
+        or not stat.S_ISREG(marker.st_mode)
+        or marker.st_uid != os.getuid()
+        or stat.S_IMODE(marker.st_mode) != 0o600
+        or stat.S_ISLNK(state.st_mode)
+        or not stat.S_ISREG(state.st_mode)
+        or state.st_uid != os.getuid()
+        or stat.S_IMODE(state.st_mode) != 0o600
+    ):
+        return False
+    return True
 
 
 def preflight_desktop_inputs(selection: InputSelection) -> PreflightedInputs:

@@ -1,6 +1,7 @@
 use chat_history_analysis_lib::session_supervisor::{
-    CancelReason, CleanupStatus, SessionEvent, SessionInput, SessionState, SessionSupervisor,
-    SessionTerminal, SidecarResolution, SupervisorErrorCode, ANALYSIS_SESSIONS_DIRECTORY,
+    recover_startup_sessions, CancelReason, CleanupStatus, SessionEvent, SessionInput,
+    SessionState, SessionSupervisor, SessionTerminal, SidecarResolution, SupervisorErrorCode,
+    ANALYSIS_SESSIONS_DIRECTORY, SESSION_MARKER_CONTENT,
 };
 use std::fs::{self, File};
 use std::io::Write;
@@ -24,11 +25,19 @@ impl Fixture {
             .duration_since(UNIX_EPOCH)
             .expect("clock")
             .as_nanos();
-        let root = std::env::temp_dir().join(format!(
-            "chat-history-analysis-stage3-{}-{nonce}",
-            process::id()
-        ));
-        fs::create_dir(&root).expect("fixture root");
+        let root = (0..100)
+            .map(|attempt| {
+                std::env::temp_dir().join(format!(
+                    "chat-history-analysis-stage3-{}-{nonce}-{attempt}",
+                    process::id()
+                ))
+            })
+            .find(|candidate| match fs::create_dir(candidate) {
+                Ok(()) => true,
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => false,
+                Err(error) => panic!("fixture root: {error}"),
+            })
+            .expect("fixture root collision limit");
         set_private(&root);
         let cache_root = root.join("cache");
         let sessions_root = cache_root.join(ANALYSIS_SESSIONS_DIRECTORY);
@@ -232,6 +241,63 @@ fn start_creates_a_missing_owner_only_session_root() {
     supervisor
         .discard("main", &started.session_id, started.generation)
         .expect("discard");
+}
+
+#[test]
+fn startup_recovery_cleans_one_recognized_session_without_following_unknown_entries() {
+    let fixture = Fixture::new();
+    let session_id = "ses_00000000000000000000000000000001";
+    let session_directory = fixture.session_directory(session_id);
+    fs::create_dir(&session_directory).expect("recognized session directory");
+    set_private(&session_directory);
+    let marker = session_directory.join(".session-marker");
+    fs::write(&marker, SESSION_MARKER_CONTENT).expect("marker");
+    set_private_file(&marker);
+    let state = session_directory.join("session-state");
+    fs::write(
+        &state,
+        format!("sessionId={session_id}\ngeneration=1\n").as_bytes(),
+    )
+    .expect("state");
+    set_private_file(&state);
+    let normalized = session_directory.join("normalized");
+    fs::create_dir(&normalized).expect("normalized directory");
+    set_private(&normalized);
+
+    let recovery = recover_startup_sessions(&fixture.cache_root).expect("startup recovery");
+    assert_eq!(recovery.recognized_session_count, 1);
+    assert_eq!(recovery.cleaned_session_count, 1);
+    assert!(!recovery.cleanup_required);
+    assert!(!session_directory.exists());
+}
+
+#[test]
+fn watched_discard_waits_for_cancellation_before_removing_session() {
+    let fixture = Fixture::new();
+    let supervisor = SessionSupervisor::default();
+    let started = supervisor
+        .start("main", fixture.resolution("delay"), fixture.input())
+        .expect("start");
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let session_id = started.session_id.clone();
+    supervisor
+        .watch("main", &session_id, started.generation, move |result| {
+            sender.send(result).expect("watch result");
+        })
+        .expect("watch");
+    let discarded = supervisor
+        .discard("main", &session_id, started.generation)
+        .expect("discard waits for watcher");
+    assert!(matches!(
+        discarded.cleanup,
+        Some(CleanupStatus::Complete { .. })
+    ));
+    assert!(supervisor.active_snapshot().is_none());
+    let watched = receiver
+        .recv_timeout(Duration::from_secs(1))
+        .expect("watch completion")
+        .expect("watched snapshot");
+    assert_eq!(watched.cancel_reason, Some(CancelReason::Replacement));
 }
 
 #[test]
@@ -543,11 +609,6 @@ fn cleanup_preserves_unknown_entries_and_requires_explicit_retry() {
         .start("main", fixture.resolution("malformed"), fixture.input())
         .expect("start");
     let session_directory = fixture.session_directory(&started.session_id);
-    fs::create_dir(&session_directory).expect("session directory");
-    set_private(&session_directory);
-    let marker = session_directory.join(".session-marker");
-    File::create(&marker).expect("marker");
-    set_private_file(&marker);
     let unknown = session_directory.join("user-owned-remnant");
     File::create(&unknown).expect("unknown entry");
     set_private_file(&unknown);
