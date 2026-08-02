@@ -6,6 +6,7 @@ import argparse
 import json
 from pathlib import Path
 import sys
+import threading
 from typing import Callable, Sequence
 
 from .application import (
@@ -375,6 +376,34 @@ def run_sidecar_streams(
     """Run the v2 production composition through the sidecar protocol."""
 
     configuration: SidecarConfiguration | None = None
+    parent_lost = threading.Event()
+    extra_input = threading.Event()
+    monitor_stop = threading.Event()
+    operation_done = threading.Event()
+
+    def monitor_parent(stream, control: OperationControl) -> None:
+        """Treat parent EOF as cancellation without a helper process."""
+
+        try:
+            while not monitor_stop.is_set():
+                block = stream.read(1)
+                if not block:
+                    # A closed stdin is authoritative once the operation is
+                    # live.  A short completion grace preserves the existing
+                    # console mode, whose subprocess helper closes stdin
+                    # immediately after writing the one configuration frame.
+                    if operation_done.wait(0.25):
+                        return
+                    parent_lost.set()
+                    control.request_cancellation()
+                    return
+                extra_input.set()
+                control.request_cancellation()
+                return
+        except (OSError, ValueError):
+            parent_lost.set()
+            control.request_cancellation()
+
     try:
         configuration = read_configuration(
             input_stream,
@@ -392,8 +421,17 @@ def run_sidecar_streams(
             emit_progress(output_stream, configuration, payload)
 
         control = OperationControl(progress_sink=progress)
+        monitor = threading.Thread(
+            target=monitor_parent,
+            args=(input_stream, control),
+            name="sidecar-parent-monitor",
+            daemon=True,
+        )
+        monitor.start()
         with use_operation_control(control), install_sigint_handler(control):
             result = run_preprocessing_v2(selection)
+        if extra_input.is_set():
+            raise SidecarProtocolError()
         if not isinstance(result, CanonicalPreprocessingResult):
             raise SidecarProtocolError()
         emit_result(
@@ -424,11 +462,21 @@ def run_sidecar_streams(
         emit_failure(error_stream, error.reason_code.value)
         return _classified_exit(error.category)
     except CancellationError as error:
-        emit_failure(error_stream, error.reason_code.value)
+        if parent_lost.is_set():
+            return int(ExitCode.CANCELLATION)
+        emit_failure(
+            error_stream,
+            "SIDECAR_PROTOCOL_INVALID"
+            if extra_input.is_set()
+            else error.reason_code.value,
+        )
         return int(ExitCode.CANCELLATION)
     except Exception:
         emit_failure(error_stream, "SIDECAR_CRASHED")
         return int(ExitCode.OUTPUT_FAILURE)
+    finally:
+        operation_done.set()
+        monitor_stop.set()
 
 
 def main(argv: Sequence[str] | None = None) -> int:

@@ -3,6 +3,7 @@ use tauri::Manager;
 pub mod dataset_transport;
 pub mod ipc;
 pub mod security;
+pub mod session_supervisor;
 pub mod trust_anchor;
 pub mod webview_permissions;
 
@@ -41,11 +42,15 @@ pub fn run() {
                 .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
                 .build()?;
             webview_permissions::install(&window)?;
+            let app_handle = app.handle().clone();
             window.on_window_event({
                 let transport = transport.clone();
                 move |event| {
                     if matches!(event, tauri::WindowEvent::Destroyed) {
                         transport.close_window(security::MAIN_WINDOW_LABEL);
+                        app_handle
+                            .state::<ipc::IpcCoreState>()
+                            .renderer_disconnected(security::MAIN_WINDOW_LABEL);
                     }
                 }
             });
@@ -57,6 +62,10 @@ pub fn run() {
                     .app_handle()
                     .state::<dataset_transport::DatasetTransportState>()
                     .close_window(webview.label());
+                webview
+                    .app_handle()
+                    .state::<ipc::IpcCoreState>()
+                    .renderer_disconnected(webview.label());
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -74,6 +83,11 @@ pub fn run() {
             dataset_transport::cancel_dataset_stream,
             dataset_transport::close_dataset_stream,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Chat History Analysis");
+        .build(tauri::generate_context!())
+        .expect("error while building Chat History Analysis")
+        .run(|app_handle, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                app_handle.state::<ipc::IpcCoreState>().shutdown();
+            }
+        });
 }

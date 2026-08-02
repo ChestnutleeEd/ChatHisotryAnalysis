@@ -65,6 +65,32 @@ describe("versioned desktop IPC contract", () => {
     ).toThrow();
   });
 
+  it("accepts the Stage 3 supervision failure categories", () => {
+    const failure = vectors.events.find((vector) => vector.value.type === "failure")
+      ?.value;
+    expect(failure).toBeDefined();
+    for (const code of [
+      "SESSION_BUSY",
+      "SESSION_STALE",
+      "SIDECAR_UNAVAILABLE",
+      "SIDECAR_VERIFICATION_FAILED",
+      "SIDECAR_START_FAILED",
+      "SIDECAR_HANDSHAKE_TIMEOUT",
+      "SIDECAR_PROTOCOL_MISMATCH",
+      "SIDECAR_EXITED",
+      "SESSION_CANCELLED",
+      "SESSION_CLEANUP_FAILED",
+      "PROCESS_IDENTITY_MISMATCH",
+    ] as const) {
+      expect(
+        parseDesktopEvent({
+          ...failure,
+          payload: { ...failure!.payload, code },
+        }),
+      ).toBeDefined();
+    }
+  });
+
   it("suppresses wrong-window, stale, duplicate, and invalid-transition events", () => {
     const cursor: EventCursor = {
       windowId: "main",

@@ -32,7 +32,7 @@ from chat_history_analysis.sidecar_trust import (  # noqa: E402
 
 LOCKFILE = ROOT / "requirements-sidecar-build.lock"
 SPECFILE = ROOT / "scripts" / "sidecar" / "chat_history_analysis_sidecar.spec"
-ENTRYPOINT = ROOT / "src" / "chat_history_analysis" / "application.py"
+ENTRYPOINT = ROOT / "scripts" / "sidecar" / "sidecar_entry.py"
 FIXTURE = ROOT / "contracts" / "sidecar-synthetic-fixture.json"
 EVIDENCE_VERSION = "chat-history-analysis.sidecar-evidence.v1"
 SIDECAR_NAME = "chat-history-analysis-sidecar-probe"
@@ -55,6 +55,8 @@ def _sha256(path: Path) -> str:
 def _members(root: Path) -> list[dict[str, object]]:
     records: list[dict[str, object]] = []
     for path in sorted(root.rglob("*")):
+        if path.is_symlink():
+            raise RuntimeError("SIDECAR_LAYOUT_INVALID")
         if not path.is_file() or path.name in (EVIDENCE_NAME, TRUST_ANCHOR_NAME):
             continue
         records.append(
@@ -95,6 +97,8 @@ def _build_input_digests() -> dict[str, str]:
         ENTRYPOINT,
         FIXTURE,
         ROOT / "scripts" / "build_sidecar_spike.py",
+        ROOT / "scripts" / "sidecar" / "sidecar_entry.py",
+        ROOT / "scripts" / "sidecar" / "frozen_probe.py",
         ROOT / "contracts" / "canonical-v2.vectors.json",
         ROOT / "contracts" / "desktop-ipc-v1.vectors.json",
         *sorted((ROOT / "src" / "chat_history_analysis").glob("*.py")),
@@ -215,7 +219,7 @@ def _fresh_output(output_dir: Path) -> None:
     except (OSError, RuntimeError, ValueError):
         raise RuntimeError("OUTPUT_MUST_BE_REPOSITORY_LOCAL") from None
     output_dir.mkdir(parents=True, exist_ok=True)
-    for name in ("dist", "work", ".venv-sidecar"):
+    for name in ("dist", "work", ".venv-sidecar", "retained-wheels"):
         if (output_dir / name).exists():
             raise RuntimeError("OUTPUT_NOT_CLEAN")
 
@@ -290,7 +294,33 @@ def _install_clean_environment(output_dir: Path) -> Path:
     return python
 
 
-def build(output_dir: Path) -> Path:
+def _refreshed_anchor(
+    anchor: dict[str, object],
+    evidence: dict[str, object],
+) -> dict[str, object]:
+    """Bind a newly built bundle to the current declared build inputs."""
+
+    source_revision = str(evidence["sourceRevision"])
+    return {
+        "anchorVersion": anchor["anchorVersion"],
+        "anchorId": f"stage3-macos-arm64-{source_revision[:12]}",
+        "targetTriple": evidence["targetTriple"],
+        "pythonMajorMinor": evidence["pythonMajorMinor"],
+        "executableName": evidence["executableName"],
+        "nativeBackend": evidence["nativeBackend"],
+        "sourceRevision": evidence["sourceRevision"],
+        "dependencyLockDigest": evidence["dependencyLockDigest"],
+        "specDigest": evidence["specDigest"],
+        "productionEntrypointDigest": evidence["productionEntrypointDigest"],
+        "fixtureSha256": evidence["fixtureSha256"],
+        "buildInputDigest": evidence["buildInputDigest"],
+        "expectedBundleMerkleRoot": evidence["bundleMerkleRoot"],
+        "expectedEvidenceDigest": evidence.get("evidenceDigest"),
+        "trustRoot": evidence["trustRoot"],
+    }
+
+
+def build(output_dir: Path, *, refresh_trust_anchor: bool = False) -> Path:
     if platform.system() != "Darwin" or platform.machine() != "arm64":
         raise RuntimeError("UNSUPPORTED_BUILD_TARGET")
     _fresh_output(output_dir)
@@ -339,6 +369,18 @@ def build(output_dir: Path) -> Path:
         raise RuntimeError("SIDECAR_PARSER_PROBE_FAILED")
 
     input_manifest = _build_input_digests()
+    anchor = load_anchor(TRUST_ANCHOR)
+    source_revision = _git_bytes("rev-parse", "HEAD").decode().strip()
+    if not refresh_trust_anchor:
+        # The anchor is committed separately from the source revision that
+        # produced the bundle.  This keeps a metadata-only anchor commit from
+        # changing the sidecar's declared source revision.
+        source_revision = str(anchor["sourceRevision"])
+    trust_anchor_id = (
+        f"stage3-macos-arm64-{source_revision[:12]}"
+        if refresh_trust_anchor
+        else anchor["anchorId"]
+    )
     input_digests = {
         "dependencyLockDigest": input_manifest[LOCKFILE.relative_to(ROOT).as_posix()],
         "specDigest": input_manifest[SPECFILE.relative_to(ROOT).as_posix()],
@@ -356,8 +398,8 @@ def build(output_dir: Path) -> Path:
         "nativeBackend": "ijson.backends.yajl2_c",
         "executableName": SIDECAR_NAME,
         "executableArchitecture": executable_architecture,
-        "sourceRevision": _git_bytes("rev-parse", "HEAD").decode().strip(),
-        "trustAnchorId": load_anchor(TRUST_ANCHOR)["anchorId"],
+        "sourceRevision": source_revision,
+        "trustAnchorId": trust_anchor_id,
         **input_digests,
         "buildInputDigest": source_input_digest(input_manifest),
         "network": "blocked-and-probed",
@@ -404,14 +446,15 @@ def build(output_dir: Path) -> Path:
         "offline": "passed",
     }
     evidence["evidenceDigest"] = evidence_digest(evidence)
+    if refresh_trust_anchor:
+        anchor = _refreshed_anchor(anchor, evidence)
     try:
-        verify_evidence_against_anchor(
-            load_anchor(TRUST_ANCHOR),
-            evidence,
-            members,
-        )
+        verify_evidence_against_anchor(anchor, evidence, members)
     except ValueError as error:
         raise RuntimeError(str(error)) from None
+    if refresh_trust_anchor:
+        _write_evidence(TRUST_ANCHOR, anchor)
+        shutil.copyfile(TRUST_ANCHOR, bundle / TRUST_ANCHOR_NAME)
     _write_evidence(output_dir / EVIDENCE_NAME, evidence)
     _write_evidence(bundle / EVIDENCE_NAME, evidence)
     return output_dir / EVIDENCE_NAME
@@ -420,9 +463,17 @@ def build(output_dir: Path) -> Path:
 def main(argv: Iterable[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-dir", required=True, type=Path)
+    parser.add_argument(
+        "--refresh-trust-anchor",
+        action="store_true",
+        help="bind the committed host anchor to this clean build",
+    )
     arguments = parser.parse_args(argv)
     try:
-        evidence = build(arguments.output_dir)
+        evidence = build(
+            arguments.output_dir,
+            refresh_trust_anchor=arguments.refresh_trust_anchor,
+        )
     except RuntimeError as error:
         print(json.dumps({"code": str(error)}, sort_keys=True), file=sys.stderr)
         return 2

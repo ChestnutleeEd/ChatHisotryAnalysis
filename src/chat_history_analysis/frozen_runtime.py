@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
+import platform
 import re
 import sys
 from typing import Any, Final
@@ -153,6 +154,8 @@ def _verify_evidence(
         or evidence["trustRoot"] != TRUST_ROOT
         or evidence["executableName"] != Path(sys.executable).name
         or evidence["executableArchitecture"] != "arm64"
+        or platform.system() != "Darwin"
+        or platform.machine() != "arm64"
         or evidence["pythonMajorMinor"]
         != f"{sys.version_info.major}.{sys.version_info.minor}"
     ):
@@ -171,6 +174,14 @@ def _verify_evidence(
         "evidenceDigest",
     ):
         if not isinstance(evidence[key], str) or not HASH_PATTERN.fullmatch(evidence[key]):
+            raise _failure()
+    for key in (
+        "pyinstallerVersion",
+        "preprocessorVersion",
+        "ijsonVersion",
+        "trustAnchorId",
+    ):
+        if not isinstance(evidence[key], str) or not evidence[key]:
             raise _failure()
     probes = evidence["probeResults"]
     if (

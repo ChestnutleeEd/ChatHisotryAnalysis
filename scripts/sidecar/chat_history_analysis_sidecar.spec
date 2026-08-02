@@ -7,7 +7,7 @@ from PyInstaller.utils.hooks import collect_dynamic_libs
 
 
 ROOT = Path(SPECPATH).resolve().parent.parent
-ENTRYPOINT = ROOT / "scripts" / "sidecar" / "frozen_probe.py"
+ENTRYPOINT = ROOT / "scripts" / "sidecar" / "sidecar_entry.py"
 FIXTURE = ROOT / "contracts" / "sidecar-synthetic-fixture.json"
 TRUST_ANCHOR = ROOT / "src-tauri" / "resources" / "sidecar-trust-anchor.json"
 
@@ -26,6 +26,9 @@ PRODUCTION_HIDDEN_IMPORTS = [
     "chat_history_analysis.runtime",
     "chat_history_analysis.source_validation",
     "chat_history_analysis.startup",
+    "chat_history_analysis.cli",
+    "chat_history_analysis.sidecar_protocol",
+    "frozen_probe",
     "ijson.backends.yajl2_c",
     "ijson.backends._yajl2",
     "ijson.common",

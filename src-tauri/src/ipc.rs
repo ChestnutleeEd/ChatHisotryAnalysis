@@ -21,6 +21,17 @@ pub enum FailureCode {
     StaleEvent,
     WindowNotAuthorized,
     ContractOnly,
+    SessionBusy,
+    SessionStale,
+    SidecarUnavailable,
+    SidecarVerificationFailed,
+    SidecarStartFailed,
+    SidecarHandshakeTimeout,
+    SidecarProtocolMismatch,
+    SidecarExited,
+    SessionCancelled,
+    SessionCleanupFailed,
+    ProcessIdentityMismatch,
     SidecarProtocolInvalid,
     SidecarCrashed,
     DatasetTransportInvalid,
@@ -462,6 +473,17 @@ fn valid_failure_code(value: &str) -> bool {
             | "STALE_EVENT"
             | "WINDOW_NOT_AUTHORIZED"
             | "CONTRACT_ONLY"
+            | "SESSION_BUSY"
+            | "SESSION_STALE"
+            | "SIDECAR_UNAVAILABLE"
+            | "SIDECAR_VERIFICATION_FAILED"
+            | "SIDECAR_START_FAILED"
+            | "SIDECAR_HANDSHAKE_TIMEOUT"
+            | "SIDECAR_PROTOCOL_MISMATCH"
+            | "SIDECAR_EXITED"
+            | "SESSION_CANCELLED"
+            | "SESSION_CLEANUP_FAILED"
+            | "PROCESS_IDENTITY_MISMATCH"
             | "SIDECAR_PROTOCOL_INVALID"
             | "SIDECAR_CRASHED"
             | "DATASET_TRANSPORT_INVALID"
@@ -674,9 +696,33 @@ struct SessionRegistry {
     active: Option<SessionRecord>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct IpcCoreState {
     registry: Mutex<SessionRegistry>,
+    supervisor: crate::session_supervisor::SessionSupervisor,
+}
+
+impl Default for IpcCoreState {
+    fn default() -> Self {
+        Self {
+            registry: Mutex::new(SessionRegistry::default()),
+            supervisor: crate::session_supervisor::SessionSupervisor::default(),
+        }
+    }
+}
+
+impl IpcCoreState {
+    pub fn session_supervisor(&self) -> &crate::session_supervisor::SessionSupervisor {
+        &self.supervisor
+    }
+
+    pub fn renderer_disconnected(&self, window_label: &str) {
+        self.supervisor.renderer_disconnected(window_label);
+    }
+
+    pub fn shutdown(&self) {
+        self.supervisor.shutdown();
+    }
 }
 
 impl IpcCoreState {
