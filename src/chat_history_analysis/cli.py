@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import select
 import sys
 import threading
 from typing import Callable, Sequence
@@ -380,12 +381,21 @@ def run_sidecar_streams(
     extra_input = threading.Event()
     monitor_stop = threading.Event()
     operation_done = threading.Event()
+    monitor: threading.Thread | None = None
 
     def monitor_parent(stream, control: OperationControl) -> None:
         """Treat parent EOF as cancellation without a helper process."""
 
         try:
+            try:
+                descriptor = stream.fileno()
+            except (AttributeError, OSError, ValueError):
+                descriptor = None
             while not monitor_stop.is_set():
+                if descriptor is not None:
+                    readable, _, _ = select.select([descriptor], [], [], 0.1)
+                    if not readable:
+                        continue
                 block = stream.read(1)
                 if not block:
                     # A closed stdin is authoritative once the operation is
@@ -477,6 +487,8 @@ def run_sidecar_streams(
     finally:
         operation_done.set()
         monitor_stop.set()
+        if monitor is not None and monitor.is_alive():
+            monitor.join(timeout=0.25)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
