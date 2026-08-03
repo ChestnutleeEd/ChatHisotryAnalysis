@@ -14,9 +14,23 @@ import {
   type Generation,
   type SessionId,
 } from "../desktop/ipc-contract";
+import {
+  ACTIVITY_METRICS_SCHEMA_VERSION,
+  ACTIVITY_TIME_POLICY,
+  ACTIVITY_USER_MESSAGE_POPULATION,
+  WEEKDAY_LABELS,
+  type CanonicalActivityMetrics,
+  type CanonicalWeekday,
+} from "./activity-metrics";
+import {
+  calendarDateFromDayOrdinal,
+  calendarDateParts,
+  calendarDayOrdinal,
+  daysInMonth,
+} from "./calendar";
 
 export const ANALYTICS_RESULT_SCHEMA_VERSION =
-  "chat-history-analysis.analytics-result.v1" as const;
+  "chat-history-analysis.analytics-result.v2" as const;
 
 export type CanonicalSenderFilter = "both" | "owner" | "other";
 
@@ -91,6 +105,7 @@ export interface CanonicalAnalysisResult {
   readonly dataset: CanonicalDatasetSummary;
   readonly index: CanonicalIndexSummary;
   readonly aggregate: CanonicalAggregateSummary;
+  readonly activity: CanonicalActivityMetrics;
 }
 
 export interface CanonicalAnalysisSettings extends CanonicalAnalysisFilters {
@@ -301,6 +316,378 @@ function validateAggregate(value: unknown): CanonicalAggregateSummary {
   return aggregate as unknown as CanonicalAggregateSummary;
 }
 
+function safeShareValue(value: unknown): value is number | null {
+  return (
+    value === null ||
+    (typeof value === "number" &&
+      Number.isFinite(value) &&
+      value >= 0 &&
+      value <= 1)
+  );
+}
+
+function expectedShare(numerator: number, denominator: number): number | null {
+  return denominator === 0 ? null : numerator / denominator;
+}
+
+function validateTrendBuckets(
+  value: unknown,
+  period: "daily" | "monthly" | "yearly",
+): void {
+  if (!Array.isArray(value) || value.length < 1) {
+    throw new Error("INVALID_RESULT");
+  }
+  let previousKey: string | undefined;
+  for (const bucket of value) {
+    if (
+      bucket === null ||
+      typeof bucket !== "object" ||
+      Array.isArray(bucket) ||
+      !exactKeys(bucket as Record<string, unknown>, [
+        "count",
+        "key",
+        "partial",
+      ]) ||
+      typeof (bucket as Record<string, unknown>).key !== "string" ||
+      !safeInteger((bucket as Record<string, unknown>).count) ||
+      typeof (bucket as Record<string, unknown>).partial !== "boolean"
+    ) {
+      throw new Error("INVALID_RESULT");
+    }
+    const key = (bucket as Record<string, unknown>).key as string;
+    if (previousKey !== undefined && key <= previousKey) {
+      throw new Error("INVALID_RESULT");
+    }
+    try {
+      canonicalDateCode(
+        period === "daily"
+          ? key
+          : period === "monthly"
+            ? `${key}-01`
+            : `${key}-01-01`,
+      );
+    } catch {
+      throw new Error("INVALID_RESULT");
+    }
+    if (
+      period === "daily" &&
+      (bucket as Record<string, unknown>).partial !== false
+    ) {
+      throw new Error("INVALID_RESULT");
+    }
+    previousKey = key;
+  }
+}
+
+function validateSenderMetricBucket(
+  value: unknown,
+  sender: "owner" | "other",
+  denominator: number,
+): void {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    !exactKeys(value as Record<string, unknown>, ["count", "sender", "share"])
+  ) {
+    throw new Error("INVALID_RESULT");
+  }
+  const bucket = value as Record<string, unknown>;
+  if (
+    bucket.sender !== sender ||
+    !safeInteger(bucket.count) ||
+    !safeShareValue(bucket.share) ||
+    bucket.share !== expectedShare(bucket.count as number, denominator)
+  ) {
+    throw new Error("INVALID_RESULT");
+  }
+}
+
+function validateDistribution(
+  value: unknown,
+  kind: "hour" | "weekday",
+): void {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    !exactKeys(value as Record<string, unknown>, [
+      "buckets",
+      "denominator",
+      "sender",
+    ])
+  ) {
+    throw new Error("INVALID_RESULT");
+  }
+  const distribution = value as Record<string, unknown>;
+  if (
+    !["both", "owner", "other"].includes(distribution.sender as string) ||
+    !safeInteger(distribution.denominator) ||
+    !Array.isArray(distribution.buckets)
+  ) {
+    throw new Error("INVALID_RESULT");
+  }
+  const expected = kind === "hour" ? 24 : WEEKDAY_LABELS.length;
+  if (distribution.buckets.length !== expected) {
+    throw new Error("INVALID_RESULT");
+  }
+  let total = 0;
+  distribution.buckets.forEach((value, index) => {
+    if (
+      value === null ||
+      typeof value !== "object" ||
+      Array.isArray(value) ||
+      !exactKeys(value as Record<string, unknown>, [
+        kind === "hour" ? "hour" : "weekday",
+        "count",
+        "share",
+      ])
+    ) {
+      throw new Error("INVALID_RESULT");
+    }
+    const bucket = value as Record<string, unknown>;
+    if (
+      (kind === "hour" && bucket.hour !== index) ||
+      (kind === "weekday" &&
+        bucket.weekday !== (WEEKDAY_LABELS[index] as CanonicalWeekday)) ||
+      !safeInteger(bucket.count) ||
+      !safeShareValue(bucket.share) ||
+      bucket.share !== expectedShare(bucket.count as number, distribution.denominator as number)
+    ) {
+      throw new Error("INVALID_RESULT");
+    }
+    total += bucket.count as number;
+  });
+  if (total !== distribution.denominator) {
+    throw new Error("INVALID_RESULT");
+  }
+}
+
+function validateActivityMetrics(value: unknown): CanonicalActivityMetrics {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    !exactKeys(value as Record<string, unknown>, [
+      "chatActivity",
+      "hourActivity",
+      "population",
+      "schemaVersion",
+      "senderComparison",
+      "timePolicy",
+      "trends",
+      "weekdayActivity",
+    ])
+  ) {
+    throw new Error("INVALID_RESULT");
+  }
+  const activity = value as Record<string, unknown>;
+  if (
+    activity.schemaVersion !== ACTIVITY_METRICS_SCHEMA_VERSION ||
+    activity.timePolicy !== ACTIVITY_TIME_POLICY ||
+    activity.population !== ACTIVITY_USER_MESSAGE_POPULATION
+  ) {
+    throw new Error("INVALID_RESULT");
+  }
+  if (
+    activity.trends === null ||
+    typeof activity.trends !== "object" ||
+    Array.isArray(activity.trends) ||
+    !exactKeys(activity.trends as Record<string, unknown>, [
+      "daily",
+      "monthly",
+      "yearly",
+    ])
+  ) {
+    throw new Error("INVALID_RESULT");
+  }
+  const trends = activity.trends as Record<string, unknown>;
+  validateTrendBuckets(trends.daily, "daily");
+  validateTrendBuckets(trends.monthly, "monthly");
+  validateTrendBuckets(trends.yearly, "yearly");
+
+  if (
+    activity.senderComparison === null ||
+    typeof activity.senderComparison !== "object" ||
+    Array.isArray(activity.senderComparison) ||
+    !exactKeys(activity.senderComparison as Record<string, unknown>, [
+      "denominator",
+      "filterBehavior",
+      "other",
+      "owner",
+    ])
+  ) {
+    throw new Error("INVALID_RESULT");
+  }
+  const senderComparison = activity.senderComparison as Record<string, unknown>;
+  if (
+    senderComparison.filterBehavior !== "ignores-global-sender-filter" ||
+    !safeInteger(senderComparison.denominator)
+  ) {
+    throw new Error("INVALID_RESULT");
+  }
+  validateSenderMetricBucket(
+    senderComparison.owner,
+    "owner",
+    senderComparison.denominator as number,
+  );
+  validateSenderMetricBucket(
+    senderComparison.other,
+    "other",
+    senderComparison.denominator as number,
+  );
+  const owner = senderComparison.owner as Record<string, unknown>;
+  const other = senderComparison.other as Record<string, unknown>;
+  if (
+    (owner.count as number) + (other.count as number) !==
+    senderComparison.denominator
+  ) {
+    throw new Error("INVALID_RESULT");
+  }
+  validateDistribution(activity.hourActivity, "hour");
+  validateDistribution(activity.weekdayActivity, "weekday");
+
+  if (
+    activity.chatActivity === null ||
+    typeof activity.chatActivity !== "object" ||
+    Array.isArray(activity.chatActivity) ||
+    !exactKeys(activity.chatActivity as Record<string, unknown>, [
+      "longestStreakLength",
+      "longestStreaks",
+      "sender",
+      "totalChatDays",
+    ])
+  ) {
+    throw new Error("INVALID_RESULT");
+  }
+  const chatActivity = activity.chatActivity as Record<string, unknown>;
+  if (
+    !["both", "owner", "other"].includes(chatActivity.sender as string) ||
+    !safeInteger(chatActivity.totalChatDays) ||
+    !safeInteger(chatActivity.longestStreakLength) ||
+    !Array.isArray(chatActivity.longestStreaks)
+  ) {
+    throw new Error("INVALID_RESULT");
+  }
+  let previousStart: string | undefined;
+  for (const value of chatActivity.longestStreaks) {
+    if (
+      value === null ||
+      typeof value !== "object" ||
+      Array.isArray(value) ||
+      !exactKeys(value as Record<string, unknown>, [
+        "endDate",
+        "length",
+        "startDate",
+      ])
+    ) {
+      throw new Error("INVALID_RESULT");
+    }
+    const interval = value as Record<string, unknown>;
+    if (
+      typeof interval.startDate !== "string" ||
+      typeof interval.endDate !== "string" ||
+      !safeInteger(interval.length)
+    ) {
+      throw new Error("INVALID_RESULT");
+    }
+    try {
+      const start = calendarDayOrdinal(interval.startDate);
+      const end = calendarDayOrdinal(interval.endDate);
+      if (
+        start > end ||
+        interval.length !== end - start + 1 ||
+        interval.length !== chatActivity.longestStreakLength
+      ) {
+        throw new Error("INVALID_RESULT");
+      }
+    } catch {
+      throw new Error("INVALID_RESULT");
+    }
+    if (previousStart !== undefined && interval.startDate <= previousStart) {
+      throw new Error("INVALID_RESULT");
+    }
+    previousStart = interval.startDate;
+  }
+  if (
+    (chatActivity.longestStreakLength === 0 &&
+      chatActivity.longestStreaks.length !== 0) ||
+    (chatActivity.longestStreakLength > 0 &&
+      chatActivity.longestStreaks.length === 0)
+  ) {
+    throw new Error("INVALID_RESULT");
+  }
+  return activity as unknown as CanonicalActivityMetrics;
+}
+
+function validateTrendRange(
+  trends: CanonicalActivityMetrics["trends"],
+  filters: CanonicalAnalysisFilters,
+): void {
+  const startDay = calendarDayOrdinal(filters.startDate);
+  const endDay = calendarDayOrdinal(filters.endDate);
+  if (trends.daily.length !== endDay - startDay + 1) {
+    throw new Error("INVALID_RESULT");
+  }
+  trends.daily.forEach((bucket, index) => {
+    if (bucket.key !== calendarDateFromDayOrdinal(startDay + index)) {
+      throw new Error("INVALID_RESULT");
+    }
+  });
+
+  const start = calendarDateParts(filters.startDate);
+  const end = calendarDateParts(filters.endDate);
+  const expectedMonthly: Array<{ key: string; partial: boolean }> = [];
+  let year = start.year;
+  let month = start.month;
+  while (year < end.year || (year === end.year && month <= end.month)) {
+    const key = `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}`;
+    expectedMonthly.push({
+      key,
+      partial:
+        (key === filters.startDate.slice(0, 7) && start.day !== 1) ||
+        (key === filters.endDate.slice(0, 7) &&
+          end.day !== daysInMonth(end.year, end.month)),
+    });
+    month += 1;
+    if (month === 13) {
+      year += 1;
+      month = 1;
+    }
+  }
+  if (trends.monthly.length !== expectedMonthly.length) {
+    throw new Error("INVALID_RESULT");
+  }
+  trends.monthly.forEach((bucket, index) => {
+    const expected = expectedMonthly[index];
+    if (expected === undefined || bucket.key !== expected.key || bucket.partial !== expected.partial) {
+      throw new Error("INVALID_RESULT");
+    }
+  });
+
+  const expectedYearly = Array.from(
+    { length: end.year - start.year + 1 },
+    (_, index) => {
+      const key = String(start.year + index).padStart(4, "0");
+      return {
+        key,
+        partial:
+          (key === filters.startDate.slice(0, 4) && filters.startDate.slice(5) !== "01-01") ||
+          (key === filters.endDate.slice(0, 4) && filters.endDate.slice(5) !== "12-31"),
+      };
+    },
+  );
+  if (trends.yearly.length !== expectedYearly.length) {
+    throw new Error("INVALID_RESULT");
+  }
+  trends.yearly.forEach((bucket, index) => {
+    const expected = expectedYearly[index];
+    if (expected === undefined || bucket.key !== expected.key || bucket.partial !== expected.partial) {
+      throw new Error("INVALID_RESULT");
+    }
+  });
+}
+
 export function validateCanonicalAnalyticsResult(
   value: unknown,
 ): CanonicalAnalysisResult {
@@ -315,6 +702,7 @@ export function validateCanonicalAnalyticsResult(
   if (
     !exactKeys(result, [
       "aggregate",
+      "activity",
       "dataset",
       "datasetId",
       "datasetSchemaVersion",
@@ -462,7 +850,31 @@ export function validateCanonicalAnalyticsResult(
   ) {
     throw new Error("INVALID_RESULT");
   }
-  validateAggregate(result.aggregate);
+  const aggregate = validateAggregate(result.aggregate);
+  const activity = validateActivityMetrics(result.activity);
+  validateTrendRange(
+    activity.trends,
+    filters as unknown as CanonicalAnalysisFilters,
+  );
+  if (
+    activity.senderComparison.denominator !==
+      aggregate.senderCounts.owner + aggregate.senderCounts.other ||
+    activity.senderComparison.owner.count !== aggregate.senderCounts.owner ||
+    activity.senderComparison.other.count !== aggregate.senderCounts.other ||
+    activity.hourActivity.denominator !== aggregate.userMessageCount ||
+    activity.weekdayActivity.denominator !== aggregate.userMessageCount ||
+    activity.hourActivity.sender !== filters.sender ||
+    activity.weekdayActivity.sender !== filters.sender ||
+    activity.chatActivity.sender !== filters.sender ||
+    activity.trends.daily.reduce((total, bucket) => total + bucket.count, 0) !==
+      aggregate.userMessageCount ||
+    activity.trends.monthly.reduce((total, bucket) => total + bucket.count, 0) !==
+      aggregate.userMessageCount ||
+    activity.trends.yearly.reduce((total, bucket) => total + bucket.count, 0) !==
+      aggregate.userMessageCount
+  ) {
+    throw new Error("INVALID_RESULT");
+  }
   const index = result.index as Record<string, unknown>;
   if (
     !exactKeys(index, [

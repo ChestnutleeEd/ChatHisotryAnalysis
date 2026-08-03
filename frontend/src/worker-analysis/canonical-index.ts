@@ -11,6 +11,10 @@ import {
   type CanonicalIndexSummary,
   type SessionThresholdHours,
 } from "./analytics-contract";
+import {
+  calendarDayOrdinal,
+  calendarWeekdayIndex,
+} from "./calendar";
 
 export const OWNER_SENDER_CODE = 0;
 export const OTHER_SENDER_CODE = 1;
@@ -32,11 +36,7 @@ function categoryCode(category: CanonicalMessageCategory): number {
 }
 
 function weekdayCode(calendarDate: string): number {
-  const year = Number(calendarDate.slice(0, 4));
-  const month = Number(calendarDate.slice(5, 7));
-  const day = Number(calendarDate.slice(8, 10));
-  const sundayFirst = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
-  return sundayFirst === 0 ? 6 : sundayFirst - 1;
+  return calendarWeekdayIndex(calendarDate);
 }
 
 class GrowableUint32 {
@@ -68,6 +68,7 @@ class GrowableUint32 {
 export interface CanonicalIndex {
   readonly createTimes: Float64Array;
   readonly calendarDates: Uint32Array;
+  readonly calendarDays: Int32Array;
   readonly years: Uint16Array;
   readonly months: Uint8Array;
   readonly hours: Uint8Array;
@@ -89,6 +90,7 @@ export interface CanonicalIndex {
 export class CanonicalIndexBuilder {
   private readonly createTimes: Float64Array;
   private readonly calendarDates: Uint32Array;
+  private readonly calendarDays: Int32Array;
   private readonly years: Uint16Array;
   private readonly months: Uint8Array;
   private readonly hours: Uint8Array;
@@ -116,6 +118,7 @@ export class CanonicalIndexBuilder {
     }
     this.createTimes = new Float64Array(expectedRecords);
     this.calendarDates = new Uint32Array(expectedRecords);
+    this.calendarDays = new Int32Array(expectedRecords);
     this.years = new Uint16Array(expectedRecords);
     this.months = new Uint8Array(expectedRecords);
     this.hours = new Uint8Array(expectedRecords);
@@ -140,6 +143,7 @@ export class CanonicalIndexBuilder {
     const dateCode = canonicalDateCode(event.calendarDate);
     this.createTimes[this.records] = event.createTime;
     this.calendarDates[this.records] = dateCode;
+    this.calendarDays[this.records] = calendarDayOrdinal(event.calendarDate);
     this.years[this.records] = Number(event.calendarDate.slice(0, 4));
     this.months[this.records] = Number(event.calendarDate.slice(5, 7));
     this.hours[this.records] = Number(event.formattedTime.slice(11, 13));
@@ -201,6 +205,7 @@ export class CanonicalIndexBuilder {
     const typedArrayBytes =
       this.createTimes.byteLength +
       this.calendarDates.byteLength +
+      this.calendarDays.byteLength +
       this.years.byteLength +
       this.months.byteLength +
       this.hours.byteLength +
@@ -217,6 +222,7 @@ export class CanonicalIndexBuilder {
     return {
       createTimes: this.createTimes,
       calendarDates: this.calendarDates,
+      calendarDays: this.calendarDays,
       years: this.years,
       months: this.months,
       hours: this.hours,

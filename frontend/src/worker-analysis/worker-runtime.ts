@@ -63,6 +63,7 @@ import {
   createSharedAggregateAsync,
   type SharedAggregateAccumulator,
 } from "./analytics-aggregates";
+import { deriveActivityMetrics } from "./activity-metrics";
 
 const HASH_PATTERN = /^[0-9a-f]{64}$/u;
 const DATE_PATTERN = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/u;
@@ -1926,6 +1927,7 @@ export class AnalysisWorkerRuntime {
       90,
     );
     const aggregate = aggregateSummary(shared);
+    const activity = deriveActivityMetrics(shared, filters);
     const result: CanonicalAnalysisResult = {
       schemaVersion: ANALYTICS_RESULT_SCHEMA_VERSION,
       datasetSchemaVersion: CANONICAL_EVENT_SCHEMA_VERSION,
@@ -1938,6 +1940,7 @@ export class AnalysisWorkerRuntime {
       dataset: cache.index.dataset,
       index: cache.index.summary,
       aggregate,
+      activity,
     };
     try {
       validateCanonicalAnalyticsResult(result);

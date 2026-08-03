@@ -15,6 +15,10 @@ import {
   sha256,
   syntheticRecords,
 } from "./synthetic-dataset";
+import {
+  canonicalMixedEvents,
+  createCanonicalDataset,
+} from "./canonical-analytics-fixtures";
 
 const PROTOCOL = "chat-history-analysis.desktop-ipc.v1" as const;
 const SESSION = "ses_00000000000000000000000000000001" as SessionId;
@@ -265,6 +269,108 @@ describe("desktop dataset source through the production Worker handler", () => {
     ]);
     expect(host.calls[0]?.request).not.toHaveProperty("recordCount");
     expect(host.calls[0]?.request).not.toHaveProperty("chunkCount");
+  });
+
+  it("runs Stage 6 metrics through the opaque desktop v2 Worker path", async () => {
+    const dataset = createCanonicalDataset(canonicalMixedEvents(), 3);
+    const responses: WorkerResponse[] = [];
+    const calls: string[] = [];
+    const invoker: DatasetTransportInvoker = {
+      async invoke<T>(
+        command:
+          | "open_dataset_stream"
+          | "receive_dataset_chunk"
+          | "complete_dataset_stream"
+          | "cancel_dataset_stream"
+          | "close_dataset_stream",
+        args: { readonly request: unknown },
+      ): Promise<T> {
+        calls.push(command);
+        const request = (args as { readonly request: Record<string, unknown> }).request;
+        if (command === "open_dataset_stream") {
+          return {
+            protocolVersion: PROTOCOL,
+            sessionId: SESSION,
+            generation: GENERATION,
+            datasetId: DATASET,
+            manifestBytes: dataset.files[0].size,
+            recordCount: canonicalMixedEvents().length,
+            chunkCount: dataset.files.length - 1,
+            chunkBytes: Math.max(...dataset.files.slice(1).map((file) => file.size)),
+          } as T;
+        }
+        if (command === "receive_dataset_chunk") {
+          if (request.kind === "manifest") {
+            return (await dataset.files[0].arrayBuffer()) as T;
+          }
+          const ordinal = request.ordinal;
+          if (typeof ordinal !== "number") {
+            throw new Error("missing-ordinal");
+          }
+          return (await dataset.files[ordinal].arrayBuffer()) as T;
+        }
+        return { closed: true } as T;
+      },
+    };
+    const runtime = new AnalysisWorkerRuntime(
+      {
+        initialize: vi.fn(async () => undefined),
+        cutWithoutHmm: (value) => value.split(/\s+/u),
+      },
+      "的\nthe\nand\n",
+      (progress) => responses.push(progress),
+    );
+    const handler = createAnalysisWorkerHandler(
+      {
+        onmessage: null,
+        postMessage(message: WorkerResponse) {
+          responses.push(message);
+        },
+        close() {},
+      },
+      runtime,
+      {
+        async createDesktopDatasetSource(sourceRequest) {
+          return (
+            await openTauriDatasetSource(invoker, {
+              protocolVersion: PROTOCOL,
+              sessionId: sourceRequest.sessionId,
+              generation: sourceRequest.generation,
+              datasetId: sourceRequest.datasetId,
+            })
+          ).source;
+        },
+      },
+    );
+    handler({
+      data: {
+        type: "load-dataset",
+        operationId: 1,
+        generation: GENERATION,
+        sequence: 1,
+        source: {
+          kind: "desktop-dataset-source",
+          sessionId: SESSION,
+          generation: GENERATION,
+          datasetId: DATASET,
+        },
+        tokenizerSettings: { minimumTokenLength: 2, additionalStopWords: [] },
+      },
+    } as unknown as MessageEvent<WorkerRequest>);
+    const response = await waitForTerminal(responses, 1);
+    expect(response).toMatchObject({
+      type: "accepted",
+      result: {
+        activity: {
+          senderComparison: { denominator: 4 },
+          hourActivity: { buckets: expect.any(Array) },
+          weekdayActivity: { buckets: expect.any(Array) },
+        },
+      },
+    });
+    expect(calls).toContain("open_dataset_stream");
+    expect(calls.filter((command) => command === "receive_dataset_chunk")).toHaveLength(3);
+    expect(JSON.stringify(response)).not.toContain("alpha");
   });
 
   it("rejects an invalid opaque capability before invoking the host", async () => {

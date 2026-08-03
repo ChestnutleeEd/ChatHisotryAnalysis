@@ -61,6 +61,7 @@ function defaultWorkerFactory(): WorkerPort {
 export class AnalysisWorkerClient {
   private worker: WorkerPort | undefined;
   private nextOperationId = 1;
+  private nextGeneration = 1;
   private activeOperationId: number | undefined;
   private readonly pending = new Map<
     number,
@@ -244,7 +245,8 @@ export class AnalysisWorkerClient {
 
     const operationId = this.nextOperationId;
     this.nextOperationId += 1;
-    const generation = requestedGeneration ?? operationId;
+    const generation = requestedGeneration ?? Math.max(this.nextGeneration, operationId);
+    this.nextGeneration = generation + 1;
     this.activeOperationId = operationId;
     return new Promise<Result>((resolve, reject) => {
       const timeout = globalThis.setTimeout(() => {
@@ -377,6 +379,7 @@ export class AnalysisWorkerClient {
     this.worker?.terminate();
     this.worker = undefined;
     this.activeOperationId = undefined;
+    this.nextGeneration = 1;
     for (const operationId of [...this.pending.keys()]) {
       this.rejectOperation(operationId, error);
     }

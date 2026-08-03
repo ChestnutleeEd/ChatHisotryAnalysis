@@ -108,6 +108,23 @@ describe("canonical v2 analytics Worker core", () => {
       system: 0,
       unknown: 1,
     });
+    expect(result.activity).toMatchObject({
+      schemaVersion: "chat-history-analysis.activity-metrics.v1",
+      timePolicy: "UTC+08:00",
+      population: "post-dedup-user-messages",
+      senderComparison: {
+        denominator: 4,
+        owner: { count: 2, share: 0.5 },
+        other: { count: 2, share: 0.5 },
+      },
+      chatActivity: {
+        totalChatDays: 3,
+        longestStreakLength: 2,
+      },
+    });
+    expect(result.activity.trends.daily).toHaveLength(4);
+    expect(result.activity.hourActivity.buckets).toHaveLength(24);
+    expect(result.activity.weekdayActivity.buckets).toHaveLength(7);
     expect(JSON.stringify(result)).not.toContain("alpha");
     expect(tokenizer.initialize).toHaveBeenCalledOnce();
     expect(tokenizer.cutWithoutHmm).toHaveBeenCalledTimes(2);
@@ -239,6 +256,15 @@ describe("canonical v2 analytics Worker core", () => {
       validateCanonicalAnalyticsResult({
         ...first,
         unexpected: true,
+      }),
+    ).toThrow();
+    expect(() =>
+      validateCanonicalAnalyticsResult({
+        ...first,
+        activity: {
+          ...first.activity,
+          unexpected: true,
+        },
       }),
     ).toThrow();
   });

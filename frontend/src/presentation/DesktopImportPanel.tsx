@@ -5,11 +5,22 @@ import {
   type DesktopEvent,
   type DesktopFailureCode,
   type DesktopState,
+  type DatasetId,
   type EventCursor,
   type Generation,
   type SessionId,
 } from "../desktop/ipc-contract";
 import { desktopApi, listenForDesktopEvents } from "../desktop/runtime";
+import {
+  AnalysisWorkerClient,
+  WorkerClientCancelledError,
+  WorkerClientError,
+} from "../worker-analysis/worker-client";
+import type {
+  CanonicalAnalysisFilters,
+  CanonicalAnalysisResult,
+} from "../worker-analysis/analytics-contract";
+import { ActivityMetricsPanel } from "./ActivityMetricsPanel";
 
 const WINDOW_ID = "main";
 
@@ -127,10 +138,177 @@ export function DesktopImportPanel() {
     readonly maximumCalendarDate: string;
   }>();
   const [pending, setPending] = useState(false);
+  const analyticsClientRef = useRef<AnalysisWorkerClient | undefined>(undefined);
+  const analyticsAttemptRef = useRef(0);
+  const [analyticsResult, setAnalyticsResult] =
+    useState<CanonicalAnalysisResult>();
+  const [analyticsPending, setAnalyticsPending] = useState(false);
+  const [analyticsError, setAnalyticsError] = useState<string>();
   const [session, setSession] = useState<{
     readonly sessionId: SessionId;
     readonly generation: Generation;
   }>();
+  const mountedRef = useRef(true);
+
+  function resetAnalytics(): void {
+    analyticsAttemptRef.current += 1;
+    analyticsClientRef.current?.dispose();
+    analyticsClientRef.current = undefined;
+    setAnalyticsResult(undefined);
+    setAnalyticsPending(false);
+    setAnalyticsError(undefined);
+  }
+
+  function analyticsClient(): AnalysisWorkerClient {
+    analyticsClientRef.current ??= new AnalysisWorkerClient();
+    return analyticsClientRef.current;
+  }
+
+  function analyticsProgress(
+    sessionId: SessionId,
+    generation: Generation,
+    phase: string,
+    percentage: number,
+  ): void {
+    if (
+      !mountedRef.current ||
+      cursorRef.current.sessionId !== sessionId ||
+      cursorRef.current.generation !== generation
+    ) {
+      return;
+    }
+    setProgress(`analytics · ${phase} · ${Math.round(percentage)}%`);
+  }
+
+  function analyticsFailureMessage(error: unknown): string {
+    if (error instanceof WorkerClientCancelledError) {
+      return "本地 analytics 计算已取消。";
+    }
+    if (error instanceof WorkerClientError) {
+      if (error.code === "MEMORY_PRESSURE") {
+        return "本地 analytics Worker 内存不足，未提交部分结果。";
+      }
+      if (error.code === "DATASET_TRANSPORT_INVALID") {
+        return "本地 canonical dataset 通道校验失败。";
+      }
+      if (error.code === "MANIFEST_VERSION_UNSUPPORTED") {
+        return "当前 dataset 版本不支持 Stage 6 活动统计。";
+      }
+    }
+    return "本地 analytics Worker 未完成，当前结果未替换。";
+  }
+
+  async function startDesktopAnalytics(
+    sessionId: SessionId,
+    generation: Generation,
+    datasetId: DatasetId,
+  ): Promise<void> {
+    resetAnalytics();
+    const attempt = analyticsAttemptRef.current;
+    setAnalyticsPending(true);
+    setStatus("正在由本地 analytics Worker 构建统计");
+    try {
+      const accepted = await analyticsClient().loadDesktopDataset(
+        {
+          sessionId,
+          generation,
+          datasetId,
+        },
+        (next) => {
+          analyticsProgress(sessionId, generation, next.phase, next.percentage);
+        },
+      );
+      if (
+        !mountedRef.current ||
+        attempt !== analyticsAttemptRef.current ||
+        cursorRef.current.sessionId !== sessionId ||
+        cursorRef.current.generation !== generation
+      ) {
+        return;
+      }
+      if (!("activity" in accepted.result)) {
+        throw new WorkerClientError("MANIFEST_VERSION_UNSUPPORTED");
+      }
+      setAnalyticsResult(accepted.result as CanonicalAnalysisResult);
+      setAnalyticsError(undefined);
+      setStatus("本地活动统计已就绪");
+      setProgress(undefined);
+    } catch (error) {
+      if (
+        !mountedRef.current ||
+        attempt !== analyticsAttemptRef.current ||
+        error instanceof WorkerClientCancelledError
+      ) {
+        return;
+      }
+      setAnalyticsError(analyticsFailureMessage(error));
+      setStatus("本地活动统计未完成");
+    } finally {
+      if (mountedRef.current && attempt === analyticsAttemptRef.current) {
+        setAnalyticsPending(false);
+      }
+    }
+  }
+
+  async function updateAnalyticsFilters(
+    filters: CanonicalAnalysisFilters,
+  ): Promise<void> {
+    const current = analyticsResult;
+    const currentSession = cursorRef.current.sessionId;
+    const currentGeneration = cursorRef.current.generation;
+    if (
+      current === undefined ||
+      currentSession === null ||
+      current.sessionId !== currentSession ||
+      current.generation !== currentGeneration ||
+      analyticsClientRef.current === undefined
+    ) {
+      return;
+    }
+    analyticsAttemptRef.current += 1;
+    const attempt = analyticsAttemptRef.current;
+    setAnalyticsPending(true);
+    setAnalyticsError(undefined);
+    try {
+      const next = await analyticsClientRef.current.analyzeCanonical(
+        { kind: "canonical-v2", ...filters },
+        (progressEvent) => {
+          analyticsProgress(
+            currentSession,
+            currentGeneration,
+            progressEvent.phase,
+            progressEvent.percentage,
+          );
+        },
+      );
+      if (
+        !mountedRef.current ||
+        attempt !== analyticsAttemptRef.current ||
+        cursorRef.current.sessionId !== currentSession ||
+        cursorRef.current.generation !== currentGeneration ||
+        next.sessionId !== currentSession
+      ) {
+        return;
+      }
+      setAnalyticsResult(next);
+      setStatus("本地活动统计已更新");
+      setProgress(undefined);
+    } catch (error) {
+      if (
+        !mountedRef.current ||
+        attempt !== analyticsAttemptRef.current ||
+        error instanceof WorkerClientCancelledError
+      ) {
+        return;
+      }
+      setAnalyticsError(analyticsFailureMessage(error));
+      setStatus("筛选未完成，保留上一次统计结果");
+    } finally {
+      if (mountedRef.current && attempt === analyticsAttemptRef.current) {
+        setAnalyticsPending(false);
+      }
+    }
+  }
 
   useEffect(() => {
     let mounted = true;
@@ -151,6 +329,7 @@ export function DesktopImportPanel() {
       }
       switch (event.type) {
         case "selection-ready":
+          resetAnalytics();
           setSelectionId(event.payload.selectionId);
           setAnnualCount(event.payload.annualSourceCount);
           setVerificationCount(event.payload.verificationSourceCount);
@@ -171,16 +350,26 @@ export function DesktopImportPanel() {
         case "dataset-ready":
           setDataset(event.payload);
           setFailure(undefined);
+          if (event.sessionId !== null) {
+            void startDesktopAnalytics(
+              event.sessionId,
+              event.generation,
+              event.payload.datasetId,
+            );
+          }
           break;
         case "failure":
+          resetAnalytics();
           setFailure(event.payload);
           break;
         case "cancelled":
+          resetAnalytics();
           setFailure({ code: "SESSION_CANCELLED", retryable: false });
           break;
         case "cleanup":
           break;
         case "closed":
+          resetAnalytics();
           setSession(undefined);
           break;
         case "exported":
@@ -195,6 +384,10 @@ export function DesktopImportPanel() {
     });
     return () => {
       mounted = false;
+      mountedRef.current = false;
+      analyticsAttemptRef.current += 1;
+      analyticsClientRef.current?.dispose();
+      analyticsClientRef.current = undefined;
       unlisten?.();
     };
   }, []);
@@ -212,6 +405,7 @@ export function DesktopImportPanel() {
   }
 
   function selectSources(kind: "annual" | "verification") {
+    resetAnalytics();
     cursorRef.current = resetCursorForSelection(cursorRef.current);
     void run(
       kind === "annual"
@@ -225,6 +419,7 @@ export function DesktopImportPanel() {
       setFailure({ code: "NO_SOURCE_SELECTED", retryable: false });
       return;
     }
+    resetAnalytics();
     cursorRef.current = resetCursorForNewSession(cursorRef.current);
     void run(() =>
       desktopApi.startAnalysis(requestId() as never, selectionId as never),
@@ -235,6 +430,7 @@ export function DesktopImportPanel() {
     if (session === undefined) {
       return;
     }
+    resetAnalytics();
     void run(() =>
       desktopApi.cancelAnalysis(
         requestId() as never,
@@ -254,6 +450,7 @@ export function DesktopImportPanel() {
       }
       return;
     }
+    resetAnalytics();
     cursorRef.current = resetCursorForNewSession(cursorRef.current);
     void run(() =>
       desktopApi.retryAnalysis(
@@ -268,12 +465,25 @@ export function DesktopImportPanel() {
     if (session === undefined) {
       return;
     }
+    resetAnalytics();
     void run(() =>
       desktopApi.discardSession(
         requestId() as never,
         session.sessionId,
         session.generation,
       ),
+    );
+  }
+
+  function retryAnalytics(): void {
+    const currentSession = cursorRef.current.sessionId;
+    if (currentSession === null || dataset === undefined) {
+      return;
+    }
+    void startDesktopAnalytics(
+      currentSession,
+      cursorRef.current.generation,
+      dataset.datasetId as DatasetId,
     );
   }
 
@@ -421,9 +631,35 @@ export function DesktopImportPanel() {
           </dl>
           <p>
             dataset/result 句柄已由 host 绑定到当前 generation；后续 analytics
-            Worker 阶段尚未在本 Stage 启用。
+            Worker 会复用这个 opaque dataset 计算 Stage 6 活动统计。
           </p>
         </section>
+      )}
+
+      {analyticsError !== undefined && (
+        <section className="results-panel desktop-result-panel" role="alert">
+          <p className="section-number">ANALYTICS FAILURE</p>
+          <h2>活动统计未提交</h2>
+          <p>{analyticsError} 可以重试当前本地分析；没有部分或旧 generation 结果被显示。</p>
+          <button
+            className="file-button secondary"
+            type="button"
+            disabled={analyticsPending}
+            onClick={retryAnalytics}
+          >
+            重试活动统计
+          </button>
+        </section>
+      )}
+
+      {analyticsResult !== undefined && (
+        <ActivityMetricsPanel
+          result={analyticsResult}
+          pending={analyticsPending}
+          onFilterChange={(filters) => {
+            void updateAnalyticsFilters(filters);
+          }}
+        />
       )}
     </main>
   );

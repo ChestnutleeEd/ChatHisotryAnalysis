@@ -16,6 +16,7 @@ import type {
   Generation,
   SessionId,
 } from "../src/desktop/ipc-contract";
+import type { CanonicalAnalysisResult } from "../src/worker-analysis/analytics-contract";
 
 const result: AnalysisResult = {
   words: [{ token: "synthetic", frequency: 2 }],
@@ -159,6 +160,59 @@ describe("analysis Worker client lifecycle", () => {
       result,
     });
     await expect(pending).resolves.toMatchObject({ result });
+  });
+
+  it("advances filter-operation generation after a host-owned generation", async () => {
+    const worker = new FakeWorker();
+    const client = new AnalysisWorkerClient(() => worker);
+    const loaded = client.loadDesktopDataset({
+      sessionId: "ses_00000000000000000000000000000001" as SessionId,
+      generation: 41 as Generation,
+      datasetId: "dat_00000000000000000000000000000001" as DatasetId,
+    });
+    const loadRequest = worker.messages[0] as Extract<
+      WorkerRequest,
+      { type: "load-dataset" }
+    >;
+    worker.respond({
+      type: "accepted",
+      operationId: loadRequest.operationId,
+      generation: loadRequest.generation,
+      sequence: 2,
+      summary: {
+        normalizedRecordCount: 1,
+        minimumCalendarDate: "2025-01-01",
+        maximumCalendarDate: "2025-01-01",
+        warningCount: 0,
+        warningsByReason: {},
+        chunkCount: 1,
+        pseudonymous: true,
+      },
+      result,
+    });
+    await loaded;
+
+    const analyzed = client.analyzeCanonical({
+      kind: "canonical-v2",
+      startDate: "2025-01-01",
+      endDate: "2025-01-01",
+      sender: "both",
+      selectedYear: null,
+      sessionThresholdHours: 6,
+    });
+    const analyzeRequest = worker.messages.at(-1) as Extract<
+      WorkerRequest,
+      { type: "analyze" }
+    >;
+    expect(analyzeRequest.generation).toBe(42);
+    worker.respond({
+      type: "result",
+      operationId: analyzeRequest.operationId,
+      generation: analyzeRequest.generation,
+      sequence: 2,
+      result: result as unknown as CanonicalAnalysisResult,
+    });
+    await expect(analyzed).resolves.toEqual(result);
   });
 
   it("cooperatively cancels and then terminates the Worker on Stop", async () => {

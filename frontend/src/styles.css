@@ -321,6 +321,157 @@ h2 {
   font-size: 1.2rem;
 }
 
+.activity-dashboard {
+  margin-top: 20px;
+}
+
+.activity-definition {
+  max-width: 780px;
+  margin-bottom: 7px;
+  color: var(--ink);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.activity-version {
+  flex: 0 0 auto;
+  padding: 8px 11px;
+  border: 1px solid rgb(96 108 56 / 35%);
+  border-radius: 99px;
+  color: var(--accent-ink);
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.activity-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  gap: 12px;
+  align-items: end;
+  margin: 24px 0 12px;
+}
+
+.activity-filters label {
+  display: grid;
+  gap: 7px;
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.activity-filter-button {
+  min-width: 130px;
+  min-height: 48px;
+}
+
+.activity-pending {
+  padding: 11px 14px;
+  border-radius: 13px;
+  background: rgb(139 157 131 / 25%);
+  font-size: 0.8rem;
+}
+
+.activity-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  margin-top: 20px;
+  overflow: hidden;
+  border-radius: 18px;
+  background: rgb(96 108 56 / 26%);
+}
+
+.activity-kpis > div {
+  padding: 18px;
+  background: rgb(139 157 131 / 24%);
+}
+
+.activity-kpis dd {
+  font-size: clamp(1.35rem, 2.7vw, 2.3rem);
+}
+
+.activity-definition-panel {
+  margin-top: 18px;
+  padding: 12px 15px;
+  border: 1px solid rgb(96 108 56 / 36%);
+  border-radius: 14px;
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.activity-definition-panel summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.activity-definition-panel ul {
+  margin-bottom: 4px;
+}
+
+.activity-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 20px;
+}
+
+.activity-card {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid rgb(96 108 56 / 28%);
+  border-radius: 18px;
+  background: rgb(139 157 131 / 18%);
+}
+
+.activity-card h3 {
+  margin: 0 0 12px;
+  font-size: 1.05rem;
+}
+
+.activity-trend-tables {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.activity-table-wrap {
+  overflow-x: auto;
+}
+
+.activity-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.77rem;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+}
+
+.activity-table caption {
+  margin-bottom: 8px;
+  color: var(--accent-ink);
+  font-size: 0.71rem;
+  font-weight: 800;
+  text-align: left;
+}
+
+.activity-table th,
+.activity-table td {
+  padding: 7px 6px;
+  border-bottom: 1px solid rgb(96 108 56 / 20%);
+  white-space: nowrap;
+}
+
+.activity-table thead th {
+  color: var(--accent-ink);
+  font-size: 0.67rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.activity-table tbody th {
+  color: var(--ink);
+  font-weight: 750;
+}
+
 .attempt-status {
   display: grid;
   grid-template-columns: minmax(180px, 0.6fr) minmax(260px, 1fr) auto;
@@ -698,8 +849,14 @@ footer a {
   }
 
   .selection-panel,
-  .analysis-layout {
+  .analysis-layout,
+  .activity-grid {
     grid-template-columns: 1fr;
+  }
+
+  .activity-trend-tables {
+    grid-template-columns: repeat(3, minmax(180px, 1fr));
+    overflow-x: auto;
   }
 }
 
@@ -726,7 +883,13 @@ footer a {
   .selection-actions,
   .metric-strip,
   .result-metrics,
-  .ranking {
+  .ranking,
+  .activity-filters,
+  .activity-kpis {
+    grid-template-columns: 1fr;
+  }
+
+  .activity-trend-tables {
     grid-template-columns: 1fr;
   }
 

@@ -30,6 +30,7 @@ export interface SharedAggregateAccumulator {
   readonly activeSessionThresholdHours: SessionThresholdHours;
   readonly hourCounts: Uint32Array;
   readonly weekdayCounts: Uint32Array;
+  readonly selectedDayCounts: ReadonlyMap<number, number>;
 }
 
 function emptyCategoryCounts(): Record<CanonicalMessageCategory, number> {
@@ -60,6 +61,7 @@ export function createSharedAggregate(
   const senderCounts = { owner: 0, other: 0 };
   const hourCounts = new Uint32Array(24);
   const weekdayCounts = new Uint32Array(7);
+  const selectedDayCounts = new Map<number, number>();
   let eventCount = 0;
   let userMessageCount = 0;
   let eligibleTextCount = 0;
@@ -99,6 +101,8 @@ export function createSharedAggregate(
     }
     hourCounts[index.hours[record]] += 1;
     weekdayCounts[index.weekdays[record]] += 1;
+    const day = index.calendarDays[record];
+    selectedDayCounts.set(day, (selectedDayCounts.get(day) ?? 0) + 1);
   }
   return {
     eventCount,
@@ -113,6 +117,7 @@ export function createSharedAggregate(
     activeSessionThresholdHours,
     hourCounts,
     weekdayCounts,
+    selectedDayCounts,
   };
 }
 
@@ -147,6 +152,7 @@ export async function createSharedAggregateAsync(
   const senderCounts = { owner: 0, other: 0 };
   const hourCounts = new Uint32Array(24);
   const weekdayCounts = new Uint32Array(7);
+  const selectedDayCounts = new Map<number, number>();
   let eventCount = 0;
   let userMessageCount = 0;
   let eligibleTextCount = 0;
@@ -185,6 +191,8 @@ export async function createSharedAggregateAsync(
         }
         hourCounts[index.hours[record]] += 1;
         weekdayCounts[index.weekdays[record]] += 1;
+        const day = index.calendarDays[record];
+        selectedDayCounts.set(day, (selectedDayCounts.get(day) ?? 0) + 1);
       }
     }
     if ((record + 1) % 4096 === 0) {
@@ -205,5 +213,6 @@ export async function createSharedAggregateAsync(
     activeSessionThresholdHours,
     hourCounts,
     weekdayCounts,
+    selectedDayCounts,
   };
 }
