@@ -74,6 +74,19 @@ def _fixture_bytes() -> bytes:
     raise RuntimeError("FIXTURE_UNAVAILABLE")
 
 
+def _probe_parent(bundle_root: Path) -> Path:
+    """Use an explicit synthetic-only scratch root when the bundle is read-only."""
+
+    configured = os.environ.get("CHAT_HISTORY_ANALYSIS_SYNTHETIC_ROOT")
+    if configured:
+        candidate = Path(configured)
+        if not candidate.is_absolute() or "\x00" in configured:
+            raise RuntimeError("SYNTHETIC_ROOT_INVALID")
+        candidate.mkdir(parents=True, exist_ok=True)
+        return candidate
+    return bundle_root.parent
+
+
 def _remove_generated_output(output: Path, manifest: dict[str, object] | None) -> None:
     names = ["manifest.json"]
     if isinstance(manifest, dict) and isinstance(manifest.get("chunks"), list):
@@ -102,7 +115,7 @@ def _run_production_success() -> dict[str, object]:
 
     bundle_root = Path(sys.executable).resolve().parent
     ordinal = str(os.getpid())
-    probe_root = bundle_root.parent / f".synthetic-probe-{ordinal}"
+    probe_root = _probe_parent(bundle_root) / f".synthetic-probe-{ordinal}"
     probe_root.mkdir()
     source = probe_root / "input.json"
     output = probe_root / "output"
@@ -150,7 +163,7 @@ def _run_production_failure() -> dict[str, object]:
 
     bundle_root = Path(sys.executable).resolve().parent
     ordinal = str(os.getpid())
-    probe_root = bundle_root.parent / f".synthetic-failure-probe-{ordinal}"
+    probe_root = _probe_parent(bundle_root) / f".synthetic-failure-probe-{ordinal}"
     probe_root.mkdir()
     source = probe_root / "input.json"
     output = probe_root / "output"

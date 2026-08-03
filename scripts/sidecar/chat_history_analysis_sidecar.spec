@@ -64,7 +64,7 @@ exe = EXE(
     a.datas,
     [],
     exclude_binaries=True,
-    name="chat-history-analysis-sidecar-probe",
+    name="chat-history-analysis-sidecar",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -78,5 +78,5 @@ coll = COLLECT(
     a.datas,
     strip=False,
     upx=False,
-    name="chat-history-analysis-sidecar-probe",
+    name="chat-history-analysis-sidecar",
 )

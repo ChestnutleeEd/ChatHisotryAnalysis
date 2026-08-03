@@ -30,7 +30,7 @@
   },
   "bundle": {
     "active": false,
-    "icon": ["icons/icon.svg"],
+    "icon": ["icons/icon.icns"],
     "targets": ["app"],
     "createUpdaterArtifacts": false
   }

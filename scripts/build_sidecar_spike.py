@@ -35,7 +35,7 @@ SPECFILE = ROOT / "scripts" / "sidecar" / "chat_history_analysis_sidecar.spec"
 ENTRYPOINT = ROOT / "scripts" / "sidecar" / "sidecar_entry.py"
 FIXTURE = ROOT / "contracts" / "sidecar-synthetic-fixture.json"
 EVIDENCE_VERSION = "chat-history-analysis.sidecar-evidence.v1"
-SIDECAR_NAME = "chat-history-analysis-sidecar-probe"
+SIDECAR_NAME = "chat-history-analysis-sidecar"
 EVIDENCE_NAME = "sidecar-evidence.json"
 TRUST_ANCHOR = ROOT / "src-tauri" / "resources" / TRUST_ANCHOR_NAME
 
@@ -176,6 +176,99 @@ def _architecture(executable: Path) -> str:
     if lipo_result.returncode != 0 or lipo_result.stdout.strip() != "arm64":
         raise RuntimeError("SIDECAR_ARCHITECTURE_INVALID")
     return "arm64"
+
+
+def _regular_files(root: Path) -> Iterable[Path]:
+    for current, directory_names, file_names in os.walk(
+        root,
+        topdown=True,
+        followlinks=False,
+    ):
+        current_path = Path(current)
+        directory_names[:] = sorted(
+            name
+            for name in directory_names
+            if not (current_path / name).is_symlink()
+        )
+        for name in sorted(file_names):
+            candidate = current_path / name
+            if candidate.is_file() and not candidate.is_symlink():
+                yield candidate
+
+
+def _mach_o_files(root: Path) -> list[Path]:
+    members: list[Path] = []
+    for path in _regular_files(root):
+        result = subprocess.run(
+            ["/usr/bin/file", "-b", os.fspath(path)],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise RuntimeError("SIDECAR_ARCHITECTURE_INVALID")
+        if "Mach-O" not in result.stdout:
+            continue
+        if "arm64" not in result.stdout:
+            raise RuntimeError("SIDECAR_ARCHITECTURE_INVALID")
+        lipo = subprocess.run(
+            ["/usr/bin/lipo", "-archs", os.fspath(path)],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if lipo.returncode != 0 or lipo.stdout.strip() != "arm64":
+            raise RuntimeError("SIDECAR_ARCHITECTURE_INVALID")
+        members.append(path)
+    return members
+
+
+def _sign_nested_first(bundle: Path) -> list[Path]:
+    """Sign the final sidecar bytes before its evidence hashes are written."""
+
+    members = _mach_o_files(bundle)
+    for path in sorted(
+        members,
+        key=lambda item: len(item.relative_to(bundle).parts),
+        reverse=True,
+    ):
+        result = subprocess.run(
+            [
+                "/usr/bin/codesign",
+                "--force",
+                "--sign",
+                "-",
+                "--timestamp=none",
+                os.fspath(path),
+            ],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=120,
+        )
+        if result.returncode != 0:
+            raise RuntimeError("SIDECAR_ADHOC_SIGNING_FAILED")
+    for path in members:
+        result = subprocess.run(
+            [
+                "/usr/bin/codesign",
+                "--verify",
+                "--strict",
+                "--verbose=2",
+                os.fspath(path),
+            ],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=120,
+        )
+        if result.returncode != 0:
+            raise RuntimeError("SIDECAR_ADHOC_SIGNATURE_INVALID")
+    return members
 
 
 def _write_evidence(path: Path, evidence: dict[str, object]) -> None:
@@ -367,6 +460,7 @@ def build(output_dir: Path, *, refresh_trust_anchor: bool = False) -> Path:
     parser_probe = _run(executable, "--probe", cwd=output_dir)
     if parser_probe.get("backend") != "yajl2_c" or parser_probe.get("architecture") != "arm64":
         raise RuntimeError("SIDECAR_PARSER_PROBE_FAILED")
+    _sign_nested_first(bundle)
 
     input_manifest = _build_input_digests()
     anchor = load_anchor(TRUST_ANCHOR)

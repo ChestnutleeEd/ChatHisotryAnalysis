@@ -14,7 +14,7 @@ use std::path::Path;
 const TRUST_ANCHOR_JSON: &str = include_str!("../resources/sidecar-trust-anchor.json");
 pub const TRUST_ANCHOR_VERSION: &str = "chat-history-analysis.sidecar-trust-anchor.v1";
 pub const TRUST_ROOT: &str = "bundle-member-hashes-excluding-evidence+host-anchor-v1";
-pub const SIDECAR_BUNDLE_DIRECTORY: &str = "chat-history-analysis-sidecar-probe";
+pub const SIDECAR_BUNDLE_DIRECTORY: &str = "chat-history-analysis-sidecar";
 const EVIDENCE_NAME: &str = "sidecar-evidence.json";
 
 #[derive(Debug, Clone, Deserialize)]

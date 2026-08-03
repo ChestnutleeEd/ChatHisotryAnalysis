@@ -7,9 +7,23 @@ edition = "2021"
 rust-version = "1.85"
 default-run = "chat-history-analysis"
 
+[features]
+default = ["synthetic-test-helpers"]
+synthetic-test-helpers = []
+
 [[bin]]
 name = "chat-history-analysis"
 path = "src/main.rs"
+
+[[bin]]
+name = "synthetic-sidecar"
+path = "src/bin/synthetic-sidecar.rs"
+required-features = ["synthetic-test-helpers"]
+
+[[bin]]
+name = "synthetic-orphan"
+path = "src/bin/synthetic-orphan.rs"
+required-features = ["synthetic-test-helpers"]
 
 [lib]
 name = "chat_history_analysis_lib"

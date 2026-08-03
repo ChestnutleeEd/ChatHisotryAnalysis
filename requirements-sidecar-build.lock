@@ -1,5 +1,5 @@
-# Synthetic Stage 1 sidecar spike only. The mirror keeps bootstrap downloads
-# available in the development environment; every artifact remains hash-locked.
+# Pinned macOS arm64 PyInstaller onedir inputs. The domestic mirror keeps
+# bootstrap downloads available; every artifact remains hash-locked.
 --index-url https://pypi.tuna.tsinghua.edu.cn/simple
 --require-hashes
 --only-binary=:all:
