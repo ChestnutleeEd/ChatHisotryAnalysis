@@ -25,6 +25,7 @@ dist/
 
 # Frontend dependencies, builds, tests, and local launch state
 frontend/node_modules/
+node_modules/
 frontend/dist/
 frontend/*.tsbuildinfo
 frontend/coverage/

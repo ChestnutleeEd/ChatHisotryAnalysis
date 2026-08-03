@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 # Updated only when the reviewed capability/config surface intentionally changes.
-EXPECTED_ACL_DIGEST = "3a36c592a27c088f0018f18d0a2f07b10582dc0fb6377240448d0d6bb9302e4d"
+EXPECTED_ACL_DIGEST = "50d1171cb471e5fc14195c5cbfe3289769612dabc200ba3ef54ef35d4ef8aa2f"
 FORBIDDEN_PERMISSION_WORDS = (
     "event",
     "devtools",

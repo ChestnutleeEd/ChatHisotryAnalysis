@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use tauri::{Emitter, Manager};
 
@@ -10,6 +11,18 @@ use crate::security::trusted_main_window_label;
 
 pub const PROTOCOL_VERSION: &str = "chat-history-analysis.desktop-ipc.v1";
 pub const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
+pub const WORKER_CAPABILITY_PROTOCOL_VERSION: &str = "chat-history-analysis.worker-capability.v1";
+pub const WORKER_QUERY_REQUEST_VERSION: &str = "chat-history-analysis.aggregate-query.v1";
+pub const ANALYTICS_RESULT_CONTRACT_VERSION: &str = "chat-history-analysis.analytics-result.v3";
+const WORKER_CAPABILITY_TTL_MILLIS: u64 = 5 * 60 * 1_000;
+const WORKER_QUERY_TIMEZONE: &str = crate::export_schema::TIMEZONE;
+const WORKER_QUERY_METRIC_DEFINITIONS: [&str; 5] = [
+    "chat-history-analysis.metric.population.v1",
+    "chat-history-analysis.metric.time.utc-plus-8.v1",
+    "chat-history-analysis.metric.tokens.jieba.v1",
+    "chat-history-analysis.metric.keywords.log-odds.v1",
+    "chat-history-analysis.metric.sessions.threshold.v1",
+];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -52,6 +65,20 @@ pub enum FailureCode {
     DatasetHandoffInvalid,
     DatasetTampered,
     DialogUnavailable,
+    ExportBusy,
+    ExportResultPending,
+    ExportStaleResult,
+    ExportSchemaInvalid,
+    ExportLimitExceeded,
+    ExportRenderFailed,
+    ExportPermissionDenied,
+    ExportDiskFull,
+    ExportWriteFailed,
+    ExportFlushFailed,
+    ExportDurabilityUncertain,
+    ExportRenameFailed,
+    ExportCleanupRequired,
+    ExportResultNotFound,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -77,10 +104,6 @@ impl IpcError {
             request_id,
             code,
         }
-    }
-
-    fn contract_only(request_id: Option<String>) -> Self {
-        Self::with_code(request_id, FailureCode::ContractOnly)
     }
 }
 
@@ -124,6 +147,18 @@ struct SessionCommand {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct WorkerPrepareCommand {
+    protocol_version: String,
+    #[serde(rename = "type")]
+    command_type: String,
+    request_id: String,
+    session_id: String,
+    generation: u64,
+    query_key: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct ExportCommand {
     protocol_version: String,
     #[serde(rename = "type")]
@@ -133,6 +168,83 @@ struct ExportCommand {
     generation: u64,
     report_format: String,
     result_id: String,
+    #[serde(default)]
+    chart_key: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AggregateResultCommand {
+    protocol_version: String,
+    #[serde(rename = "type")]
+    command_type: String,
+    request_id: String,
+    session_id: String,
+    generation: u64,
+    aggregate: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkerOperationCapability {
+    pub protocol_version: String,
+    pub operation_id: String,
+    pub nonce: String,
+    pub window_id: String,
+    pub session_id: String,
+    pub generation: u64,
+    pub dataset_id: String,
+    pub query_key: String,
+    pub analytics_contract_version: String,
+    pub expires_at_millis: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct WorkerCommitCommand {
+    protocol_version: String,
+    #[serde(rename = "type")]
+    command_type: String,
+    capability: WorkerOperationCapability,
+    aggregate: Value,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WorkerOperationState {
+    Ready,
+    Committing,
+}
+
+#[derive(Debug, Clone)]
+struct WorkerOperationRecord {
+    capability: WorkerOperationCapability,
+    state: WorkerOperationState,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkerCommitAck {
+    pub protocol_version: &'static str,
+    pub accepted: bool,
+    pub result_id: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkerPreparationAck {
+    pub protocol_version: &'static str,
+    pub request_id: String,
+    pub accepted: bool,
+    pub capability: WorkerOperationCapability,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResultCommitAck {
+    pub protocol_version: &'static str,
+    pub request_id: String,
+    pub accepted: bool,
+    pub result_id: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -266,19 +378,72 @@ fn validate_session(value: &Value, expected_type: &str) -> Result<SessionCommand
     Ok(command)
 }
 
-fn validate_export(value: &Value) -> Result<ExportCommand, IpcError> {
+fn validate_worker_prepare(value: &Value) -> Result<WorkerPrepareCommand, IpcError> {
     if !exact_keys(
         value,
         &[
             "generation",
             "protocolVersion",
-            "reportFormat",
+            "queryKey",
             "requestId",
-            "resultId",
             "sessionId",
             "type",
         ],
     ) || !all_json_integers_are_safe(value)
+    {
+        return Err(IpcError::invalid(string_field(value, "requestId")));
+    }
+    let command: WorkerPrepareCommand = parse(value)?;
+    valid_protocol(&command.protocol_version)
+        .map_err(|code| IpcError::with_code(Some(command.request_id.clone()), code))?;
+    if command.command_type != "prepare-aggregate-result"
+        || !valid_id(&command.request_id, "req_")
+        || !valid_id(&command.session_id, "ses_")
+        || command.generation == 0
+        || command.generation > MAX_SAFE_INTEGER
+    {
+        return Err(IpcError::invalid(Some(command.request_id)));
+    }
+    let Some(dataset_id) = serde_json::from_str::<Value>(&command.query_key)
+        .ok()
+        .and_then(|value| {
+            value
+                .as_array()
+                .and_then(|items| items.first())
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned)
+        })
+    else {
+        return Err(IpcError::invalid(Some(command.request_id)));
+    };
+    if parse_worker_query_key(&command.query_key, &dataset_id, command.generation).is_err() {
+        return Err(IpcError::invalid(Some(command.request_id)));
+    }
+    Ok(command)
+}
+
+fn validate_export(value: &Value) -> Result<ExportCommand, IpcError> {
+    let legacy_keys = [
+        "generation",
+        "protocolVersion",
+        "reportFormat",
+        "requestId",
+        "resultId",
+        "sessionId",
+        "type",
+    ];
+    let production_keys = [
+        "chartKey",
+        "generation",
+        "protocolVersion",
+        "reportFormat",
+        "requestId",
+        "resultId",
+        "sessionId",
+        "type",
+    ];
+    if !(exact_keys(value, &legacy_keys) || exact_keys(value, &production_keys))
+        || !all_json_integers_are_safe(value)
     {
         return Err(IpcError::invalid(string_field(value, "requestId")));
     }
@@ -292,10 +457,87 @@ fn validate_export(value: &Value) -> Result<ExportCommand, IpcError> {
         || command.generation == 0
         || command.generation > MAX_SAFE_INTEGER
         || !matches!(command.report_format.as_str(), "png" | "csv" | "json")
+        || command.chart_key.as_deref().is_some_and(|chart_key| {
+            crate::export_schema::ApprovedChartKey::parse(chart_key).is_none()
+        })
     {
         return Err(IpcError::invalid(Some(command.request_id)));
     }
     Ok(command)
+}
+
+fn validate_aggregate_result(
+    value: &Value,
+) -> Result<
+    (
+        AggregateResultCommand,
+        crate::export_schema::RendererAggregateInput,
+    ),
+    IpcError,
+> {
+    let expected_keys = [
+        "generation",
+        "protocolVersion",
+        "requestId",
+        "sessionId",
+        "aggregate",
+        "type",
+    ];
+    if !exact_keys(value, &expected_keys) || !all_json_integers_are_safe(value) {
+        return Err(IpcError::invalid(string_field(value, "requestId")));
+    }
+    let command: AggregateResultCommand = parse(value)?;
+    valid_protocol(&command.protocol_version)
+        .map_err(|code| IpcError::with_code(Some(command.request_id.clone()), code))?;
+    if command.command_type != "commit-aggregate-result"
+        || !valid_id(&command.request_id, "req_")
+        || !valid_id(&command.session_id, "ses_")
+        || command.generation == 0
+        || command.generation > MAX_SAFE_INTEGER
+    {
+        return Err(IpcError::invalid(Some(command.request_id)));
+    }
+    let aggregate = serde_json::from_value::<crate::export_schema::RendererAggregateInput>(
+        command.aggregate.clone(),
+    )
+    .map_err(|_| {
+        IpcError::with_code(
+            Some(command.request_id.clone()),
+            FailureCode::ExportSchemaInvalid,
+        )
+    })?;
+    Ok((command, aggregate))
+}
+
+fn validate_worker_commit(
+    value: &Value,
+) -> Result<
+    (
+        WorkerCommitCommand,
+        crate::export_schema::RendererAggregateInput,
+    ),
+    IpcError,
+> {
+    if !exact_keys(
+        value,
+        &["aggregate", "capability", "protocolVersion", "type"],
+    ) || !all_json_integers_are_safe(value)
+    {
+        return Err(IpcError::invalid(None));
+    }
+    let command: WorkerCommitCommand = parse(value)?;
+    if command.protocol_version != WORKER_CAPABILITY_PROTOCOL_VERSION
+        || command.command_type != "commit-worker-result"
+    {
+        return Err(IpcError::invalid(None));
+    }
+    validate_worker_capability(&command.capability, &command.capability.window_id)
+        .map_err(|code| IpcError::with_code(None, code))?;
+    let aggregate = serde_json::from_value::<crate::export_schema::RendererAggregateInput>(
+        command.aggregate.clone(),
+    )
+    .map_err(|_| IpcError::with_code(None, FailureCode::ExportSchemaInvalid))?;
+    Ok((command, aggregate))
 }
 
 fn validate_close(value: &Value) -> Result<CloseCommand, IpcError> {
@@ -328,10 +570,19 @@ pub fn validate_command(value: &Value) -> Result<String, IpcError> {
         "start-analysis" => {
             validate_selection(value, &command_type).map(|command| command.request_id)
         }
-        "cancel-analysis" | "retry-analysis" | "discard-session" => {
+        "cancel-analysis" | "retry-analysis" | "discard-session" | "acknowledge-worker-stop" => {
             validate_session(value, &command_type).map(|command| command.request_id)
         }
         "export-aggregate" => validate_export(value).map(|command| command.request_id),
+        "commit-aggregate-result" => {
+            validate_aggregate_result(value).map(|(command, _)| command.request_id)
+        }
+        "prepare-aggregate-result" => {
+            validate_worker_prepare(value).map(|command| command.request_id)
+        }
+        "cancel-aggregate-result" => {
+            validate_session(value, &command_type).map(|command| command.request_id)
+        }
         "request-application-close" => validate_close(value).map(|command| command.request_id),
         _ => Err(IpcError::with_code(
             request_id,
@@ -381,7 +632,6 @@ pub struct ProgressPayload {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DatasetReadyPayload {
     pub dataset_id: String,
-    pub result_id: String,
     pub record_count: u64,
     pub chunk_count: u64,
     pub minimum_calendar_date: String,
@@ -517,6 +767,20 @@ fn valid_failure_code(value: &str) -> bool {
             | "DATASET_HANDOFF_INVALID"
             | "DATASET_TAMPERED"
             | "DIALOG_UNAVAILABLE"
+            | "EXPORT_BUSY"
+            | "EXPORT_RESULT_PENDING"
+            | "EXPORT_STALE_RESULT"
+            | "EXPORT_SCHEMA_INVALID"
+            | "EXPORT_LIMIT_EXCEEDED"
+            | "EXPORT_RENDER_FAILED"
+            | "EXPORT_PERMISSION_DENIED"
+            | "EXPORT_DISK_FULL"
+            | "EXPORT_WRITE_FAILED"
+            | "EXPORT_FLUSH_FAILED"
+            | "EXPORT_DURABILITY_UNCERTAIN"
+            | "EXPORT_RENAME_FAILED"
+            | "EXPORT_CLEANUP_REQUIRED"
+            | "EXPORT_RESULT_NOT_FOUND"
     )
 }
 
@@ -582,7 +846,6 @@ pub fn validate_event(value: &Value) -> Result<EventEnvelope, IpcError> {
         }
         (EventType::DatasetReady, EventPayload::DatasetReady(payload)) => {
             if !valid_id(&payload.dataset_id, "dat_")
-                || !valid_id(&payload.result_id, "res_")
                 || payload.record_count == 0
                 || payload.chunk_count == 0
                 || payload.record_count > MAX_SAFE_INTEGER
@@ -725,12 +988,75 @@ struct SessionRegistry {
     active: Option<SessionRecord>,
 }
 
+struct RendererWorkerLease {
+    window: tauri::WebviewWindow,
+    session_id: String,
+    generation: u64,
+    dataset_id: String,
+    query_key: String,
+    cancellation_sent: AtomicBool,
+    stop_acknowledged: Arc<(Mutex<bool>, Condvar)>,
+}
+
+impl RendererWorkerLease {
+    fn emit_control(&self, kind: &'static str) {
+        let _ = self.window.emit(
+            "desktop-worker-control",
+            serde_json::json!({
+                "kind": kind,
+                "sessionId": self.session_id,
+                "generation": self.generation,
+                "datasetId": self.dataset_id,
+                "queryKey": self.query_key,
+            }),
+        );
+    }
+}
+
+impl crate::session_supervisor::WorkerTermination for RendererWorkerLease {
+    fn request_cancellation(&self) {
+        if !self.cancellation_sent.swap(true, Ordering::AcqRel) {
+            self.emit_control("cancel");
+        }
+    }
+
+    fn force_terminate(&self) {
+        self.emit_control("force-terminate");
+    }
+
+    fn wait_for_termination(&self, timeout: std::time::Duration) -> bool {
+        let Ok(acknowledged) = self.stop_acknowledged.0.lock() else {
+            return false;
+        };
+        if *acknowledged {
+            return true;
+        }
+        let Ok((acknowledged, _)) = self.stop_acknowledged.1.wait_timeout(acknowledged, timeout)
+        else {
+            return false;
+        };
+        *acknowledged
+    }
+
+    fn acknowledge_termination(&self) {
+        if let Ok(mut acknowledged) = self.stop_acknowledged.0.lock() {
+            *acknowledged = true;
+            self.stop_acknowledged.1.notify_all();
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct IpcCoreState {
     registry: Arc<Mutex<SessionRegistry>>,
     selection: Arc<Mutex<crate::desktop_selection::SelectionRegistry>>,
+    result_registry: crate::analytics_results::ResultRegistry,
+    privacy_logger: crate::privacy_log::PrivacyLogger,
+    session_correlation: Arc<Mutex<Option<crate::privacy_log::CorrelationId>>>,
     supervisor: crate::session_supervisor::SessionSupervisor,
+    worker_operations: Arc<Mutex<HashMap<String, WorkerOperationRecord>>>,
     startup_cleanup_required: Arc<AtomicBool>,
+    close_started: Arc<AtomicBool>,
 }
 
 impl Default for IpcCoreState {
@@ -740,8 +1066,13 @@ impl Default for IpcCoreState {
             selection: Arc::new(Mutex::new(
                 crate::desktop_selection::SelectionRegistry::default(),
             )),
+            result_registry: crate::analytics_results::ResultRegistry::default(),
+            privacy_logger: crate::privacy_log::PrivacyLogger::default(),
+            session_correlation: Arc::new(Mutex::new(None)),
             supervisor: crate::session_supervisor::SessionSupervisor::default(),
+            worker_operations: Arc::new(Mutex::new(HashMap::new())),
             startup_cleanup_required: Arc::new(AtomicBool::new(false)),
+            close_started: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -751,23 +1082,112 @@ impl Clone for IpcCoreState {
         Self {
             registry: Arc::clone(&self.registry),
             selection: Arc::clone(&self.selection),
+            result_registry: self.result_registry.clone(),
+            privacy_logger: self.privacy_logger.clone(),
+            session_correlation: Arc::clone(&self.session_correlation),
             supervisor: self.supervisor.clone(),
+            worker_operations: Arc::clone(&self.worker_operations),
             startup_cleanup_required: Arc::clone(&self.startup_cleanup_required),
+            close_started: Arc::clone(&self.close_started),
         }
     }
 }
 
 impl IpcCoreState {
+    fn record_log(
+        &self,
+        code: crate::privacy_log::LogCode,
+        phase: crate::privacy_log::LogPhase,
+        state: crate::privacy_log::LogState,
+        aggregate_count: u64,
+        cleanup_status: Option<crate::privacy_log::CleanupStatus>,
+    ) {
+        let correlation_id = self
+            .session_correlation
+            .lock()
+            .ok()
+            .and_then(|correlation| correlation.clone())
+            .or_else(crate::privacy_log::CorrelationId::random);
+        let Some(correlation_id) = correlation_id else {
+            return;
+        };
+        let mut event =
+            crate::privacy_log::PrivacyLogEvent::new(code, phase, state, correlation_id);
+        event.aggregate_count = aggregate_count.min(crate::privacy_log::MAX_LOG_AGGREGATE_COUNT);
+        event.cleanup_status = cleanup_status;
+        let _ = self.privacy_logger.record(event);
+    }
+
     pub fn session_supervisor(&self) -> &crate::session_supervisor::SessionSupervisor {
         &self.supervisor
     }
 
+    fn invalidate_worker_operations_for(
+        &self,
+        window_label: &str,
+        session_id: &str,
+        generation: u64,
+    ) {
+        if let Ok(mut operations) = self.worker_operations.lock() {
+            operations.retain(|_, record| {
+                !(record.capability.window_id == window_label
+                    && record.capability.session_id == session_id
+                    && record.capability.generation == generation)
+            });
+        }
+    }
+
+    fn invalidate_all_worker_operations(&self) {
+        if let Ok(mut operations) = self.worker_operations.lock() {
+            operations.clear();
+        }
+    }
+
     pub fn renderer_disconnected(&self, window_label: &str) {
+        let active = self
+            .registry
+            .lock()
+            .ok()
+            .and_then(|registry| registry.active.clone());
+        if let Some(active) = active.filter(|active| active.window_label == window_label) {
+            self.clear_result(&active.window_label, &active.session_id, active.generation);
+        } else if let Ok(mut operations) = self.worker_operations.lock() {
+            operations.retain(|_, record| record.capability.window_id != window_label);
+        }
+        if let Ok(mut correlation) = self.session_correlation.lock() {
+            *correlation = None;
+        }
         self.supervisor.renderer_disconnected(window_label);
     }
 
     pub fn shutdown(&self) {
+        self.invalidate_all_worker_operations();
+        self.result_registry.clear_all();
+        if let Ok(mut correlation) = self.session_correlation.lock() {
+            *correlation = None;
+        }
         self.supervisor.shutdown();
+    }
+
+    /// CloseRequested/ExitRequested both use this host gate.  It fences
+    /// exports, asks the real Worker lease to cancel, stops the sidecar, and
+    /// only returns true once the session registry is empty.
+    pub fn prepare_application_close(&self) -> bool {
+        if self.close_started.swap(true, Ordering::AcqRel) {
+            return true;
+        }
+        self.invalidate_all_worker_operations();
+        self.result_registry.clear_all();
+        self.supervisor.shutdown();
+        if self.supervisor.active_snapshot().is_none() {
+            if let Ok(mut correlation) = self.session_correlation.lock() {
+                *correlation = None;
+            }
+            true
+        } else {
+            self.close_started.store(false, Ordering::Release);
+            false
+        }
     }
 
     pub fn set_startup_cleanup_required(&self, required: bool) {
@@ -813,6 +1233,238 @@ impl IpcCoreState {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub fn commit_dataset_result(
+        &self,
+        window_label: &str,
+        session_id: &str,
+        generation: u64,
+        dataset_id: &str,
+        record_count: u64,
+        minimum_calendar_date: &str,
+        maximum_calendar_date: &str,
+    ) -> Result<(), FailureCode> {
+        self.result_registry
+            .register_context(
+                crate::analytics_results::ResultKey::new(window_label, session_id, generation),
+                crate::export_schema::DatasetExportContext {
+                    dataset_id: dataset_id.to_string(),
+                    record_count,
+                    minimum_calendar_date: minimum_calendar_date.to_string(),
+                    maximum_calendar_date: maximum_calendar_date.to_string(),
+                },
+            )
+            .map_err(map_result_registry_code)
+    }
+
+    pub fn prepare_aggregate_result(
+        &self,
+        window: &tauri::WebviewWindow,
+        window_label: &str,
+        session_id: &str,
+        generation: u64,
+        query_key: &str,
+    ) -> Result<WorkerOperationCapability, FailureCode> {
+        self.validate_owned_session(window_label, session_id, generation)?;
+        let key = crate::analytics_results::ResultKey::new(window_label, session_id, generation);
+        let dataset_id = self
+            .result_registry
+            .dataset_id_for(&key)
+            .ok_or(FailureCode::InvalidState)?;
+        parse_worker_query_key(query_key, &dataset_id, generation)?;
+        // A replacement operation invalidates every earlier bearer before the
+        // new pending result is registered.  This closes the old-operation
+        // commit race even when the previous Worker has not acknowledged yet.
+        self.invalidate_worker_operations_for(window_label, session_id, generation);
+        self.result_registry
+            .begin_pending(key.clone())
+            .map_err(map_result_registry_code)?;
+        let operation_id = match crate::session_supervisor::new_worker_operation_id() {
+            Ok(operation_id) => operation_id,
+            Err(_) => {
+                let _ = self.result_registry.cancel_pending(&key);
+                return Err(FailureCode::WorkerRuntimeFailed);
+            }
+        };
+        let nonce = match crate::session_supervisor::new_worker_nonce() {
+            Ok(nonce) => nonce,
+            Err(_) => {
+                let _ = self.result_registry.cancel_pending(&key);
+                return Err(FailureCode::WorkerRuntimeFailed);
+            }
+        };
+        let expires_at_millis = now_unix_millis().saturating_add(WORKER_CAPABILITY_TTL_MILLIS);
+        let capability = WorkerOperationCapability {
+            protocol_version: WORKER_CAPABILITY_PROTOCOL_VERSION.to_string(),
+            operation_id: operation_id.clone(),
+            nonce,
+            window_id: window_label.to_string(),
+            session_id: session_id.to_string(),
+            generation,
+            dataset_id: dataset_id.clone(),
+            query_key: query_key.to_string(),
+            analytics_contract_version: ANALYTICS_RESULT_CONTRACT_VERSION.to_string(),
+            expires_at_millis,
+        };
+        let worker = Arc::new(RendererWorkerLease {
+            window: window.clone(),
+            session_id: session_id.to_string(),
+            generation,
+            dataset_id,
+            query_key: query_key.to_string(),
+            cancellation_sent: AtomicBool::new(false),
+            stop_acknowledged: Arc::new((Mutex::new(false), Condvar::new())),
+        });
+        if let Err(error) =
+            self.supervisor
+                .attach_worker(window_label, session_id, generation, worker)
+        {
+            let _ = self.result_registry.cancel_pending(&key);
+            return Err(map_supervisor_code(error.code));
+        }
+        if let Ok(mut operations) = self.worker_operations.lock() {
+            let now = now_unix_millis();
+            operations.retain(|_, record| record.capability.expires_at_millis >= now);
+            operations.insert(
+                operation_id.clone(),
+                WorkerOperationRecord {
+                    capability: capability.clone(),
+                    state: WorkerOperationState::Ready,
+                },
+            );
+        } else {
+            let _ = self
+                .supervisor
+                .detach_worker(window_label, session_id, generation);
+            let _ = self.result_registry.cancel_pending(&key);
+            return Err(FailureCode::InvalidState);
+        }
+        self.record_log(
+            crate::privacy_log::LogCode::ExportStarted,
+            crate::privacy_log::LogPhase::Export,
+            crate::privacy_log::LogState::Running,
+            0,
+            None,
+        );
+        Ok(capability)
+    }
+
+    pub fn cancel_aggregate_result(
+        &self,
+        window_label: &str,
+        session_id: &str,
+        generation: u64,
+    ) -> Result<(), FailureCode> {
+        self.validate_owned_session(window_label, session_id, generation)?;
+        self.invalidate_worker_operations_for(window_label, session_id, generation);
+        let result = self
+            .result_registry
+            .cancel_pending(&crate::analytics_results::ResultKey::new(
+                window_label,
+                session_id,
+                generation,
+            ))
+            .map_err(map_result_registry_code);
+        if result.is_ok() {
+            let _ = self
+                .supervisor
+                .detach_worker(window_label, session_id, generation);
+        }
+        result
+    }
+
+    pub fn commit_worker_operation(
+        &self,
+        window_label: &str,
+        capability: WorkerOperationCapability,
+        aggregate: crate::export_schema::RendererAggregateInput,
+    ) -> Result<String, FailureCode> {
+        validate_worker_capability(&capability, window_label)?;
+        self.validate_owned_session(window_label, &capability.session_id, capability.generation)?;
+        let expected_query_key = canonical_worker_query_key(
+            &capability.dataset_id,
+            capability.generation,
+            &aggregate.filters,
+        )?;
+        if capability.query_key != expected_query_key {
+            return Err(FailureCode::WorkerRuntimeFailed);
+        }
+        let key = crate::analytics_results::ResultKey::new(
+            window_label,
+            &capability.session_id,
+            capability.generation,
+        );
+        let mut operations = self
+            .worker_operations
+            .lock()
+            .map_err(|_| FailureCode::InvalidState)?;
+        let Some(record) = operations.get(&capability.operation_id).cloned() else {
+            return Err(FailureCode::WorkerRuntimeFailed);
+        };
+        if record.capability != capability || record.state != WorkerOperationState::Ready {
+            return Err(FailureCode::WorkerRuntimeFailed);
+        }
+        if let Some(record) = operations.get_mut(&capability.operation_id) {
+            record.state = WorkerOperationState::Committing;
+        }
+        let result_id = match self.result_registry.commit_pending(&key, aggregate) {
+            Ok(result_id) => result_id,
+            Err(error) => {
+                operations.remove(&capability.operation_id);
+                return Err(map_result_registry_code(error));
+            }
+        };
+        operations.remove(&capability.operation_id);
+        drop(operations);
+        if let Err(error) = self.supervisor.worker_result_committed(
+            window_label,
+            &capability.session_id,
+            capability.generation,
+        ) {
+            self.clear_result(window_label, &capability.session_id, capability.generation);
+            return Err(map_supervisor_code(error.code));
+        }
+        Ok(result_id)
+    }
+
+    pub fn acknowledge_worker_stop(
+        &self,
+        window_label: &str,
+        session_id: &str,
+        generation: u64,
+    ) -> Result<(), FailureCode> {
+        self.validate_owned_session(window_label, session_id, generation)?;
+        self.supervisor
+            .acknowledge_worker_stop(window_label, session_id, generation)
+            .map_err(|error| map_supervisor_code(error.code))
+    }
+
+    pub fn commit_aggregate_result(
+        &self,
+        window_label: &str,
+        session_id: &str,
+        generation: u64,
+        aggregate: crate::export_schema::RendererAggregateInput,
+    ) -> Result<String, FailureCode> {
+        self.validate_owned_session(window_label, session_id, generation)?;
+        self.result_registry
+            .commit_pending(
+                &crate::analytics_results::ResultKey::new(window_label, session_id, generation),
+                aggregate,
+            )
+            .map_err(map_result_registry_code)
+    }
+
+    pub fn clear_result(&self, window_label: &str, session_id: &str, generation: u64) {
+        self.invalidate_worker_operations_for(window_label, session_id, generation);
+        self.result_registry
+            .clear_session(window_label, session_id, generation);
+    }
+
+    pub fn result_registry(&self) -> &crate::analytics_results::ResultRegistry {
+        &self.result_registry
+    }
+
     pub fn replace_registered_session(
         &self,
         trusted_window_label: &str,
@@ -826,15 +1478,29 @@ impl IpcCoreState {
         {
             return Err(FailureCode::WindowNotAuthorized);
         }
+        let correlation =
+            crate::privacy_log::CorrelationId::random().ok_or(FailureCode::InvalidState)?;
         let mut registry = self
             .registry
             .lock()
             .map_err(|_| FailureCode::InvalidState)?;
-        registry.active = Some(SessionRecord::new(
+        let previous = registry.active.replace(SessionRecord::new(
             trusted_window_label,
             session_id,
             generation,
         ));
+        drop(registry);
+        if let Some(previous) = previous {
+            self.clear_result(
+                &previous.window_label,
+                &previous.session_id,
+                previous.generation,
+            );
+        }
+        *self
+            .session_correlation
+            .lock()
+            .map_err(|_| FailureCode::InvalidState)? = Some(correlation);
         Ok(())
     }
 
@@ -893,7 +1559,6 @@ impl IpcCoreState {
         &self,
         window: &tauri::WebviewWindow,
         dataset_id: &str,
-        result_id: &str,
         record_count: u64,
         chunk_count: u64,
         minimum_calendar_date: &str,
@@ -904,7 +1569,6 @@ impl IpcCoreState {
             "dataset-ready",
             serde_json::json!({
                 "datasetId": dataset_id,
-                "resultId": result_id,
                 "recordCount": record_count,
                 "chunkCount": chunk_count,
                 "minimumCalendarDate": minimum_calendar_date,
@@ -920,6 +1584,31 @@ impl IpcCoreState {
         code: FailureCode,
         retryable: bool,
     ) -> Result<(), FailureCode> {
+        if matches!(
+            code,
+            FailureCode::ExportBusy
+                | FailureCode::ExportResultPending
+                | FailureCode::ExportStaleResult
+                | FailureCode::ExportSchemaInvalid
+                | FailureCode::ExportLimitExceeded
+                | FailureCode::ExportRenderFailed
+                | FailureCode::ExportPermissionDenied
+                | FailureCode::ExportDiskFull
+                | FailureCode::ExportWriteFailed
+                | FailureCode::ExportFlushFailed
+                | FailureCode::ExportDurabilityUncertain
+                | FailureCode::ExportRenameFailed
+                | FailureCode::ExportCleanupRequired
+                | FailureCode::ExportResultNotFound
+        ) {
+            self.record_log(
+                crate::privacy_log::LogCode::ExportFailed,
+                crate::privacy_log::LogPhase::Export,
+                crate::privacy_log::LogState::Failed,
+                0,
+                None,
+            );
+        }
         self.publish_session_value(
             window,
             "failure",
@@ -935,6 +1624,13 @@ impl IpcCoreState {
         window: &tauri::WebviewWindow,
         reason: &str,
     ) -> Result<(), FailureCode> {
+        self.record_log(
+            crate::privacy_log::LogCode::SessionCancelled,
+            crate::privacy_log::LogPhase::Cleanup,
+            crate::privacy_log::LogState::Cancelling,
+            0,
+            None,
+        );
         self.publish_session_value(window, "cancelled", serde_json::json!({ "reason": reason }))
     }
 
@@ -944,6 +1640,28 @@ impl IpcCoreState {
         status: &str,
         removed_entry_count: u64,
     ) -> Result<(), FailureCode> {
+        let (code, cleanup_status) = if status == "complete" {
+            (
+                crate::privacy_log::LogCode::CleanupComplete,
+                Some(crate::privacy_log::CleanupStatus::Complete),
+            )
+        } else {
+            (
+                crate::privacy_log::LogCode::CleanupRequired,
+                Some(crate::privacy_log::CleanupStatus::Required),
+            )
+        };
+        self.record_log(
+            code,
+            crate::privacy_log::LogPhase::Cleanup,
+            if status == "complete" {
+                crate::privacy_log::LogState::Complete
+            } else {
+                crate::privacy_log::LogState::Failed
+            },
+            removed_entry_count,
+            cleanup_status,
+        );
         self.publish_session_value(
             window,
             "cleanup",
@@ -960,6 +1678,29 @@ impl IpcCoreState {
         status: &str,
     ) -> Result<(), FailureCode> {
         self.publish_session_value(window, "closed", serde_json::json!({ "status": status }))
+    }
+
+    pub fn publish_exported(
+        &self,
+        window: &tauri::WebviewWindow,
+        result_id: &str,
+        report_format: &str,
+    ) -> Result<(), FailureCode> {
+        self.record_log(
+            crate::privacy_log::LogCode::ExportComplete,
+            crate::privacy_log::LogPhase::Export,
+            crate::privacy_log::LogState::Complete,
+            1,
+            None,
+        );
+        self.publish_session_value(
+            window,
+            "exported",
+            serde_json::json!({
+                "resultId": result_id,
+                "reportFormat": report_format,
+            }),
+        )
     }
 
     fn publish_session_value(
@@ -1012,6 +1753,8 @@ impl IpcCoreState {
         {
             return Err(FailureCode::WindowNotAuthorized);
         }
+        let correlation =
+            crate::privacy_log::CorrelationId::random().ok_or(FailureCode::InvalidState)?;
         let mut registry = self
             .registry
             .lock()
@@ -1024,6 +1767,10 @@ impl IpcCoreState {
             session_id,
             generation,
         ));
+        *self
+            .session_correlation
+            .lock()
+            .map_err(|_| FailureCode::InvalidState)? = Some(correlation);
         Ok(())
     }
 
@@ -1157,8 +1904,15 @@ impl IpcCoreState {
             .expected_sequence
             .checked_add(1)
             .ok_or(FailureCode::InvalidState)?;
-        if active.closed {
+        let closed = active.closed;
+        if closed {
             registry.active = None;
+        }
+        drop(registry);
+        if closed {
+            if let Ok(mut correlation) = self.session_correlation.lock() {
+                *correlation = None;
+            }
         }
         Ok(())
     }
@@ -1178,6 +1932,141 @@ fn command_ack(request_id: String) -> CommandAck {
         request_id,
         accepted: true,
     }
+}
+
+fn now_unix_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)
+        .unwrap_or(0)
+}
+
+fn canonical_worker_query_key(
+    dataset_id: &str,
+    generation: u64,
+    filters: &crate::export_schema::ExportFilters,
+) -> Result<String, FailureCode> {
+    if !valid_id(dataset_id, "dat_") || generation == 0 || !filters.validate() {
+        return Err(FailureCode::WorkerRuntimeFailed);
+    }
+    serde_json::to_string(&serde_json::json!([
+        dataset_id,
+        generation,
+        filters.start_date,
+        filters.end_date,
+        filters.sender,
+        filters.selected_year,
+        filters.session_threshold_hours,
+        WORKER_QUERY_TIMEZONE,
+        WORKER_QUERY_REQUEST_VERSION,
+        ANALYTICS_RESULT_CONTRACT_VERSION,
+        WORKER_QUERY_METRIC_DEFINITIONS,
+    ]))
+    .map_err(|_| FailureCode::WorkerRuntimeFailed)
+}
+
+fn parse_worker_query_key(
+    query_key: &str,
+    expected_dataset_id: &str,
+    expected_generation: u64,
+) -> Result<crate::export_schema::ExportFilters, FailureCode> {
+    let value: Value =
+        serde_json::from_str(query_key).map_err(|_| FailureCode::WorkerRuntimeFailed)?;
+    let items = value
+        .as_array()
+        .filter(|items| items.len() == 11)
+        .ok_or(FailureCode::WorkerRuntimeFailed)?;
+    let dataset_id = items[0].as_str().ok_or(FailureCode::WorkerRuntimeFailed)?;
+    let generation = items[1].as_u64().ok_or(FailureCode::WorkerRuntimeFailed)?;
+    if dataset_id != expected_dataset_id
+        || generation != expected_generation
+        || !valid_id(dataset_id, "dat_")
+    {
+        return Err(FailureCode::WorkerRuntimeFailed);
+    }
+    if items[7].as_str() != Some(WORKER_QUERY_TIMEZONE)
+        || items[8].as_str() != Some(WORKER_QUERY_REQUEST_VERSION)
+        || items[9].as_str() != Some(ANALYTICS_RESULT_CONTRACT_VERSION)
+    {
+        return Err(FailureCode::WorkerRuntimeFailed);
+    }
+    let metrics = items[10]
+        .as_array()
+        .ok_or(FailureCode::WorkerRuntimeFailed)?;
+    if metrics.len() != WORKER_QUERY_METRIC_DEFINITIONS.len()
+        || metrics
+            .iter()
+            .zip(WORKER_QUERY_METRIC_DEFINITIONS)
+            .any(|(actual, expected)| actual.as_str() != Some(expected))
+    {
+        return Err(FailureCode::WorkerRuntimeFailed);
+    }
+    let selected_year = match &items[5] {
+        Value::Null => None,
+        Value::Number(value) => value
+            .as_u64()
+            .and_then(|value| u16::try_from(value).ok())
+            .filter(|value| (1..=9999).contains(value)),
+        _ => None,
+    };
+    if !items[5].is_null() && selected_year.is_none() {
+        return Err(FailureCode::WorkerRuntimeFailed);
+    }
+    let session_threshold_hours = items[6]
+        .as_u64()
+        .and_then(|value| u8::try_from(value).ok())
+        .filter(|value| matches!(value, 1 | 3 | 6 | 12 | 24))
+        .ok_or(FailureCode::WorkerRuntimeFailed)?;
+    let filters = crate::export_schema::ExportFilters {
+        start_date: items[2]
+            .as_str()
+            .ok_or(FailureCode::WorkerRuntimeFailed)?
+            .to_string(),
+        end_date: items[3]
+            .as_str()
+            .ok_or(FailureCode::WorkerRuntimeFailed)?
+            .to_string(),
+        sender: items[4]
+            .as_str()
+            .ok_or(FailureCode::WorkerRuntimeFailed)?
+            .to_string(),
+        selected_year,
+        session_threshold_hours,
+    };
+    if !filters.validate() {
+        return Err(FailureCode::WorkerRuntimeFailed);
+    }
+    if canonical_worker_query_key(expected_dataset_id, expected_generation, &filters)? != query_key
+    {
+        return Err(FailureCode::WorkerRuntimeFailed);
+    }
+    Ok(filters)
+}
+
+fn validate_worker_capability(
+    capability: &WorkerOperationCapability,
+    window_label: &str,
+) -> Result<(), FailureCode> {
+    if capability.protocol_version != WORKER_CAPABILITY_PROTOCOL_VERSION
+        || capability.window_id != window_label
+        || !valid_id(&capability.operation_id, "wrk_")
+        || !valid_id(&capability.nonce, "nonce_")
+        || !valid_id(&capability.session_id, "ses_")
+        || !valid_id(&capability.dataset_id, "dat_")
+        || capability.generation == 0
+        || capability.generation > MAX_SAFE_INTEGER
+        || parse_worker_query_key(
+            &capability.query_key,
+            &capability.dataset_id,
+            capability.generation,
+        )
+        .is_err()
+        || capability.analytics_contract_version != ANALYTICS_RESULT_CONTRACT_VERSION
+        || capability.expires_at_millis < now_unix_millis()
+    {
+        return Err(FailureCode::WorkerRuntimeFailed);
+    }
+    Ok(())
 }
 
 fn selection_failure_code(error: crate::desktop_selection::SelectionError) -> FailureCode {
@@ -1204,6 +2093,43 @@ fn selection_failure_code(error: crate::desktop_selection::SelectionError) -> Fa
         crate::desktop_selection::SelectionErrorCode::InvalidSelection => {
             FailureCode::SourceSetInvalid
         }
+    }
+}
+
+fn map_result_registry_code(code: crate::analytics_results::ResultRegistryError) -> FailureCode {
+    use crate::analytics_results::ResultRegistryError;
+    match code {
+        ResultRegistryError::Busy => FailureCode::ExportBusy,
+        ResultRegistryError::Pending => FailureCode::ExportResultPending,
+        ResultRegistryError::Stale => FailureCode::ExportStaleResult,
+        ResultRegistryError::SchemaInvalid => FailureCode::ExportSchemaInvalid,
+        ResultRegistryError::LimitExceeded => FailureCode::ExportLimitExceeded,
+        ResultRegistryError::NotFound => FailureCode::ExportResultNotFound,
+        ResultRegistryError::InvalidState | ResultRegistryError::RandomUnavailable => {
+            FailureCode::InvalidState
+        }
+    }
+}
+
+fn map_export_code(code: crate::export::ExportErrorCode) -> FailureCode {
+    use crate::export::ExportErrorCode;
+    match code {
+        ExportErrorCode::Busy => FailureCode::ExportBusy,
+        ExportErrorCode::ResultPending => FailureCode::ExportResultPending,
+        ExportErrorCode::StaleResult => FailureCode::ExportStaleResult,
+        ExportErrorCode::SchemaInvalid => FailureCode::ExportSchemaInvalid,
+        ExportErrorCode::LimitExceeded => FailureCode::ExportLimitExceeded,
+        ExportErrorCode::RenderFailed => FailureCode::ExportRenderFailed,
+        ExportErrorCode::PermissionDenied => FailureCode::ExportPermissionDenied,
+        ExportErrorCode::DiskFull => FailureCode::ExportDiskFull,
+        ExportErrorCode::WriteFailed => FailureCode::ExportWriteFailed,
+        ExportErrorCode::FlushFailed => FailureCode::ExportFlushFailed,
+        ExportErrorCode::DurabilityUncertain => FailureCode::ExportDurabilityUncertain,
+        ExportErrorCode::RenameFailed => FailureCode::ExportRenameFailed,
+        ExportErrorCode::CleanupRequired => FailureCode::ExportCleanupRequired,
+        ExportErrorCode::DialogUnavailable => FailureCode::DialogUnavailable,
+        ExportErrorCode::ResultNotFound => FailureCode::ExportResultNotFound,
+        ExportErrorCode::Cancelled => FailureCode::InvalidState,
     }
 }
 
@@ -1287,27 +2213,6 @@ fn retryable_failure(code: &FailureCode) -> bool {
             | FailureCode::MemoryPressure
             | FailureCode::WorkerRuntimeFailed
     )
-}
-
-fn opaque_ipc_id(prefix: &str) -> Result<String, IpcError> {
-    let mut bytes = [0u8; 16];
-    #[cfg(unix)]
-    {
-        use std::io::Read;
-        std::fs::File::open("/dev/urandom")
-            .and_then(|mut file| file.read_exact(&mut bytes))
-            .map_err(|_| IpcError::with_code(None, FailureCode::InvalidState))?;
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = bytes;
-        return Err(IpcError::with_code(None, FailureCode::InvalidState));
-    }
-    let mut value = prefix.to_string();
-    for byte in bytes {
-        value.push_str(&format!("{byte:02x}"));
-    }
-    Ok(value)
 }
 
 fn app_cache_paths(
@@ -1426,7 +2331,8 @@ fn handle_watched_session(
         Ok(snapshot) => snapshot,
         Err(error) => {
             let code = map_supervisor_code(error.code);
-            transport.close_session(&window.label(), &session_id, generation);
+            transport.close_session(window.label(), &session_id, generation);
+            core.clear_result(window.label(), &session_id, generation);
             let _ = core.publish_failure(&window, code.clone(), retryable_failure(&code));
             if let Some(snapshot) = core.supervisor.active_snapshot() {
                 publish_snapshot_cleanup(&core, &window, &snapshot);
@@ -1467,6 +2373,8 @@ fn handle_watched_session(
                     } else {
                         FailureCode::DatasetHandoffInvalid
                     };
+                    transport.close_session(window.label(), &session_id, generation);
+                    core.clear_result(window.label(), &session_id, generation);
                     let _ = core.publish_failure(&window, code.clone(), true);
                     if let Ok(cleaned) = core.supervisor.reject_handoff(
                         window.label(),
@@ -1489,6 +2397,8 @@ fn handle_watched_session(
             ) {
                 Ok(capability) => capability,
                 Err(_) => {
+                    transport.close_session(window.label(), &session_id, generation);
+                    core.clear_result(window.label(), &session_id, generation);
                     let _ =
                         core.publish_failure(&window, FailureCode::DatasetTransportInvalid, true);
                     if let Ok(cleaned) = core.supervisor.reject_handoff(
@@ -1502,27 +2412,32 @@ fn handle_watched_session(
                     return;
                 }
             };
-            let result_id = match opaque_ipc_id("res_") {
-                Ok(result_id) => result_id,
-                Err(_) => {
-                    transport.close_session(&window.label(), &session_id, generation);
-                    let _ = core.publish_failure(&window, FailureCode::InvalidState, true);
-                    if let Ok(cleaned) = core.supervisor.reject_handoff(
-                        window.label(),
-                        &session_id,
-                        generation,
-                        "RESULT_ID_FAILED",
-                    ) {
-                        publish_snapshot_cleanup(&core, &window, &cleaned);
-                    }
-                    return;
+            if let Err(code) = core.commit_dataset_result(
+                window.label(),
+                &session_id,
+                generation,
+                &capability.dataset_id,
+                verified.record_count,
+                &verified.minimum_calendar_date,
+                &verified.maximum_calendar_date,
+            ) {
+                transport.close_session(window.label(), &session_id, generation);
+                core.clear_result(window.label(), &session_id, generation);
+                let _ = core.publish_failure(&window, code.clone(), retryable_failure(&code));
+                if let Ok(cleaned) = core.supervisor.reject_handoff(
+                    window.label(),
+                    &session_id,
+                    generation,
+                    "EXPORT_SCHEMA_INVALID",
+                ) {
+                    publish_snapshot_cleanup(&core, &window, &cleaned);
                 }
+                return;
             };
             if core
                 .publish_dataset_ready(
                     &window,
                     &capability.dataset_id,
-                    &result_id,
                     verified.record_count,
                     verified.chunk_count,
                     &verified.minimum_calendar_date,
@@ -1530,20 +2445,22 @@ fn handle_watched_session(
                 )
                 .is_err()
             {
-                transport.close_session(&window.label(), &session_id, generation);
+                transport.close_session(window.label(), &session_id, generation);
+                core.clear_result(window.label(), &session_id, generation);
                 return;
             }
             let _ = core.publish_state(&window, "analyzing");
-            let _ = core.publish_state(&window, "complete");
         }
         Some(crate::session_supervisor::SessionTerminal::Failed(reason)) => {
             let code = map_sidecar_reason(&reason);
-            transport.close_session(&window.label(), &session_id, generation);
+            transport.close_session(window.label(), &session_id, generation);
+            core.clear_result(window.label(), &session_id, generation);
             let _ = core.publish_failure(&window, code.clone(), retryable_failure(&code));
             publish_snapshot_cleanup(&core, &window, &snapshot);
         }
         Some(crate::session_supervisor::SessionTerminal::Cancelled) => {
-            transport.close_session(&window.label(), &session_id, generation);
+            transport.close_session(window.label(), &session_id, generation);
+            core.clear_result(window.label(), &session_id, generation);
             let reason = match snapshot.cancel_reason {
                 Some(crate::session_supervisor::CancelReason::Replacement) => "replacement",
                 Some(crate::session_supervisor::CancelReason::ApplicationClose) => {
@@ -1571,8 +2488,9 @@ fn handle_watched_session(
             }
         }
         None => {
+            core.clear_result(window.label(), &session_id, generation);
             let _ = core.publish_failure(&window, FailureCode::SidecarCrashed, true);
-            transport.close_session(&window.label(), &session_id, generation);
+            transport.close_session(window.label(), &session_id, generation);
             if let Some(snapshot) = core.supervisor.active_snapshot() {
                 publish_snapshot_cleanup(&core, &window, &snapshot);
             }
@@ -1876,10 +2794,19 @@ pub fn discard_session(
     state
         .validate_owned_session(window.label(), session_id, generation)
         .map_err(|code| IpcError::with_code(Some(request_id.clone()), code))?;
+    state.clear_result(window.label(), session_id, generation);
+    window
+        .app_handle()
+        .state::<crate::dataset_transport::DatasetTransportState>()
+        .close_session(window.label(), session_id, generation);
     if let Some(active) = state.supervisor.active_snapshot() {
         if active.session_id == session_id
             && active.generation == generation
-            && active.terminal.is_none()
+            && (active.terminal.is_none()
+                || matches!(
+                    active.terminal,
+                    Some(crate::session_supervisor::SessionTerminal::Complete(_))
+                ) && active.state == crate::session_supervisor::SessionState::Analyzing)
             && active.state != crate::session_supervisor::SessionState::Closing
         {
             state
@@ -1903,10 +2830,6 @@ pub fn discard_session(
         .map_err(|error| {
             IpcError::with_code(Some(request_id.clone()), map_supervisor_code(error.code))
         })?;
-    window
-        .app_handle()
-        .state::<crate::dataset_transport::DatasetTransportState>()
-        .close_session(window.label(), session_id, generation);
     let cleanup_already_published = state
         .registry
         .lock()
@@ -1932,11 +2855,42 @@ pub fn discard_session(
             "cleanup-required"
         },
     );
+    state.clear_result(window.label(), session_id, generation);
     Ok(command_ack(request_id))
 }
 
 #[tauri::command]
-pub fn export_aggregate(
+pub fn prepare_aggregate_result(
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, IpcCoreState>,
+    request: Value,
+) -> Result<WorkerPreparationAck, IpcError> {
+    let request_id = validate_command(&request)?;
+    let session_id = request
+        .get("sessionId")
+        .and_then(Value::as_str)
+        .ok_or_else(|| IpcError::invalid(Some(request_id.clone())))?;
+    let generation = request
+        .get("generation")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| IpcError::invalid(Some(request_id.clone())))?;
+    let query_key = request
+        .get("queryKey")
+        .and_then(Value::as_str)
+        .ok_or_else(|| IpcError::invalid(Some(request_id.clone())))?;
+    let capability = state
+        .prepare_aggregate_result(&window, window.label(), session_id, generation, query_key)
+        .map_err(|code| IpcError::with_code(Some(request_id.clone()), code))?;
+    Ok(WorkerPreparationAck {
+        protocol_version: WORKER_CAPABILITY_PROTOCOL_VERSION,
+        request_id,
+        accepted: true,
+        capability,
+    })
+}
+
+#[tauri::command]
+pub fn cancel_aggregate_result(
     window: tauri::WebviewWindow,
     state: tauri::State<'_, IpcCoreState>,
     request: Value,
@@ -1945,15 +2899,108 @@ pub fn export_aggregate(
     let session_id = request
         .get("sessionId")
         .and_then(Value::as_str)
-        .unwrap_or_default();
+        .ok_or_else(|| IpcError::invalid(Some(request_id.clone())))?;
     let generation = request
         .get("generation")
         .and_then(Value::as_u64)
-        .unwrap_or(0);
+        .ok_or_else(|| IpcError::invalid(Some(request_id.clone())))?;
+    state
+        .cancel_aggregate_result(window.label(), session_id, generation)
+        .map_err(|code| IpcError::with_code(Some(request_id.clone()), code))?;
+    Ok(command_ack(request_id))
+}
+
+#[tauri::command]
+pub fn commit_aggregate_result(
+    _window: tauri::WebviewWindow,
+    state: tauri::State<'_, IpcCoreState>,
+    request: Value,
+) -> Result<ResultCommitAck, IpcError> {
+    let (command, _) = validate_aggregate_result(&request)?;
+    let _ = state;
+    Err(IpcError::with_code(
+        Some(command.request_id),
+        FailureCode::ContractOnly,
+    ))
+}
+
+#[tauri::command]
+pub fn commit_worker_result(
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, IpcCoreState>,
+    request: Value,
+) -> Result<WorkerCommitAck, IpcError> {
+    let (command, aggregate) = validate_worker_commit(&request)?;
+    if command.capability.window_id != window.label() {
+        return Err(IpcError::with_code(None, FailureCode::WindowNotAuthorized));
+    }
+    let result_id = state
+        .commit_worker_operation(window.label(), command.capability, aggregate)
+        .map_err(|code| IpcError::with_code(None, code))?;
+    state
+        .publish_state(&window, "complete")
+        .map_err(|code| IpcError::with_code(None, code))?;
+    Ok(WorkerCommitAck {
+        protocol_version: WORKER_CAPABILITY_PROTOCOL_VERSION,
+        accepted: true,
+        result_id,
+    })
+}
+
+#[tauri::command]
+pub fn acknowledge_worker_stop(
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, IpcCoreState>,
+    request: Value,
+) -> Result<CommandAck, IpcError> {
+    let command = validate_session(&request, "acknowledge-worker-stop")?;
+    state
+        .acknowledge_worker_stop(window.label(), &command.session_id, command.generation)
+        .map_err(|code| IpcError::with_code(Some(command.request_id.clone()), code))?;
+    Ok(command_ack(command.request_id))
+}
+
+#[tauri::command]
+pub fn export_aggregate(
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, IpcCoreState>,
+    request: Value,
+) -> Result<CommandAck, IpcError> {
+    let command = validate_export(&request)?;
+    let request_id = command.request_id.clone();
+    let session_id = command.session_id.as_str();
+    let generation = command.generation;
     state
         .validate_owned_session(window.label(), session_id, generation)
         .map_err(|code| IpcError::with_code(Some(request_id.clone()), code))?;
-    Err(IpcError::contract_only(Some(request_id)))
+    let format = crate::export::ExportFormat::parse(&command.report_format)
+        .ok_or_else(|| IpcError::invalid(Some(request_id.clone())))?;
+    let chart_key = command
+        .chart_key
+        .as_deref()
+        .and_then(crate::export_schema::ApprovedChartKey::parse)
+        .unwrap_or(crate::export_schema::ApprovedChartKey::Trends);
+    match crate::export::export_registered_result(
+        &window,
+        state.result_registry(),
+        session_id,
+        generation,
+        &command.result_id,
+        format,
+        chart_key,
+    ) {
+        Ok(crate::export::ExportOutcome::Saved) => {
+            state
+                .publish_exported(&window, &command.result_id, &command.report_format)
+                .map_err(|code| IpcError::with_code(Some(request_id.clone()), code))?;
+            Ok(command_ack(request_id))
+        }
+        Ok(crate::export::ExportOutcome::Cancelled) => Ok(command_ack(request_id)),
+        Err(error) => Err(IpcError::with_code(
+            Some(request_id),
+            map_export_code(error.code),
+        )),
+    }
 }
 
 #[tauri::command]
@@ -1965,9 +3012,18 @@ pub fn request_application_close(
     let request_id = validate_command(&request)?;
     if request.get("decision").and_then(Value::as_str) == Some("cancel-and-close") {
         if let Some(snapshot) = state.supervisor.active_snapshot() {
-            if snapshot.terminal.is_none()
+            if (snapshot.terminal.is_none()
+                || matches!(
+                    snapshot.terminal,
+                    Some(crate::session_supervisor::SessionTerminal::Complete(_))
+                ) && snapshot.state == crate::session_supervisor::SessionState::Analyzing)
                 && snapshot.state != crate::session_supervisor::SessionState::Closing
             {
+                state.clear_result(window.label(), &snapshot.session_id, snapshot.generation);
+                window
+                    .app_handle()
+                    .state::<crate::dataset_transport::DatasetTransportState>()
+                    .close_session(window.label(), &snapshot.session_id, snapshot.generation);
                 state
                     .supervisor
                     .cancel(
@@ -1983,27 +3039,57 @@ pub fn request_application_close(
                         )
                     })?;
                 let _ = state.publish_state(&window, "cancelling");
-            } else if let Ok(cleaned) =
-                state
-                    .supervisor
-                    .close(window.label(), &snapshot.session_id, snapshot.generation)
-            {
-                window
-                    .app_handle()
-                    .state::<crate::dataset_transport::DatasetTransportState>()
-                    .close_session(window.label(), &snapshot.session_id, snapshot.generation);
-                publish_snapshot_cleanup(state.inner(), &window, &cleaned);
-                let _ = state.publish_closed(
-                    &window,
-                    if matches!(
-                        cleaned.cleanup,
-                        Some(crate::session_supervisor::CleanupStatus::Complete { .. })
-                    ) {
-                        "complete"
-                    } else {
-                        "cleanup-required"
-                    },
-                );
+            } else {
+                let worker_running = matches!(
+                    snapshot.terminal,
+                    Some(crate::session_supervisor::SessionTerminal::Complete(_))
+                ) && snapshot.state
+                    == crate::session_supervisor::SessionState::Analyzing;
+                if worker_running {
+                    state.clear_result(window.label(), &snapshot.session_id, snapshot.generation);
+                    window
+                        .app_handle()
+                        .state::<crate::dataset_transport::DatasetTransportState>()
+                        .close_session(window.label(), &snapshot.session_id, snapshot.generation);
+                    state
+                        .supervisor
+                        .cancel(
+                            window.label(),
+                            &snapshot.session_id,
+                            snapshot.generation,
+                            crate::session_supervisor::CancelReason::ApplicationClose,
+                        )
+                        .map_err(|error| {
+                            IpcError::with_code(
+                                Some(request_id.clone()),
+                                map_supervisor_code(error.code),
+                            )
+                        })?;
+                    let _ = state.publish_state(&window, "cancelling");
+                }
+                if let Ok(cleaned) = state.supervisor.close(
+                    window.label(),
+                    &snapshot.session_id,
+                    snapshot.generation,
+                ) {
+                    window
+                        .app_handle()
+                        .state::<crate::dataset_transport::DatasetTransportState>()
+                        .close_session(window.label(), &snapshot.session_id, snapshot.generation);
+                    publish_snapshot_cleanup(state.inner(), &window, &cleaned);
+                    let _ = state.publish_closed(
+                        &window,
+                        if matches!(
+                            cleaned.cleanup,
+                            Some(crate::session_supervisor::CleanupStatus::Complete { .. })
+                        ) {
+                            "complete"
+                        } else {
+                            "cleanup-required"
+                        },
+                    );
+                    state.clear_result(window.label(), &snapshot.session_id, snapshot.generation);
+                }
             }
         }
     }
@@ -2037,6 +3123,21 @@ mod tests {
     fn vectors() -> Vectors {
         serde_json::from_str(include_str!("../../contracts/desktop-ipc-v1.vectors.json"))
             .expect("valid shared vectors")
+    }
+
+    fn test_query_key(dataset_id: &str, generation: u64) -> String {
+        canonical_worker_query_key(
+            dataset_id,
+            generation,
+            &crate::export_schema::ExportFilters {
+                start_date: "2025-01-01".to_string(),
+                end_date: "2025-01-01".to_string(),
+                sender: "both".to_string(),
+                selected_year: None,
+                session_threshold_hours: 6,
+            },
+        )
+        .expect("valid synthetic query key")
     }
 
     #[test]
@@ -2078,6 +3179,122 @@ mod tests {
         assert!(!valid_state_transition("closing", "idle"));
         assert!(!valid_state_transition("complete", "analyzing"));
         assert!(valid_state_transition("ready", "preprocessing"));
+    }
+
+    #[test]
+    fn worker_capability_identity_and_expiry_matrix_fails_closed() {
+        let capability = WorkerOperationCapability {
+            protocol_version: WORKER_CAPABILITY_PROTOCOL_VERSION.to_string(),
+            operation_id: "wrk_00000000000000000000000000000001".to_string(),
+            nonce: "nonce_00000000000000000000000000000001".to_string(),
+            window_id: "main".to_string(),
+            session_id: "ses_00000000000000000000000000000001".to_string(),
+            generation: 1,
+            dataset_id: "dat_00000000000000000000000000000001".to_string(),
+            query_key: test_query_key("dat_00000000000000000000000000000001", 1),
+            analytics_contract_version: ANALYTICS_RESULT_CONTRACT_VERSION.to_string(),
+            expires_at_millis: now_unix_millis().saturating_add(60_000),
+        };
+        assert_eq!(validate_worker_capability(&capability, "main"), Ok(()));
+
+        let mut wrong_window = capability.clone();
+        wrong_window.window_id = "other".to_string();
+        assert!(validate_worker_capability(&wrong_window, "main").is_err());
+        let mut wrong_session = capability.clone();
+        wrong_session.session_id = "ses_00000000000000000000000000000002".to_string();
+        assert!(validate_worker_capability(&wrong_session, "main").is_ok());
+        let state = IpcCoreState::default();
+        state
+            .register_session("main", &capability.session_id, 1)
+            .unwrap();
+        assert_eq!(
+            state.validate_owned_session("main", &wrong_session.session_id, 1),
+            Err(FailureCode::InvalidSession)
+        );
+        let mut wrong_query = capability.clone();
+        wrong_query.query_key = "other-query".to_string();
+        assert!(validate_worker_capability(&wrong_query, "main").is_err());
+        let mut valid_but_wrong_query = capability.clone();
+        valid_but_wrong_query.query_key = canonical_worker_query_key(
+            &capability.dataset_id,
+            capability.generation,
+            &crate::export_schema::ExportFilters {
+                start_date: "2025-01-01".to_string(),
+                end_date: "2025-01-01".to_string(),
+                sender: "owner".to_string(),
+                selected_year: None,
+                session_threshold_hours: 6,
+            },
+        )
+        .unwrap();
+        assert!(validate_worker_capability(&valid_but_wrong_query, "main").is_ok());
+        let aggregate = vectors()
+            .commands
+            .into_iter()
+            .find(|command| command.value["type"] == "commit-aggregate-result")
+            .and_then(|command| serde_json::from_value(command.value["aggregate"].clone()).ok())
+            .expect("synthetic aggregate vector");
+        assert_eq!(
+            state.commit_worker_operation("main", valid_but_wrong_query, aggregate),
+            Err(FailureCode::WorkerRuntimeFailed)
+        );
+        let mut wrong_generation = capability.clone();
+        wrong_generation.generation = 2;
+        assert!(validate_worker_capability(&wrong_generation, "main").is_err());
+        let mut wrong_nonce = capability.clone();
+        wrong_nonce.nonce = "nonce_forged".to_string();
+        assert!(validate_worker_capability(&wrong_nonce, "main").is_err());
+        let mut expired = capability;
+        expired.expires_at_millis = 0;
+        assert!(validate_worker_capability(&expired, "main").is_err());
+    }
+
+    #[test]
+    fn worker_operation_registry_is_empty_after_clear_disconnect_and_shutdown() {
+        let session = "ses_00000000000000000000000000000001";
+        let capability = WorkerOperationCapability {
+            protocol_version: WORKER_CAPABILITY_PROTOCOL_VERSION.to_string(),
+            operation_id: "wrk_00000000000000000000000000000001".to_string(),
+            nonce: "nonce_00000000000000000000000000000001".to_string(),
+            window_id: "main".to_string(),
+            session_id: session.to_string(),
+            generation: 1,
+            dataset_id: "dat_00000000000000000000000000000001".to_string(),
+            query_key: test_query_key("dat_00000000000000000000000000000001", 1),
+            analytics_contract_version: ANALYTICS_RESULT_CONTRACT_VERSION.to_string(),
+            expires_at_millis: now_unix_millis().saturating_add(60_000),
+        };
+        let state = IpcCoreState::default();
+        state.register_session("main", session, 1).unwrap();
+        state.worker_operations.lock().unwrap().insert(
+            capability.operation_id.clone(),
+            WorkerOperationRecord {
+                capability: capability.clone(),
+                state: WorkerOperationState::Ready,
+            },
+        );
+        state.clear_result("main", session, 1);
+        assert!(state.worker_operations.lock().unwrap().is_empty());
+
+        state.worker_operations.lock().unwrap().insert(
+            capability.operation_id.clone(),
+            WorkerOperationRecord {
+                capability: capability.clone(),
+                state: WorkerOperationState::Ready,
+            },
+        );
+        state.renderer_disconnected("main");
+        assert!(state.worker_operations.lock().unwrap().is_empty());
+
+        state.worker_operations.lock().unwrap().insert(
+            capability.operation_id.clone(),
+            WorkerOperationRecord {
+                capability,
+                state: WorkerOperationState::Ready,
+            },
+        );
+        state.shutdown();
+        assert!(state.worker_operations.lock().unwrap().is_empty());
     }
 
     #[test]

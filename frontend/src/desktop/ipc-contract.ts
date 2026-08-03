@@ -1,3 +1,6 @@
+import { isRendererAggregateInput, type RendererAggregateInput } from "./export-contract";
+import { isCanonicalWorkerQueryKey } from "../worker-analysis/query-binding";
+
 export const DESKTOP_IPC_PROTOCOL_VERSION =
   "chat-history-analysis.desktop-ipc.v1" as const;
 
@@ -78,9 +81,31 @@ export type DesktopFailureCode =
   | "DISK_SPACE_INSUFFICIENT"
   | "DATASET_HANDOFF_INVALID"
   | "DATASET_TAMPERED"
-  | "DIALOG_UNAVAILABLE";
+  | "DIALOG_UNAVAILABLE"
+  | "EXPORT_BUSY"
+  | "EXPORT_RESULT_PENDING"
+  | "EXPORT_STALE_RESULT"
+  | "EXPORT_SCHEMA_INVALID"
+  | "EXPORT_LIMIT_EXCEEDED"
+  | "EXPORT_RENDER_FAILED"
+  | "EXPORT_PERMISSION_DENIED"
+  | "EXPORT_DISK_FULL"
+  | "EXPORT_WRITE_FAILED"
+  | "EXPORT_FLUSH_FAILED"
+  | "EXPORT_DURABILITY_UNCERTAIN"
+  | "EXPORT_RENAME_FAILED"
+  | "EXPORT_CLEANUP_REQUIRED"
+  | "EXPORT_RESULT_NOT_FOUND";
 
 export type ReportFormat = "png" | "csv" | "json";
+export type ApprovedChartKey =
+  | "trends"
+  | "sender-comparison"
+  | "hour"
+  | "weekday"
+  | "message-types"
+  | "reply-bins"
+  | "initiator-counts";
 
 export type DesktopCommand =
   | {
@@ -122,12 +147,38 @@ export type DesktopCommand =
     }
   | {
       readonly protocolVersion: typeof DESKTOP_IPC_PROTOCOL_VERSION;
+      readonly type: "prepare-aggregate-result";
+      readonly requestId: RequestId;
+      readonly sessionId: SessionId;
+      readonly generation: Generation;
+      readonly queryKey: string;
+    }
+  | {
+      readonly protocolVersion: typeof DESKTOP_IPC_PROTOCOL_VERSION;
+      readonly type:
+        | "cancel-aggregate-result"
+        | "acknowledge-worker-stop";
+      readonly requestId: RequestId;
+      readonly sessionId: SessionId;
+      readonly generation: Generation;
+    }
+  | {
+      readonly protocolVersion: typeof DESKTOP_IPC_PROTOCOL_VERSION;
+      readonly type: "commit-aggregate-result";
+      readonly requestId: RequestId;
+      readonly sessionId: SessionId;
+      readonly generation: Generation;
+      readonly aggregate: RendererAggregateInput;
+    }
+  | {
+      readonly protocolVersion: typeof DESKTOP_IPC_PROTOCOL_VERSION;
       readonly type: "export-aggregate";
       readonly requestId: RequestId;
       readonly sessionId: SessionId;
       readonly generation: Generation;
       readonly reportFormat: ReportFormat;
       readonly resultId: ResultId;
+      readonly chartKey?: ApprovedChartKey;
     }
   | {
       readonly protocolVersion: typeof DESKTOP_IPC_PROTOCOL_VERSION;
@@ -168,7 +219,6 @@ export type DesktopEvent =
       "dataset-ready",
       {
         readonly datasetId: DatasetId;
-        readonly resultId: ResultId;
         readonly recordCount: number;
         readonly chunkCount: number;
         readonly minimumCalendarDate: string;
@@ -201,6 +251,10 @@ export interface DesktopCommandAck {
   readonly protocolVersion: typeof DESKTOP_IPC_PROTOCOL_VERSION;
   readonly requestId: RequestId;
   readonly accepted: true;
+}
+
+export interface ResultCommitAck extends DesktopCommandAck {
+  readonly resultId: ResultId;
 }
 
 export interface DesktopIpcErrorPayload {
@@ -319,6 +373,8 @@ export function parseDesktopCommand(value: unknown): DesktopCommand {
     case "cancel-analysis":
     case "retry-analysis":
     case "discard-session":
+    case "cancel-aggregate-result":
+    case "acknowledge-worker-stop":
       if (
         !hasExactKeys(value, [
           "generation",
@@ -333,17 +389,63 @@ export function parseDesktopCommand(value: unknown): DesktopCommand {
       requireOpaqueId(value.sessionId, isSessionId);
       requireGeneration(value.generation);
       return value as DesktopCommand;
-    case "export-aggregate":
+    case "prepare-aggregate-result":
       if (
         !hasExactKeys(value, [
           "generation",
           "protocolVersion",
-          "reportFormat",
+          "queryKey",
           "requestId",
-          "resultId",
           "sessionId",
           "type",
-        ])
+        ]) ||
+        !isCanonicalWorkerQueryKey(value.queryKey)
+      ) {
+        throw new DesktopIpcValidationError("INVALID_REQUEST");
+      }
+      requireOpaqueId(value.sessionId, isSessionId);
+      requireGeneration(value.generation);
+      return value as DesktopCommand;
+    case "commit-aggregate-result":
+      if (
+        !hasExactKeys(value, [
+          "generation",
+          "protocolVersion",
+          "requestId",
+          "sessionId",
+          "aggregate",
+          "type",
+        ]) || !isRendererAggregateInput(value.aggregate)
+      ) {
+        throw new DesktopIpcValidationError("EXPORT_SCHEMA_INVALID");
+      }
+      requireOpaqueId(value.sessionId, isSessionId);
+      requireGeneration(value.generation);
+      return value as DesktopCommand;
+    case "export-aggregate":
+      if (
+        !(
+          hasExactKeys(value, [
+            "generation",
+            "protocolVersion",
+            "reportFormat",
+            "requestId",
+            "resultId",
+            "sessionId",
+            "type",
+          ]) ||
+          hasExactKeys(value, [
+            "chartKey",
+            "generation",
+            "protocolVersion",
+            "reportFormat",
+            "requestId",
+            "resultId",
+            "sessionId",
+            "type",
+          ])
+        ) ||
+        ("chartKey" in value && !isApprovedChartKey(value.chartKey))
       ) {
         throw new DesktopIpcValidationError("INVALID_REQUEST");
       }
@@ -374,6 +476,18 @@ export function parseDesktopCommand(value: unknown): DesktopCommand {
 
 export function isReportFormat(value: unknown): value is ReportFormat {
   return value === "png" || value === "csv" || value === "json";
+}
+
+export function isApprovedChartKey(value: unknown): value is ApprovedChartKey {
+  return (
+    value === "trends" ||
+    value === "sender-comparison" ||
+    value === "hour" ||
+    value === "weekday" ||
+    value === "message-types" ||
+    value === "reply-bins" ||
+    value === "initiator-counts"
+  );
 }
 
 export function isCalendarDate(value: unknown): value is string {
@@ -468,10 +582,8 @@ export function parseDesktopEvent(value: unknown): DesktopEvent {
           "minimumCalendarDate",
           "pseudonymous",
           "recordCount",
-          "resultId",
         ]) ||
         !isDatasetId(payload.datasetId) ||
-        !isResultId(payload.resultId) ||
         !isPositiveSafeInteger(payload.recordCount) ||
         !isPositiveSafeInteger(payload.chunkCount) ||
         !isCalendarDate(payload.minimumCalendarDate) ||
@@ -618,6 +730,20 @@ function isDesktopFailureCode(value: unknown): value is DesktopFailureCode {
       "DATASET_HANDOFF_INVALID",
       "DATASET_TAMPERED",
       "DIALOG_UNAVAILABLE",
+      "EXPORT_BUSY",
+      "EXPORT_RESULT_PENDING",
+      "EXPORT_STALE_RESULT",
+      "EXPORT_SCHEMA_INVALID",
+      "EXPORT_LIMIT_EXCEEDED",
+      "EXPORT_RENDER_FAILED",
+      "EXPORT_PERMISSION_DENIED",
+      "EXPORT_DISK_FULL",
+      "EXPORT_WRITE_FAILED",
+      "EXPORT_FLUSH_FAILED",
+      "EXPORT_DURABILITY_UNCERTAIN",
+      "EXPORT_RENAME_FAILED",
+      "EXPORT_CLEANUP_REQUIRED",
+      "EXPORT_RESULT_NOT_FOUND",
     ].includes(value)
   );
 }

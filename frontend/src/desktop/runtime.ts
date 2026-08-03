@@ -33,3 +33,11 @@ export async function listenForDesktopEvents(
     handler(event.payload, event);
   });
 }
+
+export async function listenForDesktopWorkerControl(
+  handler: (payload: unknown) => void,
+): Promise<() => void> {
+  return listen<unknown>("desktop-worker-control", (event) => {
+    handler(event.payload);
+  });
+}

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   DESKTOP_IPC_PROTOCOL_VERSION,
   acceptDesktopEvent,
+  isApprovedChartKey,
   isGeneration,
   parseDesktopCommand,
   parseDesktopEvent,
@@ -17,6 +18,7 @@ import {
   DESKTOP_COMMAND_ALLOWLIST,
   TAURI_COMMAND_ALLOWLIST,
 } from "../src/desktop/ipc";
+import { isRendererAggregateInput } from "../src/desktop/export-contract";
 
 const SESSION = "ses_00000000000000000000000000000001" as SessionId;
 const GENERATION = 1 as Generation;
@@ -206,5 +208,65 @@ describe("versioned desktop IPC contract", () => {
         "req_00000000000000000000000000000001" as RequestId,
       ),
     ).resolves.toMatchObject({ accepted: true });
+  });
+
+  it("keeps production export requests host-owned and chart allow-listed", async () => {
+    expect(isApprovedChartKey("trends")).toBe(true);
+    expect(isApprovedChartKey("word-cloud")).toBe(false);
+    expect(() =>
+      parseDesktopCommand({
+        protocolVersion: DESKTOP_IPC_PROTOCOL_VERSION,
+        type: "export-aggregate",
+        requestId: "req_00000000000000000000000000000001",
+        sessionId: SESSION,
+        generation: GENERATION,
+        reportFormat: "json",
+        resultId: "res_00000000000000000000000000000001",
+        chartKey: "word-cloud",
+      }),
+    ).toThrow("INVALID_REQUEST");
+
+    let received: unknown;
+    const api = createDesktopApi({
+      invoke: async <T>(_command: (typeof TAURI_COMMAND_ALLOWLIST)[number], args: unknown) => {
+        received = args;
+        return {
+          protocolVersion: DESKTOP_IPC_PROTOCOL_VERSION,
+          requestId: "req_00000000000000000000000000000001",
+          accepted: true,
+        } as T;
+      },
+    });
+    await api.exportAggregate(
+      "req_00000000000000000000000000000001" as RequestId,
+      SESSION,
+      GENERATION,
+      "csv",
+      "res_00000000000000000000000000000001" as never,
+      "sender-comparison",
+    );
+    expect(received).toEqual({
+      request: {
+        protocolVersion: DESKTOP_IPC_PROTOCOL_VERSION,
+        type: "export-aggregate",
+        requestId: "req_00000000000000000000000000000001",
+        sessionId: SESSION,
+        generation: GENERATION,
+        reportFormat: "csv",
+        resultId: "res_00000000000000000000000000000001",
+        chartKey: "sender-comparison",
+      },
+    });
+    expect(JSON.stringify(received)).not.toMatch(/path|body|token|keyword|participant|source/iu);
+  });
+
+  it("validates the synthetic aggregate commit boundary before IPC", () => {
+    const vector = vectors.commands.find((candidate) => candidate.name === "commit-aggregate-result");
+    expect(vector).toBeDefined();
+    const aggregate = (vector!.value as { aggregate: unknown }).aggregate;
+    expect(isRendererAggregateInput(aggregate)).toBe(true);
+    const unsafe = structuredClone(aggregate) as { methodology: string };
+    unsafe.methodology = "raw message body";
+    expect(isRendererAggregateInput(unsafe)).toBe(false);
   });
 });

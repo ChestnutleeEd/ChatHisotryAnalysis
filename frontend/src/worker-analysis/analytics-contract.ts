@@ -36,9 +36,13 @@ import {
   validateReplySessionMetrics,
   type ReplySessionMetrics,
 } from "./reply-session-metrics";
+import {
+  ANALYTICS_RESULT_CONTRACT_VERSION,
+  canonicalQueryKey as buildCanonicalQueryKey,
+} from "./query-binding";
 
-export const ANALYTICS_RESULT_SCHEMA_VERSION =
-  "chat-history-analysis.analytics-result.v3" as const;
+export { ANALYTICS_RESULT_CONTRACT_VERSION };
+export const ANALYTICS_RESULT_SCHEMA_VERSION = ANALYTICS_RESULT_CONTRACT_VERSION;
 
 export type CanonicalSenderFilter = "both" | "owner" | "other";
 
@@ -209,18 +213,11 @@ export function validateCanonicalFilters(
 }
 
 export function canonicalQueryKey(
+  datasetId: DatasetId | null,
   generation: Generation,
   filters: CanonicalAnalysisFilters,
 ): string {
-  return JSON.stringify([
-    generation,
-    METRIC_DEFINITION_VERSIONS,
-    filters.startDate,
-    filters.endDate,
-    filters.sender,
-    filters.selectedYear,
-    filters.sessionThresholdHours,
-  ]);
+  return buildCanonicalQueryKey(datasetId, generation, filters);
 }
 
 function exactKeys(
@@ -849,6 +846,7 @@ export function validateCanonicalAnalyticsResult(
   if (
     result.queryKey !==
     canonicalQueryKey(
+      result.datasetId as DatasetId | null,
       result.generation as Generation,
       filters as unknown as CanonicalAnalysisFilters,
     )

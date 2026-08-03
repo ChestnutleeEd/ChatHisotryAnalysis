@@ -1907,6 +1907,7 @@ export class AnalysisWorkerRuntime {
       throw new WorkerAnalysisError("SETTINGS_INVALID", "base");
     }
     const queryKey = canonicalQueryKey(
+      cache.correlation.datasetId,
       cache.correlation.generation,
       filters,
     );

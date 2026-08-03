@@ -4,6 +4,10 @@ import stopWordAsset from "./assets/stopwords-zh-en-v1.txt?raw";
 import type {
   WorkerRequest,
   WorkerResponse,
+  WorkerOperationCapability,
+} from "./protocol";
+import {
+  WORKER_CAPABILITY_PROTOCOL_VERSION,
 } from "./protocol";
 import { createAnalysisWorkerHandler } from "./worker-handler";
 import { AnalysisWorkerRuntime } from "./worker-runtime";
@@ -12,6 +16,9 @@ import {
   type DatasetTransportInvoker,
 } from "./desktop-dataset-source";
 import type { DesktopDatasetSourceRequest } from "./protocol";
+import type { CanonicalAnalysisResult } from "./analytics-contract";
+import { buildRendererAggregateInput } from "../desktop/export-contract";
+import { isResultId } from "../desktop/ipc-contract";
 
 interface WorkerScope {
   onmessage: ((event: MessageEvent<WorkerRequest>) => void) | null;
@@ -39,6 +46,16 @@ interface TauriWorkerInternals {
   invoke<T>(command: string, args: unknown): Promise<T>;
 }
 
+function tauriWorkerInternals(): TauriWorkerInternals {
+  const internals = (globalThis as typeof globalThis & {
+    readonly __TAURI_INTERNALS__?: TauriWorkerInternals;
+  }).__TAURI_INTERNALS__;
+  if (internals === undefined) {
+    throw new Error("WORKER_CAPABILITY_UNAVAILABLE");
+  }
+  return internals;
+}
+
 function tauriDatasetInvoker(): DatasetTransportInvoker {
   const internals = (globalThis as typeof globalThis & {
     readonly __TAURI_INTERNALS__?: TauriWorkerInternals;
@@ -61,6 +78,36 @@ function tauriDatasetInvoker(): DatasetTransportInvoker {
   };
 }
 
+async function commitDesktopWorkerResult(
+  capability: WorkerOperationCapability,
+  result: CanonicalAnalysisResult,
+): Promise<string> {
+  const value = await tauriWorkerInternals().invoke<unknown>(
+    "commit_worker_result",
+    {
+      request: {
+        protocolVersion: WORKER_CAPABILITY_PROTOCOL_VERSION,
+        type: "commit-worker-result",
+        capability,
+        aggregate: buildRendererAggregateInput(result),
+      },
+    },
+  );
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    Object.keys(value).sort().join(",") !== "accepted,protocolVersion,resultId" ||
+    (value as Record<string, unknown>).protocolVersion !==
+      WORKER_CAPABILITY_PROTOCOL_VERSION ||
+    (value as Record<string, unknown>).accepted !== true ||
+    !isResultId((value as Record<string, unknown>).resultId)
+  ) {
+    throw new Error("WORKER_COMMIT_REJECTED");
+  }
+  return (value as { readonly resultId: string }).resultId;
+}
+
 async function createDesktopDatasetSource(
   request: DesktopDatasetSourceRequest,
 ) {
@@ -76,4 +123,5 @@ async function createDesktopDatasetSource(
 
 workerScope.onmessage = createAnalysisWorkerHandler(workerScope, runtime, {
   createDesktopDatasetSource,
+  commitDesktopWorkerResult,
 });

@@ -7,7 +7,7 @@
   },
   "app": {
     "security": {
-      "csp": "default-src 'self' http://127.0.0.1:5173; script-src 'self' 'unsafe-eval' http://127.0.0.1:5173; style-src 'self' 'unsafe-inline' http://127.0.0.1:5173; img-src 'self' data: blob:; font-src 'self'; connect-src ipc: http://127.0.0.1:5173; worker-src 'self' blob:; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"
+      "csp": "default-src 'self' http://127.0.0.1:5173; script-src 'self' 'unsafe-eval' http://127.0.0.1:5173; style-src 'self' 'unsafe-inline' http://127.0.0.1:5173; img-src 'self' data: blob:; font-src 'self'; connect-src ipc: http://127.0.0.1:5173; worker-src 'self' blob:; media-src 'none'; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
     },
     "windows": [
       {

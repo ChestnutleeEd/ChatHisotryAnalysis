@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 
-import type { ReportFormat } from "../desktop/ipc-contract";
+import type { ApprovedChartKey, ReportFormat } from "../desktop/ipc-contract";
 import type {
   CanonicalAnalysisFilters,
   CanonicalAnalysisResult,
@@ -39,7 +39,7 @@ interface DesktopDashboardProps {
   readonly pending: boolean;
   readonly onFilterChange: (filters: CanonicalAnalysisFilters) => void;
   readonly onAnalyzeOtherFiles: () => void;
-  readonly onExport: (format: ReportFormat) => void;
+  readonly onExport: (format: ReportFormat, chartKey: ApprovedChartKey) => void;
 }
 
 interface MetricCardProps {
@@ -185,7 +185,12 @@ function BarChart({
               <strong>{row.displayValue}</strong>
             </div>
             <div className="dashboard-bar-track" aria-hidden="true">
-              <span style={{ width: `${Math.max(0, Math.min(100, (row.value / max) * 100))}%` }} />
+              <progress
+                className="dashboard-bar-progress"
+                max={max}
+                value={Math.max(0, Math.min(max, row.value))}
+                aria-label={`${row.label} ${row.displayValue}`}
+              />
             </div>
             {row.secondary !== undefined ? <small>{row.secondary}</small> : null}
           </div>
@@ -617,8 +622,9 @@ function ExportPage({
   readonly result: CanonicalAnalysisResult;
   readonly pending: boolean;
   readonly draftFilters: CanonicalAnalysisFilters;
-  readonly onExport: (format: ReportFormat) => void;
+  readonly onExport: (format: ReportFormat, chartKey: ApprovedChartKey) => void;
 }) {
+  const [selectedChart, setSelectedChart] = useState<ApprovedChartKey>("trends");
   const stale = pending || !filtersEqual(draftFilters, result.filters);
   const reason = pending ? "本地计算进行中，等待完整结果代次。" : stale ? "筛选草稿尚未提交，不能导出旧代次。" : undefined;
   return (
@@ -631,16 +637,35 @@ function ExportPage({
           <div><dt>发送方范围</dt><dd>{senderLabel(result.filters.sender)}</dd></div>
           <div><dt>时区</dt><dd>UTC+08:00</dd></div>
           <div><dt>结果代次</dt><dd>{result.generation}</dd></div>
-          <div><dt>包含面板</dt><dd>{DASHBOARD_ROUTES.filter((route) => route !== "Export").join("、")}</dd></div>
-          <div><dt>隐私标记</dt><dd>本地聚合数据，可能包含敏感统计</dd></div>
+          <div><dt>会话阈值</dt><dd>{result.filters.sessionThresholdHours} 小时</dd></div>
+          <div><dt>包含字段</dt><dd>聚合计数、占比、趋势、类别、时间差、会话、筛选、定义版本、partial 标记</dd></div>
+          <div><dt>排除字段</dt><dd>正文、参与者、标识符、路径、token、关键词、源元数据</dd></div>
         </dl>
+        <label className="dashboard-export-chart-select" htmlFor="dashboard-export-chart">
+          PNG 图表
+          <select
+            id="dashboard-export-chart"
+            value={selectedChart}
+            onChange={(event) => setSelectedChart(event.currentTarget.value as ApprovedChartKey)}
+            disabled={stale}
+          >
+            <option value="trends">趋势</option>
+            <option value="sender-comparison">发送方比较</option>
+            <option value="hour">小时分布</option>
+            <option value="weekday">星期分布</option>
+            <option value="message-types">消息类型</option>
+            <option value="reply-bins">回复区间</option>
+            <option value="initiator-counts">会话开场次数</option>
+          </select>
+        </label>
         <div className="dashboard-export-actions" aria-describedby={reason === undefined ? undefined : "export-disabled-reason"}>
-          <button className="dashboard-button dashboard-button-primary" type="button" disabled={stale} onClick={() => onExport("png")}>导出当前图表 PNG</button>
-          <button className="dashboard-button" type="button" disabled={stale} onClick={() => onExport("csv")}>导出聚合 CSV</button>
-          <button className="dashboard-button" type="button" disabled={stale} onClick={() => onExport("json")}>导出聚合 JSON</button>
+          <button className="dashboard-button dashboard-button-primary" type="button" disabled={stale} onClick={() => onExport("png", selectedChart)}>导出批准图表 PNG</button>
+          <button className="dashboard-button" type="button" disabled={stale} onClick={() => onExport("csv", selectedChart)}>导出聚合 CSV</button>
+          <button className="dashboard-button" type="button" disabled={stale} onClick={() => onExport("json", selectedChart)}>导出聚合 JSON</button>
         </div>
         {reason !== undefined ? <p id="export-disabled-reason" className="dashboard-empty" role="status">{reason}</p> : null}
-        <p className="dashboard-definition-copy">文件不包含消息正文、token-level source text、参与者身份、标识符、源路径或隐藏元数据；文件名由本地保存流程使用通用默认名。</p>
+        <p className="dashboard-definition-copy">当前筛选、时区和阈值会写入导出契约；文件不包含正文、token-level source text、参与者身份、标识符、源路径或隐藏元数据。</p>
+        <p className="dashboard-export-warning" role="note">本地聚合数据仍可能包含敏感信息，请谨慎选择保存位置和分享对象。</p>
       </section>
       <Definition>
         <p>导出通过原生保存流程完成；取消保存不会改变当前结果。</p>

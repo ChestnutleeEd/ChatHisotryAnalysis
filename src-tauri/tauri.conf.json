@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Chat History Analysis",
   "version": "0.1.0",
-  "identifier": "com.example.chat-history-analysis",
+  "identifier": "com.chathistoryanalysis.desktop",
   "build": {
     "beforeBuildCommand": "node -e \"const fs=require('node:fs');const path=require('node:path');const cp=require('node:child_process');let d=process.cwd();while(d!==path.dirname(d)&&!fs.existsSync(path.join(d,'frontend','package.json')))d=path.dirname(d);if(!fs.existsSync(path.join(d,'frontend','package.json')))process.exit(1);const r=cp.spawnSync(process.execPath,[path.join(d,'scripts','tauri-frontend-hook.mjs'),'build'],{cwd:d,stdio:'inherit'});process.exit(r.status??1)\"",
     "frontendDist": "../frontend/dist"
@@ -10,7 +10,7 @@
   "app": {
     "withGlobalTauri": false,
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src ipc:; worker-src 'self' blob:; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src ipc:; worker-src 'self' blob:; media-src 'none'; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
     },
     "windows": [
       {

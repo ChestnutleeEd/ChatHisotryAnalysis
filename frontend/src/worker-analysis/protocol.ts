@@ -2,6 +2,11 @@ import type {
   DatasetSummary,
   SenderFilter,
 } from "../normalized/schema";
+import {
+  isDatasetId,
+  isGeneration,
+  isSessionId,
+} from "../desktop/ipc-contract";
 import type {
   DatasetId,
   Generation,
@@ -12,11 +17,19 @@ import type {
   CanonicalAnalysisSettings,
   CanonicalDatasetSummary,
 } from "./analytics-contract";
+import {
+  ANALYTICS_RESULT_CONTRACT_VERSION,
+  isWorkerQueryKeyBoundTo,
+} from "./query-binding";
 
 export const STOP_WORDS_VERSION =
   "chat-history-analysis.stopwords.zh-en.v1";
 export const STOP_WORDS_SHA256 =
   "a967184c888afe1fe52a430ba7bf838b39390c1902e6c5b35951a6633068e54b";
+
+export const WORKER_CAPABILITY_PROTOCOL_VERSION =
+  "chat-history-analysis.worker-capability.v1" as const;
+export { ANALYTICS_RESULT_CONTRACT_VERSION };
 
 export type WorkerPhase =
   | "transport"
@@ -37,6 +50,7 @@ export type WorkerFailureCode =
   | "WORKER_RUNTIME_FAILED"
   | "WORKER_TERMINATED"
   | "WORKER_TIMEOUT"
+  | "WORKER_COMMIT_REJECTED"
   | "WASM_INITIALIZATION_FAILED"
   | "MEMORY_PRESSURE"
   | "RAW_EXPORT_UNSUPPORTED"
@@ -121,7 +135,21 @@ export type DesktopDatasetSourceRequest = {
   readonly sessionId: SessionId;
   readonly generation: Generation;
   readonly datasetId: DatasetId;
+  readonly workerCapability: WorkerOperationCapability;
 };
+
+export interface WorkerOperationCapability {
+  readonly protocolVersion: typeof WORKER_CAPABILITY_PROTOCOL_VERSION;
+  readonly operationId: string;
+  readonly nonce: string;
+  readonly windowId: string;
+  readonly sessionId: SessionId;
+  readonly generation: Generation;
+  readonly datasetId: DatasetId;
+  readonly queryKey: string;
+  readonly analyticsContractVersion: typeof ANALYTICS_RESULT_CONTRACT_VERSION;
+  readonly expiresAtMillis: number;
+}
 
 export type WorkerDatasetSourceRequest =
   | BrowserFileSourceRequest
@@ -142,6 +170,7 @@ export type WorkerRequest =
       readonly generation: number;
       readonly sequence: number;
       readonly settings: AnalysisSettings | CanonicalAnalysisSettings;
+      readonly workerCapability?: WorkerOperationCapability;
     }
   | {
       readonly type: "cancel";
@@ -169,6 +198,7 @@ export type WorkerResponse =
       readonly generation: number;
       readonly sequence: number;
       readonly result: AnalysisResult | CanonicalAnalysisResult;
+      readonly resultId?: string;
     }
   | {
       readonly type: "cancelled";
@@ -186,6 +216,48 @@ export type WorkerResponse =
       readonly chunkOrdinal?: number;
       readonly lineOrdinal?: number;
     };
+
+export function isWorkerOperationCapability(
+  value: unknown,
+): value is WorkerOperationCapability {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const object = value as Record<string, unknown>;
+  const expected = [
+    "analyticsContractVersion",
+    "datasetId",
+    "expiresAtMillis",
+    "generation",
+    "nonce",
+    "operationId",
+    "protocolVersion",
+    "queryKey",
+    "sessionId",
+    "windowId",
+  ].sort();
+  const actual = Object.keys(object).sort();
+  return (
+    actual.length === expected.length &&
+    actual.every((key, index) => key === expected[index]) &&
+    object.protocolVersion === WORKER_CAPABILITY_PROTOCOL_VERSION &&
+    /^wrk_[0-9a-f]{32}$/u.test(String(object.operationId)) &&
+    /^nonce_[0-9a-f]{32}$/u.test(String(object.nonce)) &&
+    object.windowId === "main" &&
+    isSessionId(object.sessionId) &&
+    isGeneration(object.generation) &&
+    object.generation !== 0 &&
+    isDatasetId(object.datasetId) &&
+    isWorkerQueryKeyBoundTo(
+      object.queryKey,
+      object.datasetId as DatasetId,
+      object.generation as Generation,
+    ) &&
+    object.analyticsContractVersion === ANALYTICS_RESULT_CONTRACT_VERSION &&
+    Number.isSafeInteger(object.expiresAtMillis) &&
+    (object.expiresAtMillis as number) >= Date.now()
+  );
+}
 
 export interface LegacyAcceptedDatasetResult {
   readonly summary: DatasetSummary;

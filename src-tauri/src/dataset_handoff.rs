@@ -11,8 +11,8 @@ use serde_json::{Map, Number, Value};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
+#[cfg(test)]
 use std::fs;
-use std::io::Read;
 use std::path::Path;
 
 use crate::dataset_transport::{
@@ -23,6 +23,7 @@ use crate::session_supervisor::ANALYSIS_SESSIONS_DIRECTORY;
 const MANIFEST_NAME: &str = "manifest.json";
 const SESSION_MARKER: &str = ".session-marker";
 const SESSION_STATE: &str = "session-state";
+#[cfg(test)]
 const NORMALIZED_DIRECTORY: &str = "normalized";
 const CANONICAL_MANIFEST_VERSION: &str = "chat-history-analysis.manifest.v2";
 const CANONICAL_EVENT_VERSION: &str = "chat-history-analysis.canonical-event.v2";
@@ -152,23 +153,18 @@ pub fn verify_session_dataset(
             .and_then(|value| value.to_str())
             != Some(ANALYSIS_SESSIONS_DIRECTORY)
         || !absolute_no_parent(session_root)
-        || !path_has_no_symlink_components(session_root)
-        || !secure_directory(session_root)
-        || !secure_directory(
-            session_root
-                .parent()
-                .ok_or_else(|| HandoffError::new(HandoffErrorCode::UnsafeSessionRoot))?,
-        )
     {
         return Err(HandoffError::new(HandoffErrorCode::UnsafeSessionRoot));
     }
-    verify_session_marker(session_root, session_id, generation)?;
-    let normalized = session_root.join(NORMALIZED_DIRECTORY);
-    if !secure_directory(&normalized) {
-        return Err(HandoffError::new(HandoffErrorCode::UnsafeSessionRoot));
-    }
-    let manifest_path = normalized.join(MANIFEST_NAME);
-    let manifest = read_private_file(&manifest_path, MAX_MANIFEST_BYTES)
+    let application_cache_root = session_root
+        .parent()
+        .and_then(Path::parent)
+        .ok_or_else(|| HandoffError::new(HandoffErrorCode::UnsafeSessionRoot))?;
+    let storage = crate::secure_storage::SecureStorage::new(application_cache_root)
+        .map_err(|_| HandoffError::new(HandoffErrorCode::UnsafeSessionRoot))?;
+    verify_session_marker(&storage, session_id, generation)?;
+    let manifest = storage
+        .read_normalized_entry(session_id, MANIFEST_NAME, MAX_MANIFEST_BYTES)
         .map_err(|_| HandoffError::new(HandoffErrorCode::MissingEntry))?;
     if !manifest.ends_with(b"\n") || manifest.starts_with(b"\xef\xbb\xbf") {
         return Err(HandoffError::new(HandoffErrorCode::InvalidManifest));
@@ -180,22 +176,11 @@ pub fn verify_session_dataset(
     let expected_names = std::iter::once(MANIFEST_NAME.to_string())
         .chain(descriptors.iter().map(|descriptor| descriptor.name.clone()))
         .collect::<BTreeSet<_>>();
-    let observed_names = fs::read_dir(&normalized)
+    let observed_names = storage
+        .list_normalized_entries(session_id)
         .map_err(|_| HandoffError::new(HandoffErrorCode::UnsafeSessionRoot))?
-        .map(|entry| {
-            let entry =
-                entry.map_err(|_| HandoffError::new(HandoffErrorCode::UnsafeSessionRoot))?;
-            let metadata = fs::symlink_metadata(entry.path())
-                .map_err(|_| HandoffError::new(HandoffErrorCode::UnsafeSessionRoot))?;
-            if metadata.file_type().is_symlink()
-                || !metadata.is_file()
-                || !secure_regular_file(&entry.path())
-            {
-                return Err(HandoffError::new(HandoffErrorCode::ExtraEntry));
-            }
-            Ok(entry.file_name().to_string_lossy().into_owned())
-        })
-        .collect::<Result<BTreeSet<_>, _>>()?;
+        .into_iter()
+        .collect::<BTreeSet<_>>();
     if observed_names != expected_names {
         return Err(HandoffError::new(
             if expected_names.is_superset(&observed_names) {
@@ -219,7 +204,8 @@ pub fn verify_session_dataset(
     let mut minimum_date: Option<String> = None;
     let mut maximum_date: Option<String> = None;
     for descriptor in descriptors {
-        let bytes = read_private_file(&normalized.join(&descriptor.name), MAX_CHUNK_BYTES)
+        let bytes = storage
+            .read_normalized_entry(session_id, &descriptor.name, MAX_CHUNK_BYTES)
             .map_err(|_| HandoffError::new(HandoffErrorCode::InvalidChunk))?;
         if bytes.len() != descriptor.byte_size {
             return Err(HandoffError::new(HandoffErrorCode::TamperedDataset));
@@ -304,16 +290,18 @@ pub fn verify_session_dataset(
 }
 
 fn verify_session_marker(
-    session_root: &Path,
+    storage: &crate::secure_storage::SecureStorage,
     session_id: &str,
     generation: u64,
 ) -> Result<(), HandoffError> {
-    let marker = read_private_file(&session_root.join(SESSION_MARKER), 128)
+    let marker = storage
+        .read_session_entry(session_id, SESSION_MARKER, 128)
         .map_err(|_| HandoffError::new(HandoffErrorCode::MissingEntry))?;
     if marker != b"chat-history-analysis-session-v1\n" {
         return Err(HandoffError::new(HandoffErrorCode::UnsafeSessionRoot));
     }
-    let state = read_private_file(&session_root.join(SESSION_STATE), 256)
+    let state = storage
+        .read_session_entry(session_id, SESSION_STATE, 256)
         .map_err(|_| HandoffError::new(HandoffErrorCode::MissingEntry))?;
     let state = std::str::from_utf8(&state)
         .map_err(|_| HandoffError::new(HandoffErrorCode::UnsafeSessionRoot))?;
@@ -677,90 +665,6 @@ fn absolute_no_parent(path: &Path) -> bool {
             .any(|component| matches!(component, std::path::Component::ParentDir))
 }
 
-fn path_has_no_symlink_components(path: &Path) -> bool {
-    if !absolute_no_parent(path) {
-        return false;
-    }
-    let mut current = Path::new("").to_path_buf();
-    for component in path.components() {
-        current.push(component);
-        match fs::symlink_metadata(&current) {
-            Ok(metadata) if metadata.file_type().is_symlink() => {
-                #[cfg(target_os = "macos")]
-                if current == Path::new("/var")
-                    && fs::canonicalize(&current).ok().as_deref() == Some(Path::new("/private/var"))
-                {
-                    continue;
-                }
-                return false;
-            }
-            Ok(_) => {}
-            Err(_) => return false,
-        }
-    }
-    true
-}
-
-fn secure_directory(path: &Path) -> bool {
-    let Ok(metadata) = fs::symlink_metadata(path) else {
-        return false;
-    };
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
-        return false;
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::{MetadataExt, PermissionsExt};
-        metadata.uid() == unsafe { libc_getuid() } && metadata.permissions().mode() & 0o777 == 0o700
-    }
-    #[cfg(not(unix))]
-    true
-}
-
-fn secure_regular_file(path: &Path) -> bool {
-    let Ok(metadata) = fs::symlink_metadata(path) else {
-        return false;
-    };
-    secure_regular_metadata(&metadata)
-}
-
-fn secure_regular_metadata(metadata: &fs::Metadata) -> bool {
-    if metadata.file_type().is_symlink() || !metadata.is_file() {
-        return false;
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::{MetadataExt, PermissionsExt};
-        metadata.uid() == unsafe { libc_getuid() } && metadata.permissions().mode() & 0o777 == 0o600
-    }
-    #[cfg(not(unix))]
-    true
-}
-
-fn read_private_file(path: &Path, maximum: usize) -> Result<Vec<u8>, ()> {
-    if !secure_regular_file(path) {
-        return Err(());
-    }
-    let mut options = fs::OpenOptions::new();
-    options.read(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.custom_flags(libc::O_NOFOLLOW);
-    }
-    let mut file = options.open(path).map_err(|_| ())?;
-    let metadata = file.metadata().map_err(|_| ())?;
-    if !secure_regular_metadata(&metadata) || metadata.len() > maximum as u64 {
-        return Err(());
-    }
-    let mut bytes = Vec::with_capacity(metadata.len() as usize);
-    file.read_to_end(&mut bytes).map_err(|_| ())?;
-    if bytes.len() > maximum {
-        return Err(());
-    }
-    Ok(bytes)
-}
-
 fn hex_digest(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
@@ -863,14 +767,6 @@ impl<'de> Visitor<'de> for DuplicateRejectVisitor {
         }
         Ok(Value::Object(values))
     }
-}
-
-#[cfg(unix)]
-unsafe fn libc_getuid() -> u32 {
-    unsafe extern "C" {
-        fn getuid() -> u32;
-    }
-    unsafe { getuid() }
 }
 
 #[cfg(test)]

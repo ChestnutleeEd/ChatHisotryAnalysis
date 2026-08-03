@@ -10,9 +10,15 @@ import {
   type EventCursor,
   type Generation,
   type ReportFormat,
+  type ApprovedChartKey,
   type SessionId,
 } from "../desktop/ipc-contract";
-import { desktopApi, listenForDesktopEvents } from "../desktop/runtime";
+import {
+  desktopApi,
+  listenForDesktopEvents,
+  listenForDesktopWorkerControl,
+} from "../desktop/runtime";
+import { isWorkerPreparationAck } from "../desktop/ipc";
 import {
   AnalysisWorkerClient,
   WorkerClientCancelledError,
@@ -22,6 +28,7 @@ import type {
   CanonicalAnalysisFilters,
   CanonicalAnalysisResult,
 } from "../worker-analysis/analytics-contract";
+import { canonicalQueryKey } from "../worker-analysis/analytics-contract";
 import type { WorkerProgress } from "../worker-analysis/protocol";
 import { DesktopDashboard } from "./DesktopDashboard";
 import {
@@ -62,7 +69,7 @@ interface ProgressView {
 
 interface DatasetState {
   readonly datasetId: DatasetId;
-  readonly resultId: string;
+  readonly resultId?: string;
   readonly recordCount: number;
   readonly chunkCount: number;
   readonly minimumCalendarDate: string;
@@ -162,6 +169,8 @@ export function DesktopImportPanel() {
   const replacementPendingRef = useRef(false);
   const analyticsClientRef = useRef<AnalysisWorkerClient | undefined>(undefined);
   const analyticsAttemptRef = useRef(0);
+  const exportAttemptRef = useRef<{ readonly format: ReportFormat; readonly chartKey: ApprovedChartKey }>(undefined);
+  const exportOutcomeRef = useRef<string>("unknown");
   const [onboardingSeen, setOnboardingSeen] = useState(readOnboardingPreference);
   const [onboardingOpen, setOnboardingOpen] = useState(!readOnboardingPreference());
   const [selectionId, setSelectionId] = useState<string>();
@@ -223,11 +232,48 @@ export function DesktopImportPanel() {
     return () => document.removeEventListener("keydown", trapFocus);
   }, [closeDialogOpen, onboardingOpen]);
 
-  function resetAnalytics(clearResult = true): void {
+  async function stopAnalyticsWorker(
+    sessionId: SessionId | null = cursorRef.current.sessionId,
+    generation: Generation = cursorRef.current.generation,
+  ): Promise<void> {
+    const client = analyticsClientRef.current;
+    try {
+      if (client !== undefined) {
+        await client.stop();
+      }
+    } finally {
+      if (sessionId !== null) {
+        try {
+          await desktopApi.acknowledgeWorkerStop(
+            requestId() as never,
+            sessionId,
+            generation,
+          );
+        } catch {
+          // The host may already have invalidated the operation during close.
+        }
+        try {
+          await desktopApi.cancelAggregateResult(
+            requestId() as never,
+            sessionId,
+            generation,
+          );
+        } catch {
+          // Session cleanup remains the host-side authority if the renderer is stale.
+        }
+      }
+      if (client !== undefined) {
+        client.dispose();
+        if (analyticsClientRef.current === client) {
+          analyticsClientRef.current = undefined;
+        }
+      }
+    }
+  }
+
+  async function resetAnalytics(clearResult = true): Promise<void> {
     analyticsAttemptRef.current += 1;
-    analyticsClientRef.current?.cancelActive();
-    analyticsClientRef.current?.dispose();
-    analyticsClientRef.current = undefined;
+    await stopAnalyticsWorker();
     setAnalyticsPending(false);
     setAnalyticsError(undefined);
     if (clearResult) {
@@ -254,6 +300,14 @@ export function DesktopImportPanel() {
   }
 
   function analyticsFailureMessage(error: unknown): string {
+    const code =
+      error !== null && typeof error === "object" && "code" in error && typeof error.code === "string"
+        ? (error.code as DesktopFailureCode)
+        : undefined;
+    const contractMessage = desktopFailureMessage(code);
+    if (contractMessage !== undefined && code?.startsWith("EXPORT_") === true) {
+      return contractMessage;
+    }
     if (error instanceof WorkerClientCancelledError) {
       return "本地统计计算已取消；上一次完整结果仍保留。";
     }
@@ -275,13 +329,11 @@ export function DesktopImportPanel() {
     sessionId: SessionId,
     generation: Generation,
     datasetId: DatasetId,
+    minimumCalendarDate: string,
+    maximumCalendarDate: string,
     replaceResult: boolean,
   ): Promise<void> {
-    if (replaceResult) {
-      resetAnalytics(true);
-    } else {
-      resetAnalytics(false);
-    }
+    await resetAnalytics(replaceResult);
     const attempt = analyticsAttemptRef.current;
     const startedAt = Date.now();
     progressStartedAtRef.current = startedAt;
@@ -289,8 +341,34 @@ export function DesktopImportPanel() {
     setAnalyticsError(undefined);
     setStatus("正在由本地 analytics Worker 构建统计");
     try {
+      const initialFilters: CanonicalAnalysisFilters = {
+        startDate: minimumCalendarDate,
+        endDate: maximumCalendarDate,
+        sender: "both",
+        selectedYear: null,
+        sessionThresholdHours: 6,
+      };
+      const preparation = await desktopApi.prepareAggregateResult(
+        requestId() as never,
+        sessionId,
+        generation,
+        canonicalQueryKey(datasetId, generation, initialFilters),
+      );
+      if (
+        !isWorkerPreparationAck(preparation) ||
+        preparation.capability.sessionId !== sessionId ||
+        preparation.capability.generation !== generation ||
+        preparation.capability.datasetId !== datasetId
+      ) {
+        throw new WorkerClientError("WORKER_COMMIT_REJECTED");
+      }
       const accepted = await analyticsClient().loadDesktopDataset(
-        { sessionId, generation, datasetId },
+        {
+          sessionId,
+          generation,
+          datasetId,
+          workerCapability: preparation.capability,
+        },
         (next) => setProgressFromWorker(next, sessionId, generation),
       );
       if (
@@ -306,6 +384,18 @@ export function DesktopImportPanel() {
       }
       const nextResult = accepted.result as CanonicalAnalysisResult;
       createDashboardViewModel(nextResult);
+      const committedResultId = analyticsClient().committedResultId;
+      if (committedResultId === undefined) {
+        throw new WorkerClientError("WORKER_COMMIT_REJECTED");
+      }
+      if (!mountedRef.current || attempt !== analyticsAttemptRef.current) {
+        return;
+      }
+      setDataset((current) =>
+        current !== undefined && current.sessionId === sessionId && current.generation === generation
+          ? { ...current, resultId: committedResultId }
+          : current,
+      );
       setAnalyticsResult(nextResult);
       setAnalyticsError(undefined);
       setStatus("本地统计已就绪");
@@ -313,13 +403,21 @@ export function DesktopImportPanel() {
     } catch (error) {
       if (
         !mountedRef.current ||
-        attempt !== analyticsAttemptRef.current ||
-        error instanceof WorkerClientCancelledError
+        attempt !== analyticsAttemptRef.current
       ) {
         return;
       }
-      setAnalyticsError(analyticsFailureMessage(error));
-      setStatus("本地统计未完成");
+      if (error instanceof WorkerClientCancelledError) {
+        setStatus("本地统计已取消");
+      } else {
+        setAnalyticsError(analyticsFailureMessage(error));
+        setStatus("本地统计未完成");
+      }
+      try {
+        await stopAnalyticsWorker(sessionId, generation);
+      } catch {
+        // Session cleanup remains the host-side authority if the renderer is stale.
+      }
     } finally {
       if (mountedRef.current && attempt === analyticsAttemptRef.current) {
         setAnalyticsPending(false);
@@ -346,7 +444,29 @@ export function DesktopImportPanel() {
       return;
     }
     analyticsAttemptRef.current += 1;
-    analyticsClientRef.current.cancelActive();
+    const client = analyticsClientRef.current;
+    const cancellationAcknowledged =
+      client !== undefined && (await client.cancelActiveAndWait());
+    if (!cancellationAcknowledged) {
+      try {
+        await stopAnalyticsWorker(currentSession, currentGeneration);
+      } catch {
+        // The host close/recovery path remains authoritative on a failed stop.
+      }
+      setAnalyticsError("本地 Worker 未确认取消，未开始新的筛选计算。");
+      setAnalyticsPending(false);
+      return;
+    }
+    await desktopApi.acknowledgeWorkerStop(
+      requestId() as never,
+      currentSession,
+      currentGeneration,
+    );
+    await desktopApi.cancelAggregateResult(
+      requestId() as never,
+      currentSession,
+      currentGeneration,
+    );
     const attempt = analyticsAttemptRef.current;
     const startedAt = Date.now();
     progressStartedAtRef.current = startedAt;
@@ -354,10 +474,25 @@ export function DesktopImportPanel() {
     setAnalyticsError(undefined);
     setStatus("正在由本地 Worker 应用筛选");
     try {
-      const next = await analyticsClientRef.current.analyzeCanonical(
-        { kind: "canonical-v2", ...validation.filters },
-        (nextProgress) => setProgressFromWorker(nextProgress, currentSession, currentGeneration),
-      );
+    const preparation = await desktopApi.prepareAggregateResult(
+      requestId() as never,
+      currentSession,
+      currentGeneration,
+      canonicalQueryKey(current.datasetId, currentGeneration, validation.filters),
+    );
+    if (
+      !isWorkerPreparationAck(preparation) ||
+      preparation.capability.sessionId !== currentSession ||
+      preparation.capability.generation !== currentGeneration ||
+      preparation.capability.datasetId !== current.datasetId
+    ) {
+      throw new WorkerClientError("WORKER_COMMIT_REJECTED");
+    }
+    const next = await client.analyzeCanonical(
+      { kind: "canonical-v2", ...validation.filters },
+      (nextProgress) => setProgressFromWorker(nextProgress, currentSession, currentGeneration),
+      preparation.capability,
+    );
       if (
         !mountedRef.current ||
         attempt !== analyticsAttemptRef.current ||
@@ -369,19 +504,41 @@ export function DesktopImportPanel() {
         return;
       }
       createDashboardViewModel(next);
+      const committedResultId = client.committedResultId;
+      if (committedResultId === undefined) {
+        throw new WorkerClientError("WORKER_COMMIT_REJECTED");
+      }
+      if (!mountedRef.current || attempt !== analyticsAttemptRef.current) {
+        return;
+      }
+      setDataset((currentDataset) =>
+        currentDataset !== undefined &&
+        currentDataset.sessionId === currentSession &&
+        currentDataset.generation === currentGeneration
+          ? { ...currentDataset, resultId: committedResultId }
+          : currentDataset,
+      );
       setAnalyticsResult(next);
       setStatus("本地筛选统计已更新");
       setProgress(undefined);
     } catch (error) {
       if (
         !mountedRef.current ||
-        attempt !== analyticsAttemptRef.current ||
-        error instanceof WorkerClientCancelledError
+        attempt !== analyticsAttemptRef.current
       ) {
         return;
       }
-      setAnalyticsError(analyticsFailureMessage(error));
-      setStatus("筛选未完成，保留上一次完整结果");
+      if (error instanceof WorkerClientCancelledError) {
+        setStatus("筛选已取消，保留上一次完整结果");
+      } else {
+        setAnalyticsError(analyticsFailureMessage(error));
+        setStatus("筛选未完成，保留上一次完整结果");
+      }
+      try {
+        await stopAnalyticsWorker(currentSession, currentGeneration);
+      } catch {
+        // The host cleanup path is authoritative when a renderer request is stale.
+      }
     } finally {
       if (mountedRef.current && attempt === analyticsAttemptRef.current) {
         setAnalyticsPending(false);
@@ -392,6 +549,7 @@ export function DesktopImportPanel() {
   useEffect(() => {
     let mounted = true;
     let unlisten: (() => void) | undefined;
+    let unlistenWorker: (() => void) | undefined;
     void listenForDesktopEvents((payload) => {
       if (!mounted) {
         return;
@@ -411,7 +569,7 @@ export function DesktopImportPanel() {
       }
       switch (event.type) {
         case "selection-ready":
-          resetAnalytics(true);
+          void resetAnalytics(true);
           setSelectionId(event.payload.selectionId);
           setAnnualCount(event.payload.annualSourceCount);
           setVerificationCount(event.payload.verificationSourceCount);
@@ -453,6 +611,8 @@ export function DesktopImportPanel() {
               event.sessionId,
               event.generation,
               event.payload.datasetId,
+              event.payload.minimumCalendarDate,
+              event.payload.maximumCalendarDate,
               true,
             );
           }
@@ -477,6 +637,7 @@ export function DesktopImportPanel() {
           }
           break;
         case "exported":
+          exportOutcomeRef.current = "saved";
           setExportMessage("聚合结果已通过本地保存流程写入。");
           break;
         case "closed":
@@ -491,6 +652,40 @@ export function DesktopImportPanel() {
         remove();
       }
     });
+    void listenForDesktopWorkerControl((payload) => {
+      if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+        return;
+      }
+      const control = payload as Record<string, unknown>;
+      if (
+        (control.kind !== "cancel" && control.kind !== "force-terminate") ||
+        control.sessionId !== cursorRef.current.sessionId ||
+        control.generation !== cursorRef.current.generation
+      ) {
+        return;
+      }
+      const client = analyticsClientRef.current;
+      void (async () => {
+        try {
+          if (client !== undefined) {
+            await client.stop();
+          }
+          await desktopApi.acknowledgeWorkerStop(
+            requestId() as never,
+            control.sessionId as SessionId,
+            control.generation as Generation,
+          );
+        } catch {
+          client?.dispose();
+        }
+      })();
+    }).then((remove) => {
+      if (mounted) {
+        unlistenWorker = remove;
+      } else {
+        remove();
+      }
+    });
     return () => {
       mounted = false;
       mountedRef.current = false;
@@ -498,10 +693,14 @@ export function DesktopImportPanel() {
       analyticsClientRef.current?.dispose();
       analyticsClientRef.current = undefined;
       unlisten?.();
+      unlistenWorker?.();
     };
   }, []);
 
-  async function runCommand(command: () => Promise<unknown>): Promise<boolean> {
+  async function runCommand(
+    command: () => Promise<unknown>,
+    preserveResult = false,
+  ): Promise<boolean> {
     setPendingCommand(true);
     setFailure(undefined);
     try {
@@ -515,7 +714,9 @@ export function DesktopImportPanel() {
             ? error.code as DesktopFailureCode
             : "INVALID_STATE";
       setFailure({ code, retryable: true });
-      setDesktopState("failed");
+      if (!preserveResult) {
+        setDesktopState("failed");
+      }
       return false;
     } finally {
       setPendingCommand(false);
@@ -523,7 +724,7 @@ export function DesktopImportPanel() {
   }
 
   async function selectSources(kind: "annual" | "verification"): Promise<void> {
-    resetAnalytics(true);
+    await resetAnalytics(true);
     cursorRef.current = resetCursorForSelection(cursorRef.current);
     cursorRef.current = { ...cursorRef.current, state: "selecting" };
     setDesktopState("selecting");
@@ -548,7 +749,7 @@ export function DesktopImportPanel() {
       setFailure({ code: "NO_SOURCE_SELECTED", retryable: false });
       return;
     }
-    resetAnalytics(true);
+    await resetAnalytics(true);
     cursorRef.current = resetCursorForNewSession(cursorRef.current);
     progressStartedAtRef.current = Date.now();
     setDesktopState("preprocessing");
@@ -571,7 +772,7 @@ export function DesktopImportPanel() {
       await selectSources("annual");
       return;
     }
-    resetAnalytics(false);
+    await resetAnalytics(false);
     cursorRef.current = resetCursorForNewSession(cursorRef.current);
     setDesktopState("preprocessing");
     setStatus("正在用新的本地分析代次重试");
@@ -582,7 +783,7 @@ export function DesktopImportPanel() {
     if (session === undefined) {
       return;
     }
-    resetAnalytics(true);
+    await resetAnalytics(true);
     setDesktopState("discarding");
     setStatus("正在清理本地临时数据");
     await runCommand(() => desktopApi.discardSession(requestId() as never, session.sessionId, session.generation));
@@ -601,11 +802,21 @@ export function DesktopImportPanel() {
     if (dataset === undefined) {
       return;
     }
-    void startDesktopAnalytics(dataset.sessionId, dataset.generation, dataset.datasetId, false);
+    void startDesktopAnalytics(
+      dataset.sessionId,
+      dataset.generation,
+      dataset.datasetId,
+      dataset.minimumCalendarDate,
+      dataset.maximumCalendarDate,
+      false,
+    );
   }
 
-  async function exportAggregate(format: ReportFormat): Promise<void> {
-    if (dataset === undefined || analyticsResult === undefined || analyticsPending) {
+  async function exportAggregate(
+    format: ReportFormat,
+    chartKey: ApprovedChartKey,
+  ): Promise<void> {
+    if (dataset === undefined || dataset.resultId === undefined || analyticsResult === undefined || analyticsPending) {
       return;
     }
     if (
@@ -617,7 +828,29 @@ export function DesktopImportPanel() {
       setExportMessage("当前结果已经过期，不能导出旧代次。");
       return;
     }
-    await runCommand(() => desktopApi.exportAggregate(requestId() as never, dataset.sessionId, dataset.generation, format, dataset.resultId as never));
+    exportAttemptRef.current = { format, chartKey };
+    exportOutcomeRef.current = "unknown";
+    setExportMessage("正在打开本地保存流程；请在原生保存面板中确认位置。");
+    const completed = await runCommand(
+      () => desktopApi.exportAggregate(
+        requestId() as never,
+        dataset.sessionId,
+        dataset.generation,
+        format,
+        dataset.resultId as never,
+        chartKey,
+      ),
+      true,
+    );
+    if (completed) {
+      setExportMessage(
+        exportOutcomeRef.current === "saved"
+          ? "聚合结果已通过本地保存流程写入。"
+          : "本地保存已取消，当前结果未改变。",
+      );
+    } else {
+      setExportMessage("导出失败，可按错误说明重试当前聚合结果。");
+    }
   }
 
   function completeOnboarding(): void {
@@ -708,7 +941,7 @@ export function DesktopImportPanel() {
         </div>
         <div className="desktop-status-actions">
           <button className="dashboard-button" type="button" disabled={!canCancel} onClick={() => void cancel()}>取消</button>
-          {failure?.retryable === true ? <button className="dashboard-button" type="button" disabled={pendingCommand} onClick={() => void retry()}>重试</button> : null}
+          {failure?.retryable === true && !failure.code.startsWith("EXPORT_") ? <button className="dashboard-button" type="button" disabled={pendingCommand} onClick={() => void retry()}>重试</button> : null}
           {failure !== undefined && session === undefined ? <button className="dashboard-button" type="button" disabled={pendingCommand} onClick={() => void selectSources("annual")}>重新选择</button> : null}
         </div>
       </section>
@@ -717,6 +950,9 @@ export function DesktopImportPanel() {
         <section className="desktop-alert" role="alert" aria-labelledby="desktop-error-heading">
           <h2 id="desktop-error-heading">{failureText}</h2>
           <p>应用只显示稳定的本地错误说明，不显示路径、命令、日志、正文或内部堆栈。</p>
+          {failure?.code.startsWith("EXPORT_") && exportAttemptRef.current !== undefined ? (
+            <button className="dashboard-button" type="button" disabled={pendingCommand} onClick={() => void exportAggregate(exportAttemptRef.current!.format, exportAttemptRef.current!.chartKey)}>重试导出</button>
+          ) : null}
           {failure?.code === "CLEANUP_REQUIRED" || failure?.code === "SESSION_CLEANUP_FAILED" ? <button className="dashboard-button" type="button" disabled={pendingCommand} onClick={() => void retry()}>重试清理</button> : null}
         </section>
       ) : null}
@@ -732,10 +968,10 @@ export function DesktopImportPanel() {
       {analyticsResult !== undefined ? (
         <DesktopDashboard
           result={analyticsResult}
-          pending={analyticsPending}
+          pending={analyticsPending || pendingCommand}
           onFilterChange={(filters) => void updateAnalyticsFilters(filters)}
           onAnalyzeOtherFiles={() => void analyzeOtherFiles()}
-          onExport={(format) => void exportAggregate(format)}
+          onExport={(format, chartKey) => void exportAggregate(format, chartKey)}
         />
       ) : null}
 

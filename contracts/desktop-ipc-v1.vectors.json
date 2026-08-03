@@ -46,18 +46,82 @@
          "generation": 1
        }
      },
-     {
-       "name": "discard-session",
+    {
+      "name": "discard-session",
        "value": {
          "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
          "type": "discard-session",
          "requestId": "req_00000000000000000000000000000006",
          "sessionId": "ses_00000000000000000000000000000001",
-         "generation": 1
-       }
-     },
-     {
-       "name": "export-aggregate",
+        "generation": 1
+      }
+    },
+    {
+      "name": "prepare-aggregate-result",
+      "value": {
+        "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+        "type": "prepare-aggregate-result",
+        "requestId": "req_00000000000000000000000000000013",
+        "sessionId": "ses_00000000000000000000000000000001",
+        "generation": 1,
+        "queryKey": "[\"dat_00000000000000000000000000000001\",1,\"2025-01-01\",\"2025-01-01\",\"both\",null,6,\"UTC+08:00\",\"chat-history-analysis.aggregate-query.v1\",\"chat-history-analysis.analytics-result.v3\",[\"chat-history-analysis.metric.population.v1\",\"chat-history-analysis.metric.time.utc-plus-8.v1\",\"chat-history-analysis.metric.tokens.jieba.v1\",\"chat-history-analysis.metric.keywords.log-odds.v1\",\"chat-history-analysis.metric.sessions.threshold.v1\"]]"
+      }
+    },
+    {
+      "name": "cancel-aggregate-result",
+      "value": {
+        "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+        "type": "cancel-aggregate-result",
+        "requestId": "req_00000000000000000000000000000014",
+        "sessionId": "ses_00000000000000000000000000000001",
+        "generation": 1
+      }
+    },
+    {
+      "name": "commit-aggregate-result",
+      "value": {
+        "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
+        "type": "commit-aggregate-result",
+        "requestId": "req_00000000000000000000000000000015",
+        "sessionId": "ses_00000000000000000000000000000001",
+        "generation": 1,
+        "aggregate": {
+          "chartKey": "trends",
+          "filters": {
+            "startDate": "2025-01-01",
+            "endDate": "2025-01-01",
+            "sender": "both",
+            "selectedYear": null,
+            "sessionThresholdHours": 6
+          },
+          "userMessageCount": 1,
+          "eligibleTextCount": 0,
+          "senderCounts": [1, 0],
+          "chatDays": 1,
+          "longestStreakDays": 1,
+          "dailyCounts": [1],
+          "monthlyCounts": [1],
+          "yearlyCounts": [1],
+          "hourCounts": [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+          "weekdayCounts": [1, 0, 0, 0, 0, 0, 0],
+          "messageTypeCounts": [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+          "systemCount": 0,
+          "length": {
+            "overall": {"count": 0, "totalCodePoints": 0, "mean": null, "median": null, "p90": null},
+            "owner": {"count": 0, "totalCodePoints": 0, "mean": null, "median": null, "p90": null},
+            "other": {"count": 0, "totalCodePoints": 0, "mean": null, "median": null, "p90": null}
+          },
+          "replies": {
+            "overall": {"count": 0, "meanSeconds": null, "medianSeconds": null, "bins": [0, 0, 0, 0, 0, 0, 0, 0]},
+            "ownerToOther": {"count": 0, "meanSeconds": null, "medianSeconds": null, "bins": [0, 0, 0, 0, 0, 0, 0, 0]},
+            "otherToOwner": {"count": 0, "meanSeconds": null, "medianSeconds": null, "bins": [0, 0, 0, 0, 0, 0, 0, 0]}
+          },
+          "initiatorCounts": [0, 0, 0]
+        }
+      }
+    },
+    {
+      "name": "export-aggregate",
        "value": {
          "protocolVersion": "chat-history-analysis.desktop-ipc.v1",
          "type": "export-aggregate",
@@ -167,7 +231,6 @@
         "type": "dataset-ready",
         "payload": {
           "datasetId": "dat_00000000000000000000000000000001",
-          "resultId": "res_00000000000000000000000000000001",
           "recordCount": 1,
            "chunkCount": 1,
            "minimumCalendarDate": "2025-01-01",

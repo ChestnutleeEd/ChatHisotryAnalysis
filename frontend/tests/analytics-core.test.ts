@@ -15,7 +15,7 @@ import {
   aggregateSummary,
 } from "../src/worker-analysis/analytics-aggregates";
 import { CanonicalIndexBuilder } from "../src/worker-analysis/canonical-index";
-import type { Generation } from "../src/desktop/ipc-contract";
+import type { DatasetId, Generation } from "../src/desktop/ipc-contract";
 import { canonicalEvent, canonicalFilters } from "./canonical-analytics-fixtures";
 
 const dataset = {
@@ -57,15 +57,31 @@ describe("shared analytics semantics and compact index", () => {
       sender: "owner",
     });
     validateCanonicalFilters(filters, dataset);
-    expect(canonicalQueryKey(7 as Generation, filters)).toBe(
+    expect(
+      canonicalQueryKey(
+        "dat_00000000000000000000000000000001" as DatasetId,
+        7 as Generation,
+        filters,
+      ),
+    ).toBe(
       JSON.stringify([
+        "dat_00000000000000000000000000000001",
         7,
-        METRIC_DEFINITION_VERSIONS,
         "2025-01-01",
         "2025-01-03",
         "owner",
         null,
         6,
+        "UTC+08:00",
+        "chat-history-analysis.aggregate-query.v1",
+        "chat-history-analysis.analytics-result.v3",
+        [
+          METRIC_DEFINITION_VERSIONS.population,
+          METRIC_DEFINITION_VERSIONS.time,
+          METRIC_DEFINITION_VERSIONS.tokens,
+          METRIC_DEFINITION_VERSIONS.keywords,
+          METRIC_DEFINITION_VERSIONS.sessions,
+        ],
       ]),
     );
     expect(() =>

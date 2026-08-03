@@ -1,9 +1,15 @@
 use tauri::Manager;
 
+pub mod analytics_results;
 pub mod dataset_handoff;
 pub mod dataset_transport;
 pub mod desktop_selection;
+pub mod export;
+pub mod export_schema;
 pub mod ipc;
+pub mod lifecycle;
+pub mod privacy_log;
+pub mod secure_storage;
 pub mod security;
 pub mod session_supervisor;
 pub mod trust_anchor;
@@ -55,9 +61,19 @@ pub fn run() {
                 .build()?;
             webview_permissions::install(&window)?;
             let app_handle = app.handle().clone();
+            let close_window = window.clone();
             window.on_window_event({
                 let transport = transport.clone();
                 move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let state = app_handle.state::<ipc::IpcCoreState>();
+                        transport.close_window(security::MAIN_WINDOW_LABEL);
+                        if state.prepare_application_close() {
+                            let _ = close_window.close();
+                        }
+                        return;
+                    }
                     if matches!(event, tauri::WindowEvent::Destroyed) {
                         transport.close_window(security::MAIN_WINDOW_LABEL);
                         app_handle
@@ -87,6 +103,10 @@ pub fn run() {
             ipc::cancel_analysis,
             ipc::retry_analysis,
             ipc::discard_session,
+            ipc::prepare_aggregate_result,
+            ipc::cancel_aggregate_result,
+            ipc::commit_worker_result,
+            ipc::acknowledge_worker_stop,
             ipc::export_aggregate,
             ipc::request_application_close,
             dataset_transport::open_dataset_stream,
@@ -97,9 +117,22 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building Chat History Analysis")
-        .run(|app_handle, event| {
-            if matches!(event, tauri::RunEvent::Exit) {
+        .run(|app_handle, event| match event {
+            tauri::RunEvent::ExitRequested { api, code, .. } => {
+                api.prevent_exit();
+                app_handle
+                    .state::<dataset_transport::DatasetTransportState>()
+                    .close_window(security::MAIN_WINDOW_LABEL);
+                if app_handle
+                    .state::<ipc::IpcCoreState>()
+                    .prepare_application_close()
+                {
+                    app_handle.exit(code.unwrap_or(0));
+                }
+            }
+            tauri::RunEvent::Exit => {
                 app_handle.state::<ipc::IpcCoreState>().shutdown();
             }
+            _ => {}
         });
 }

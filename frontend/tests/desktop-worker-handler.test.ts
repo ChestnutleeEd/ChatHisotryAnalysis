@@ -6,7 +6,13 @@ import type { DatasetTransportInvoker } from "../src/worker-analysis/desktop-dat
 import { openTauriDatasetSource } from "../src/worker-analysis/desktop-dataset-source";
 import { createAnalysisWorkerHandler } from "../src/worker-analysis/worker-handler";
 import { AnalysisWorkerRuntime } from "../src/worker-analysis/worker-runtime";
-import type { WorkerRequest, WorkerResponse } from "../src/worker-analysis/protocol";
+import { canonicalQueryKey } from "../src/worker-analysis/analytics-contract";
+import {
+  ANALYTICS_RESULT_CONTRACT_VERSION,
+  WORKER_CAPABILITY_PROTOCOL_VERSION,
+  type WorkerRequest,
+  type WorkerResponse,
+} from "../src/worker-analysis/protocol";
 import type {
   DatasetId,
   Generation,
@@ -23,11 +29,40 @@ import {
 } from "./canonical-analytics-fixtures";
 import { createDashboardViewModel } from "../src/presentation/desktop-dashboard";
 import { DesktopDashboard } from "../src/presentation/DesktopDashboard";
+import {
+  buildRendererAggregateInput,
+  isRendererAggregateInput,
+} from "../src/desktop/export-contract";
 
 const PROTOCOL = "chat-history-analysis.desktop-ipc.v1" as const;
 const SESSION = "ses_00000000000000000000000000000001" as SessionId;
 const DATASET = "dat_00000000000000000000000000000001" as DatasetId;
 const GENERATION = 1 as Generation;
+
+function workerCapability(
+  sessionId: SessionId = SESSION,
+  generation: Generation = GENERATION,
+  ordinal = 1,
+) {
+  return {
+    protocolVersion: WORKER_CAPABILITY_PROTOCOL_VERSION,
+    operationId: `wrk_${String(ordinal).padStart(32, "0")}`,
+    nonce: `nonce_${String(ordinal).padStart(32, "0")}`,
+    windowId: "main",
+    sessionId,
+    generation,
+    datasetId: DATASET,
+    queryKey: canonicalQueryKey(DATASET, generation, {
+      startDate: "2025-01-01",
+      endDate: "2025-01-01",
+      sender: "both",
+      selectedYear: null,
+      sessionThresholdHours: 6,
+    }),
+    analyticsContractVersion: ANALYTICS_RESULT_CONTRACT_VERSION,
+    expiresAtMillis: Date.now() + 60_000,
+  } as const;
+}
 
 type HarnessRequest = Record<string, unknown>;
 
@@ -252,6 +287,7 @@ describe("desktop dataset source through the production Worker handler", () => {
         sessionId: SESSION,
         generation: GENERATION,
         datasetId: DATASET,
+        workerCapability: workerCapability(),
       },
       tokenizerSettings: { minimumTokenLength: 2, additionalStopWords: [] },
     };
@@ -357,6 +393,7 @@ describe("desktop dataset source through the production Worker handler", () => {
           sessionId: SESSION,
           generation: GENERATION,
           datasetId: DATASET,
+          workerCapability: workerCapability(),
         },
         tokenizerSettings: { minimumTokenLength: 2, additionalStopWords: [] },
       },
@@ -399,6 +436,152 @@ describe("desktop dataset source through the production Worker handler", () => {
     expect(JSON.stringify(response)).not.toContain('"content"');
   });
 
+  it("keeps 128 production Worker generations bounded at the numeric export seam", async () => {
+    const dataset = createCanonicalDataset(canonicalMixedEvents(), 3);
+    const manifest = await dataset.files[0].arrayBuffer();
+    const chunks = await Promise.all(
+      dataset.files.slice(1).map((file) => file.arrayBuffer()),
+    );
+    const recordCount = canonicalMixedEvents().length;
+
+    for (let ordinal = 1; ordinal <= 128; ordinal += 1) {
+      const sessionId = `ses_${String(ordinal).padStart(32, "0")}` as SessionId;
+      const generation = ordinal as Generation;
+      const responses: WorkerResponse[] = [];
+      let closed = false;
+      let opened = false;
+      let nextOrdinal = 1;
+      const invoker: DatasetTransportInvoker = {
+        async invoke<T>(
+          command:
+            | "open_dataset_stream"
+            | "receive_dataset_chunk"
+            | "complete_dataset_stream"
+            | "cancel_dataset_stream"
+            | "close_dataset_stream",
+          args: { readonly request: unknown },
+        ): Promise<T> {
+          const request = args.request as Record<string, unknown>;
+          if (command === "open_dataset_stream") {
+            expect(opened).toBe(false);
+            opened = true;
+            return {
+              protocolVersion: PROTOCOL,
+              sessionId,
+              generation,
+              datasetId: DATASET,
+              manifestBytes: manifest.byteLength,
+              recordCount,
+              chunkCount: chunks.length,
+              chunkBytes: Math.max(...chunks.map((chunk) => chunk.byteLength)),
+            } as T;
+          }
+          if (command === "receive_dataset_chunk") {
+            expect(opened).toBe(true);
+            if (request.kind === "manifest") {
+              return manifest as T;
+            }
+            expect(request.ordinal).toBe(nextOrdinal);
+            const chunk = chunks[nextOrdinal - 1];
+            expect(chunk).toBeDefined();
+            expect(request.expectedBytes).toBe(chunk.byteLength);
+            nextOrdinal += 1;
+            return chunk as T;
+          }
+          if (command === "complete_dataset_stream") {
+            expect(nextOrdinal).toBe(chunks.length + 1);
+            return { closed: false } as T;
+          }
+          closed = true;
+          return { closed: true } as T;
+        },
+      };
+      const runtime = new AnalysisWorkerRuntime(
+        {
+          initialize: vi.fn(async () => undefined),
+          cutWithoutHmm: (value) => value.split(/\s+/u),
+        },
+        "的\nthe\nand\n",
+        (progress) => responses.push(progress),
+      );
+      const scope = {
+        onmessage: null,
+        postMessage(message: WorkerResponse) {
+          responses.push(message);
+        },
+        close() {
+          closed = true;
+        },
+      };
+      const handler = createAnalysisWorkerHandler(scope, runtime, {
+        async createDesktopDatasetSource(sourceRequest) {
+          return (
+            await openTauriDatasetSource(invoker, {
+              protocolVersion: PROTOCOL,
+              sessionId: sourceRequest.sessionId,
+              generation: sourceRequest.generation,
+              datasetId: sourceRequest.datasetId,
+            })
+          ).source;
+        },
+        async commitDesktopWorkerResult(capability, result) {
+          expect(capability.sessionId).toBe(sessionId);
+          expect(capability.generation).toBe(generation);
+          const aggregate = buildRendererAggregateInput(result);
+          expect(isRendererAggregateInput(aggregate)).toBe(true);
+          expect(JSON.stringify(aggregate)).not.toMatch(
+            /synthetic-secret|source\.json|contact|token|keyword|[/\\]/u,
+          );
+          return `res_${String(ordinal).padStart(32, "0")}`;
+        },
+      });
+      handler({
+        data: {
+          type: "load-dataset",
+          operationId: 1,
+          generation,
+          sequence: 1,
+          source: {
+            kind: "desktop-dataset-source",
+            sessionId,
+            generation,
+            datasetId: DATASET,
+            workerCapability: workerCapability(sessionId, generation, ordinal),
+          },
+          tokenizerSettings: { minimumTokenLength: 2, additionalStopWords: [] },
+        },
+      } as unknown as MessageEvent<WorkerRequest>);
+      const response = await waitForTerminal(responses, 1);
+      expect(response.type).toBe("accepted");
+      const accepted = response as Extract<WorkerResponse, { readonly type: "accepted" }>;
+      const aggregate = buildRendererAggregateInput(accepted.result as never);
+      expect(isRendererAggregateInput(aggregate)).toBe(true);
+      expect(JSON.stringify(aggregate)).not.toMatch(
+        /synthetic-secret|source\.json|contact|token|keyword|[/\\]/u,
+      );
+      handler({
+        data: {
+          type: "analyze",
+          operationId: 2,
+          generation: generation + 1,
+          sequence: 1,
+          settings: { kind: "canonical-v2", ...(accepted.result as { filters: object }).filters },
+        },
+      } as unknown as MessageEvent<WorkerRequest>);
+      await vi.waitFor(() => {
+        const result = responses.find(
+          (candidate) => candidate.type === "result" && candidate.operationId === 2,
+        );
+        expect(result).toMatchObject({
+          type: "result",
+          resultId: `res_${String(ordinal).padStart(32, "0")}`,
+        });
+      });
+      handler({ data: { type: "dispose" } } as unknown as MessageEvent<WorkerRequest>);
+      expect(closed).toBe(true);
+    }
+  }, 30_000);
+
   it("rejects an invalid opaque capability before invoking the host", async () => {
     const { responses, runtime } = createHarness();
     const calls: string[] = [];
@@ -428,6 +611,47 @@ describe("desktop dataset source through the production Worker handler", () => {
           kind: "desktop-dataset-source",
           sessionId: "not-opaque",
           generation: 1,
+          datasetId: DATASET,
+        },
+        tokenizerSettings: { minimumTokenLength: 2, additionalStopWords: [] },
+      },
+    } as unknown as MessageEvent<WorkerRequest>);
+    await expect(waitForTerminal(responses, 1)).resolves.toMatchObject({
+      type: "error",
+      code: "DATASET_TRANSPORT_INVALID",
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it("requires the host-issued Worker capability before opening desktop data", async () => {
+    const { responses, runtime } = createHarness();
+    const calls: string[] = [];
+    const handler = createAnalysisWorkerHandler(
+      {
+        onmessage: null,
+        postMessage(message: WorkerResponse) {
+          responses.push(message);
+        },
+        close() {},
+      },
+      runtime,
+      {
+        async createDesktopDatasetSource() {
+          calls.push("invoked");
+          throw new Error("should-not-run");
+        },
+      },
+    );
+    handler({
+      data: {
+        type: "load-dataset",
+        operationId: 1,
+        generation: GENERATION,
+        sequence: 1,
+        source: {
+          kind: "desktop-dataset-source",
+          sessionId: SESSION,
+          generation: GENERATION,
           datasetId: DATASET,
         },
         tokenizerSettings: { minimumTokenLength: 2, additionalStopWords: [] },

@@ -8,8 +8,10 @@ import type {
   WorkerRequest,
   WorkerResponse,
   DesktopDatasetSourceRequest,
+  WorkerOperationCapability,
 } from "./protocol";
 import { DEFAULT_TOKENIZER_SETTINGS } from "./protocol";
+import type { ResultId } from "../desktop/ipc-contract";
 import type {
   CanonicalAnalysisResult,
   CanonicalAnalysisSettings,
@@ -63,6 +65,7 @@ export class AnalysisWorkerClient {
   private nextOperationId = 1;
   private nextGeneration = 1;
   private activeOperationId: number | undefined;
+  private lastCommittedResultId: ResultId | undefined;
   private readonly pending = new Map<
     number,
     PendingOperation<
@@ -74,6 +77,10 @@ export class AnalysisWorkerClient {
   constructor(
     private readonly workerFactory: WorkerFactory = defaultWorkerFactory,
   ) {}
+
+  get committedResultId(): ResultId | undefined {
+    return this.lastCommittedResultId;
+  }
 
   loadDataset(
     files: readonly File[],
@@ -137,6 +144,7 @@ export class AnalysisWorkerClient {
   analyzeCanonical(
     settings: CanonicalAnalysisSettings,
     onProgress?: (progress: WorkerProgress) => void,
+    workerCapability?: WorkerOperationCapability,
   ): Promise<CanonicalAnalysisResult> {
     return this.startOperation<CanonicalAnalysisResult>(
       (operationId, generation, sequence) => ({
@@ -145,6 +153,7 @@ export class AnalysisWorkerClient {
         generation,
         sequence,
         settings,
+        ...(workerCapability === undefined ? {} : { workerCapability }),
       }),
       onProgress,
     );
@@ -166,6 +175,57 @@ export class AnalysisWorkerClient {
     this.rejectOperation(operationId, new WorkerClientCancelledError());
   }
 
+  /**
+   * Cancel the active operation and wait for the Worker acknowledgement while
+   * keeping the Worker/runtime alive for a same-dataset replacement.  A
+   * timeout is a hard lifecycle boundary: the Worker is terminated and the
+   * caller must fence the host operation before starting another one.
+   */
+  async cancelActiveAndWait(timeoutMilliseconds = 2_000): Promise<boolean> {
+    const worker = this.worker;
+    const operationId = this.activeOperationId;
+    if (worker === undefined || operationId === undefined) {
+      return true;
+    }
+    let didAcknowledge = false;
+    const acknowledged = new Promise<void>((resolve) => {
+      this.cancelWaiters.set(operationId, () => {
+        didAcknowledge = true;
+        resolve();
+      });
+    });
+    let timeout: ReturnType<typeof globalThis.setTimeout> | undefined;
+    const timedOut = new Promise<void>((resolve) => {
+      timeout = globalThis.setTimeout(resolve, timeoutMilliseconds);
+    });
+    const pending = this.pending.get(operationId);
+    try {
+      worker.postMessage({
+        type: "cancel",
+        operationId,
+        generation: pending?.generation ?? operationId,
+        sequence: (pending?.lastSequence ?? 1) + 1,
+      });
+    } catch {
+      if (timeout !== undefined) {
+        globalThis.clearTimeout(timeout);
+      }
+      this.cancelWaiters.delete(operationId);
+      this.terminateWorker(new WorkerClientError("WORKER_RUNTIME_FAILED"));
+      return false;
+    }
+    await Promise.race([acknowledged, timedOut]);
+    if (timeout !== undefined) {
+      globalThis.clearTimeout(timeout);
+    }
+    this.cancelWaiters.delete(operationId);
+    if (!didAcknowledge || this.activeOperationId === operationId) {
+      this.terminateWorker(new WorkerClientError("WORKER_TIMEOUT"));
+      return false;
+    }
+    return true;
+  }
+
   async stop(timeoutMilliseconds = 2_000): Promise<void> {
     const worker = this.worker;
     const operationId = this.activeOperationId;
@@ -174,25 +234,7 @@ export class AnalysisWorkerClient {
       return;
     }
 
-    const acknowledged = new Promise<void>((resolve) => {
-      this.cancelWaiters.set(operationId, resolve);
-    });
-    let timeout: ReturnType<typeof globalThis.setTimeout> | undefined;
-    const timedOut = new Promise<void>((resolve) => {
-      timeout = globalThis.setTimeout(resolve, timeoutMilliseconds);
-    });
-    const pending = this.pending.get(operationId);
-    worker.postMessage({
-      type: "cancel",
-      operationId,
-      generation: pending?.generation ?? operationId,
-      sequence: (pending?.lastSequence ?? 1) + 1,
-    });
-    await Promise.race([acknowledged, timedOut]);
-    if (timeout !== undefined) {
-      globalThis.clearTimeout(timeout);
-    }
-    this.cancelWaiters.delete(operationId);
+    await this.cancelActiveAndWait(timeoutMilliseconds);
     this.terminateWorker(new WorkerClientCancelledError());
   }
 
@@ -222,6 +264,7 @@ export class AnalysisWorkerClient {
     onProgress?: (progress: WorkerProgress) => void,
     requestedGeneration?: number,
   ): Promise<Result> {
+    this.lastCommittedResultId = undefined;
     let worker: WorkerPort;
     try {
       worker = this.ensureWorker();
@@ -347,6 +390,9 @@ export class AnalysisWorkerClient {
       return;
     }
     operation.lastSequence = response.sequence;
+    if (response.type === "result" && response.resultId !== undefined) {
+      this.lastCommittedResultId = response.resultId as ResultId;
+    }
     globalThis.clearTimeout(operation.timeout);
     this.pending.delete(response.operationId);
     if (this.activeOperationId === response.operationId) {
@@ -379,6 +425,7 @@ export class AnalysisWorkerClient {
     this.worker?.terminate();
     this.worker = undefined;
     this.activeOperationId = undefined;
+    this.lastCommittedResultId = undefined;
     this.nextGeneration = 1;
     for (const operationId of [...this.pending.keys()]) {
       this.rejectOperation(operationId, error);

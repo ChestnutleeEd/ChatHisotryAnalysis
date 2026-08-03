@@ -42,6 +42,37 @@ supply-chain evidence, and Windows hardening. These requirements are retained
 in the change's deferred task section and must be completed before a formal
 release claim.
 
+## Stage 10 Alpha boundary correction
+
+Stage 10 protects the selected raw JSON, canonical dataset and staging store,
+aggregate results, explicit export files, owner-only session/cache storage,
+the fixed-digest Alpha sidecar, dataset transport, content-free logs, and all
+host session/generation/result capabilities.
+
+The trusted boundary is the Rust/Tauri host, host-owned registries and
+`SecureStorage`, the fixed-digest Alpha sidecar, and operating-system native
+open/save dialogs. The renderer, React UI, analytics Worker, and every message
+between them are one untrusted frontend domain. Tauri/WebView does not provide
+a trustworthy Worker-vs-renderer caller identity, so the host does not claim
+to prove that distinction. Instead, host commands accept no paths, filenames,
+message bodies, arbitrary strings, schemas, or export payloads; the result
+commit seam accepts only a closed, runtime-validated numeric aggregate DTO
+bound to the current window, session, generation, dataset, canonical query,
+and analytics contract.
+
+Alpha resists malformed or oversized input, forged/stale/replayed capabilities,
+unsafe storage objects and directory escape, unsafe navigation/network paths,
+content-bearing logs, orphan cleanup mistakes, and write/rename/fsync failure.
+It does not claim to eliminate the theoretical macOS PID/PGID reuse window
+between identity validation and a signal syscall, prove race freedom against a
+fully malicious same-UID process, distinguish a compromised renderer from its
+Worker, or remediate OS, kernel, filesystem, or WebKit vulnerabilities. Those
+limits are accepted owner-only local-Alpha residuals. Packaged WebKit/runtime
+permission evidence maps to D.1; exhaustive storage/tamper combinations to
+D.3; exhaustive lifecycle/crash/disconnect/reuse evidence to D.4; exhaustive
+IPC/capability conformance to D.8; and formal capacity/performance/resource
+certification to D.9.
+
 ## Capabilities
 
 ### New Capabilities

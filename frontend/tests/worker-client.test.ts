@@ -8,9 +8,15 @@ import {
 } from "../src/worker-analysis/worker-client";
 import type {
   AnalysisResult,
+  WorkerOperationCapability,
   WorkerRequest,
   WorkerResponse,
 } from "../src/worker-analysis/protocol";
+import {
+  ANALYTICS_RESULT_CONTRACT_VERSION,
+  WORKER_CAPABILITY_PROTOCOL_VERSION,
+} from "../src/worker-analysis/protocol";
+import { canonicalQueryKey } from "../src/worker-analysis/analytics-contract";
 import type {
   DatasetId,
   Generation,
@@ -29,6 +35,29 @@ const result: AnalysisResult = {
   maximumWords: 100,
   minimumFrequency: 1,
   cacheGeneration: 1,
+};
+
+const workerCapability: WorkerOperationCapability = {
+  protocolVersion: WORKER_CAPABILITY_PROTOCOL_VERSION,
+  operationId: "wrk_00000000000000000000000000000001",
+  nonce: "nonce_00000000000000000000000000000001",
+  windowId: "main",
+  sessionId: "ses_00000000000000000000000000000001" as SessionId,
+  generation: 41 as Generation,
+  datasetId: "dat_00000000000000000000000000000001" as DatasetId,
+  queryKey: canonicalQueryKey(
+    "dat_00000000000000000000000000000001" as DatasetId,
+    41 as Generation,
+    {
+      startDate: "2025-01-01",
+      endDate: "2025-01-01",
+      sender: "both",
+      selectedYear: null,
+      sessionThresholdHours: 6,
+    },
+  ),
+  analyticsContractVersion: ANALYTICS_RESULT_CONTRACT_VERSION,
+  expiresAtMillis: Date.now() + 60_000,
 };
 
 class FakeWorker implements WorkerPort {
@@ -130,6 +159,7 @@ describe("analysis Worker client lifecycle", () => {
       sessionId: "ses_00000000000000000000000000000001" as SessionId,
       generation: 41 as Generation,
       datasetId: "dat_00000000000000000000000000000001" as DatasetId,
+      workerCapability,
     });
     const request = worker.messages[0] as Extract<
       WorkerRequest,
@@ -140,6 +170,7 @@ describe("analysis Worker client lifecycle", () => {
       sessionId: "ses_00000000000000000000000000000001",
       generation: 41,
       datasetId: "dat_00000000000000000000000000000001",
+      workerCapability,
     });
     expect(request.generation).toBe(41);
     expect(JSON.stringify(request)).not.toMatch(/path|cwd|argv|env/u);
@@ -169,6 +200,7 @@ describe("analysis Worker client lifecycle", () => {
       sessionId: "ses_00000000000000000000000000000001" as SessionId,
       generation: 41 as Generation,
       datasetId: "dat_00000000000000000000000000000001" as DatasetId,
+      workerCapability,
     });
     const loadRequest = worker.messages[0] as Extract<
       WorkerRequest,
@@ -199,12 +231,13 @@ describe("analysis Worker client lifecycle", () => {
       sender: "both",
       selectedYear: null,
       sessionThresholdHours: 6,
-    });
+    }, undefined, workerCapability);
     const analyzeRequest = worker.messages.at(-1) as Extract<
       WorkerRequest,
       { type: "analyze" }
     >;
     expect(analyzeRequest.generation).toBe(42);
+    expect(analyzeRequest.workerCapability).toEqual(workerCapability);
     worker.respond({
       type: "result",
       operationId: analyzeRequest.operationId,
@@ -237,6 +270,49 @@ describe("analysis Worker client lifecycle", () => {
       WorkerClientCancelledError,
     );
     expect(worker.terminate).toHaveBeenCalledOnce();
+  });
+
+  it("waits for a cancellation acknowledgement without terminating a same-dataset Worker", async () => {
+    const worker = new FakeWorker();
+    worker.onPost = (message) => {
+      if (message.type === "cancel") {
+        queueMicrotask(() => {
+          worker.respond({
+            type: "cancelled",
+            operationId: message.operationId,
+            generation: message.generation,
+            sequence: message.sequence + 1,
+          });
+        });
+      }
+    };
+    const client = new AnalysisWorkerClient(() => worker);
+    const pending = client.loadDataset([]);
+
+    await expect(client.cancelActiveAndWait()).resolves.toBe(true);
+    await expect(pending).rejects.toBeInstanceOf(WorkerClientCancelledError);
+    expect(worker.terminate).not.toHaveBeenCalled();
+
+    const replacement = client.loadDataset([]);
+    expect(worker.messages.at(-1)).toMatchObject({ type: "load-dataset" });
+    const request = worker.messages.at(-1) as Extract<WorkerRequest, { type: "load-dataset" }>;
+    worker.respond({
+      type: "accepted",
+      operationId: request.operationId,
+      generation: request.generation,
+      sequence: 2,
+      summary: {
+        normalizedRecordCount: 1,
+        minimumCalendarDate: "2025-01-01",
+        maximumCalendarDate: "2025-01-01",
+        warningCount: 0,
+        warningsByReason: {},
+        chunkCount: 1,
+        pseudonymous: true,
+      },
+      result,
+    });
+    await expect(replacement).resolves.toMatchObject({ result });
   });
 
   it("maps a Worker crash to one content-free category", async () => {

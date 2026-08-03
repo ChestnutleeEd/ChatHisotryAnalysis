@@ -85,6 +85,7 @@ const FAILURE_MESSAGES: Readonly<Record<SafeFailureCode, string>> = {
   WORKER_RUNTIME_FAILED: "本地分析 Worker 异常终止，可重试。",
   WORKER_TERMINATED: "本地分析 Worker 已停止。",
   WORKER_TIMEOUT: "本地分析超时，Worker 已释放。",
+  WORKER_COMMIT_REJECTED: "本地统计结果未通过主进程提交校验。",
   WASM_INITIALIZATION_FAILED: "本地 Jieba WASM 初始化失败，可重试。",
   MEMORY_PRESSURE: "浏览器内存不足，候选数据集未被接受。",
   MANIFEST_INVALID: "manifest 结构无效。",

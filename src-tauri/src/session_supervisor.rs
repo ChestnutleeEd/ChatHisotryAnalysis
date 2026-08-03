@@ -13,13 +13,16 @@ use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use sha2::{Digest, Sha256};
+
 use crate::ipc::valid_state_transition;
+use crate::lifecycle::{CleanupCoordinator, CleanupKey, CleanupTerminal};
 use crate::security::trusted_main_window_label;
 use crate::trust_anchor::{self, SIDECAR_BUNDLE_DIRECTORY};
 
@@ -253,10 +256,7 @@ impl SessionInput {
         {
             return Err(SupervisorError::new(SupervisorErrorCode::InvalidRequest));
         }
-        let sessions = self
-            .application_cache_root
-            .join(ANALYSIS_SESSIONS_DIRECTORY);
-        if !directory_location(&sessions) || !secure_directory(&self.working_directory) {
+        if !secure_directory(&self.working_directory) {
             return Err(SupervisorError::new(SupervisorErrorCode::InvalidRequest));
         }
         Ok(())
@@ -403,8 +403,11 @@ struct ProcessIdentity {
     pid: u32,
     group_id: i32,
     executable: PathBuf,
+    executable_fingerprint: String,
     start_fingerprint: String,
     nonce: String,
+    session_id: String,
+    generation: u64,
 }
 
 #[derive(Debug)]
@@ -412,6 +415,7 @@ struct ProcessControl {
     identity: ProcessIdentity,
     stdin: Mutex<Option<ChildStdin>>,
     forced: AtomicBool,
+    signal_stage: AtomicU8,
 }
 
 impl ProcessControl {
@@ -421,19 +425,71 @@ impl ProcessControl {
         }
     }
 
-    fn signal(&self, signal: i32) -> Result<(), SupervisorError> {
+    fn signal(
+        &self,
+        session_id: &str,
+        generation: u64,
+        signal: i32,
+    ) -> Result<(), SupervisorError> {
+        let requested_stage = match signal {
+            2 => 1,
+            15 => 2,
+            9 => 3,
+            _ => return Err(SupervisorError::new(SupervisorErrorCode::InvalidRequest)),
+        };
+        loop {
+            let current_stage = self.signal_stage.load(Ordering::Acquire);
+            if current_stage >= requested_stage {
+                return Ok(());
+            }
+            if self
+                .signal_stage
+                .compare_exchange(
+                    current_stage,
+                    requested_stage,
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                )
+                .is_ok()
+            {
+                break;
+            }
+        }
+        if self.identity.session_id != session_id
+            || self.identity.generation != generation
+            || self.identity.session_id.is_empty()
+            || self.identity.generation == 0
+        {
+            let _ = self.signal_stage.compare_exchange(
+                requested_stage,
+                requested_stage.saturating_sub(1),
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            );
+            return Err(SupervisorError::new(
+                SupervisorErrorCode::ProcessIdentityMismatch,
+            ));
+        }
         match process_identity_status(&self.identity) {
             IdentityStatus::Exited => Ok(()),
-            IdentityStatus::Mismatch => Err(SupervisorError::new(
-                SupervisorErrorCode::ProcessIdentityMismatch,
-            )),
+            IdentityStatus::Mismatch => {
+                let _ = self.signal_stage.compare_exchange(
+                    requested_stage,
+                    requested_stage.saturating_sub(1),
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                );
+                Err(SupervisorError::new(
+                    SupervisorErrorCode::ProcessIdentityMismatch,
+                ))
+            }
             IdentityStatus::Alive => send_process_group_signal(self.identity.group_id, signal),
         }
     }
 
-    fn force_kill(&self) -> Result<(), SupervisorError> {
+    fn force_kill(&self, session_id: &str, generation: u64) -> Result<(), SupervisorError> {
         self.forced.store(true, Ordering::Release);
-        self.signal(9)
+        self.signal(session_id, generation, 9)
     }
 }
 
@@ -446,6 +502,7 @@ enum IdentityStatus {
 
 struct ActiveSession {
     input: SessionInput,
+    storage: Option<crate::secure_storage::SecureStorage>,
     output_directory: PathBuf,
     window_label: String,
     session_id: String,
@@ -475,6 +532,15 @@ pub enum CancelReason {
 pub trait WorkerTermination: Send + Sync {
     fn request_cancellation(&self);
     fn force_terminate(&self);
+
+    /// Wait for the Worker runtime to acknowledge that it has stopped.  The
+    /// default keeps host-only test implementations source-compatible while
+    /// making the production renderer lease an explicit cleanup barrier.
+    fn wait_for_termination(&self, _timeout: Duration) -> bool {
+        false
+    }
+
+    fn acknowledge_termination(&self) {}
 }
 
 struct SupervisorInner {
@@ -485,6 +551,7 @@ struct SupervisorInner {
 #[derive(Clone)]
 pub struct SessionSupervisor {
     inner: Arc<Mutex<SupervisorInner>>,
+    cleanup_coordinator: CleanupCoordinator,
 }
 
 impl fmt::Debug for SessionSupervisor {
@@ -500,6 +567,7 @@ impl Default for SessionSupervisor {
                 next_generation: 0,
                 active: None,
             })),
+            cleanup_coordinator: CleanupCoordinator::default(),
         }
     }
 }
@@ -523,14 +591,14 @@ impl SessionSupervisor {
                 SupervisorErrorCode::WindowNotAuthorized,
             ));
         }
-        ensure_secure_directory(&input.application_cache_root)?;
-        ensure_secure_directory(
-            &input
-                .application_cache_root
-                .join(ANALYSIS_SESSIONS_DIRECTORY),
-        )?;
+        let storage =
+            crate::secure_storage::SecureStorage::new_or_create(&input.application_cache_root)
+                .map_err(|_| SupervisorError::new(SupervisorErrorCode::InvalidRequest))?;
         ensure_secure_directory(&input.working_directory)?;
         input.validate()?;
+        storage
+            .sessions_root()
+            .map_err(|_| SupervisorError::new(SupervisorErrorCode::SessionCleanupFailed))?;
 
         // Reserve the only live-generation slot before spawning.  Keeping the
         // guard across spawn closes the check/spawn/insert race without ever
@@ -549,12 +617,18 @@ impl SessionSupervisor {
             .application_cache_root
             .join(ANALYSIS_SESSIONS_DIRECTORY)
             .join(&session_id);
-        let normalized_directory = prepare_session_directory(
-            &output_directory,
-            &session_id,
-            generation,
-            input.total_source_bytes()?,
-        )?;
+        let free_bytes = available_free_bytes(&input.application_cache_root)?;
+        if !free_space_satisfies(
+            free_bytes,
+            required_session_bytes(input.total_source_bytes()?),
+        ) {
+            return Err(SupervisorError::new(
+                SupervisorErrorCode::DiskSpaceInsufficient,
+            ));
+        }
+        let normalized_directory = storage
+            .create_session(&session_id, generation)
+            .map_err(|_| SupervisorError::new(SupervisorErrorCode::SidecarStartFailed))?;
 
         let nonce = opaque_id("nonce_")?;
         let configuration = build_configuration(
@@ -573,16 +647,26 @@ impl SessionSupervisor {
         let (process, receiver) = match spawn_sidecar(launch, &session_id, generation) {
             Ok(value) => value,
             Err(error) => {
-                let _ = cleanup_session_directory(&output_directory, &session_id);
+                let _ = cleanup_session_directory(Some(&storage), &output_directory, &session_id);
                 return Err(error);
             }
         };
+
+        if write_owner_record(&storage, &session_id, generation, &process.identity).is_err() {
+            let _ = process.force_kill(&session_id, generation);
+            thread::sleep(FINAL_KILL_WAIT);
+            let _ = cleanup_session_directory(Some(&storage), &output_directory, &session_id);
+            return Err(SupervisorError::new(
+                SupervisorErrorCode::SidecarStartFailed,
+            ));
+        }
 
         let mut events = Vec::with_capacity(8);
         events.push(SessionEvent::State(SessionState::Ready));
         events.push(SessionEvent::State(SessionState::Preprocessing));
         inner.active = Some(ActiveSession {
             input,
+            storage: Some(storage),
             output_directory,
             window_label: window_label.to_string(),
             session_id,
@@ -696,6 +780,32 @@ impl SessionSupervisor {
         generation: u64,
         reason: CancelReason,
     ) -> Result<SessionSnapshot, SupervisorError> {
+        let worker_only = {
+            let mut inner = self.lock_inner()?;
+            validate_active(&inner, window_label, session_id, generation)?;
+            let active = inner.active.as_mut().expect("validated active session");
+            if matches!(active.terminal, Some(SessionTerminal::Complete(_)))
+                && active.state == SessionState::Analyzing
+            {
+                if active.state != SessionState::Cancelling {
+                    transition(active, SessionState::Cancelling)?;
+                    active
+                        .events
+                        .push(SessionEvent::State(SessionState::Cancelling));
+                    active.cancel_reason = Some(reason);
+                }
+                active.worker.clone()
+            } else {
+                None
+            }
+        };
+        if let Some(worker) = worker_only {
+            worker.request_cancellation();
+            self.wait_for_worker_termination(session_id, generation);
+            return self
+                .active_snapshot()
+                .ok_or_else(|| SupervisorError::new(SupervisorErrorCode::SessionStale));
+        }
         let watched_process = {
             let mut inner = self.lock_inner()?;
             validate_active(&inner, window_label, session_id, generation)?;
@@ -718,7 +828,8 @@ impl SessionSupervisor {
         };
         if let Some(process) = watched_process {
             self.request_worker_cancellation(session_id, generation);
-            if let Err(error) = process.signal(2) {
+            self.wait_for_worker_termination(session_id, generation);
+            if let Err(error) = process.signal(session_id, generation, 2) {
                 if error.code == SupervisorErrorCode::ProcessIdentityMismatch {
                     self.mark_cleanup_required(session_id, generation);
                 }
@@ -731,12 +842,12 @@ impl SessionSupervisor {
                 thread::sleep(GRACEFUL_CANCEL_GRACE);
                 if process_is_alive(escalation_process.identity.pid) {
                     escalation_supervisor.force_worker_termination(&escalation_session, generation);
-                    let _ = escalation_process.signal(15);
+                    let _ = escalation_process.signal(&escalation_session, generation, 15);
                     thread::sleep(TERM_CANCEL_GRACE);
                     if process_is_alive(escalation_process.identity.pid) {
                         escalation_supervisor
                             .force_worker_termination(&escalation_session, generation);
-                        let _ = escalation_process.force_kill();
+                        let _ = escalation_process.force_kill(&escalation_session, generation);
                     }
                 }
             });
@@ -766,7 +877,8 @@ impl SessionSupervisor {
         };
 
         self.request_worker_cancellation(session_id, generation);
-        if let Err(error) = process.signal(2) {
+        self.wait_for_worker_termination(session_id, generation);
+        if let Err(error) = process.signal(session_id, generation, 2) {
             if error.code == SupervisorErrorCode::ProcessIdentityMismatch {
                 self.mark_cleanup_required(session_id, generation);
             }
@@ -784,7 +896,7 @@ impl SessionSupervisor {
             Err(RecvTimeoutError::Timeout) => {
                 process.close_stdin();
                 self.force_worker_termination(session_id, generation);
-                if let Err(error) = process.signal(15) {
+                if let Err(error) = process.signal(session_id, generation, 15) {
                     if error.code == SupervisorErrorCode::ProcessIdentityMismatch {
                         self.mark_cleanup_required(session_id, generation);
                     }
@@ -800,7 +912,7 @@ impl SessionSupervisor {
                     }
                     Err(RecvTimeoutError::Timeout) => {
                         self.force_worker_termination(session_id, generation);
-                        if let Err(error) = process.force_kill() {
+                        if let Err(error) = process.force_kill(session_id, generation) {
                             if error.code == SupervisorErrorCode::ProcessIdentityMismatch {
                                 self.mark_cleanup_required(session_id, generation);
                             }
@@ -864,6 +976,53 @@ impl SessionSupervisor {
         Ok(())
     }
 
+    pub fn acknowledge_worker_stop(
+        &self,
+        window_label: &str,
+        session_id: &str,
+        generation: u64,
+    ) -> Result<(), SupervisorError> {
+        let worker = {
+            let inner = self.lock_inner()?;
+            validate_active(&inner, window_label, session_id, generation)?;
+            inner
+                .active
+                .as_ref()
+                .and_then(|active| active.worker.clone())
+        };
+        let Some(worker) = worker else {
+            return Err(SupervisorError::new(SupervisorErrorCode::SessionStale));
+        };
+        worker.acknowledge_termination();
+        Ok(())
+    }
+
+    /// Commit the renderer Worker result into the host registry before the
+    /// lifecycle reaches `complete`.  A missing lease is a stale production
+    /// commit, never a reason to publish completion.
+    pub fn worker_result_committed(
+        &self,
+        window_label: &str,
+        session_id: &str,
+        generation: u64,
+    ) -> Result<SessionSnapshot, SupervisorError> {
+        let mut inner = self.lock_inner()?;
+        validate_active(&inner, window_label, session_id, generation)?;
+        let active = inner.active.as_mut().expect("validated active session");
+        if !matches!(active.terminal, Some(SessionTerminal::Complete(_)))
+            || active.state != SessionState::Analyzing
+            || active.worker.is_none()
+        {
+            return Err(SupervisorError::new(SupervisorErrorCode::InvalidState));
+        }
+        active.worker = None;
+        transition(active, SessionState::Complete)?;
+        active
+            .events
+            .push(SessionEvent::State(SessionState::Complete));
+        Ok(snapshot(active))
+    }
+
     pub fn discard(
         &self,
         window_label: &str,
@@ -871,7 +1030,10 @@ impl SessionSupervisor {
         generation: u64,
     ) -> Result<SessionSnapshot, SupervisorError> {
         if self.active_snapshot().is_some_and(|snapshot| {
-            snapshot.terminal.is_none() && snapshot.state != SessionState::Closing
+            (snapshot.terminal.is_none()
+                || matches!(snapshot.terminal, Some(SessionTerminal::Complete(_)))
+                    && snapshot.state == SessionState::Analyzing)
+                && snapshot.state != SessionState::Closing
         }) {
             let cancelled = self.cancel(
                 window_label,
@@ -893,7 +1055,11 @@ impl SessionSupervisor {
         input: SessionInput,
     ) -> Result<SessionSnapshot, SupervisorError> {
         if let Some(active) = self.active_snapshot() {
-            if active.terminal.is_none() && active.state != SessionState::Closing {
+            if (active.terminal.is_none()
+                || matches!(active.terminal, Some(SessionTerminal::Complete(_)))
+                    && active.state == SessionState::Analyzing)
+                && active.state != SessionState::Closing
+            {
                 let cancelled = self.cancel(
                     window_label,
                     &active.session_id,
@@ -942,7 +1108,11 @@ impl SessionSupervisor {
             if active.session_id != session_id || active.generation != generation {
                 return Err(SupervisorError::new(SupervisorErrorCode::SessionStale));
             }
-            if active.terminal.is_none() && active.state != SessionState::Closing {
+            if (active.terminal.is_none()
+                || matches!(active.terminal, Some(SessionTerminal::Complete(_)))
+                    && active.state == SessionState::Analyzing)
+                && active.state != SessionState::Closing
+            {
                 let cancelled = self.cancel(
                     window_label,
                     session_id,
@@ -962,7 +1132,11 @@ impl SessionSupervisor {
         let Some(active) = self.active_snapshot() else {
             return;
         };
-        if active.terminal.is_none() && active.state != SessionState::Closing {
+        if (active.terminal.is_none()
+            || matches!(active.terminal, Some(SessionTerminal::Complete(_)))
+                && active.state == SessionState::Analyzing)
+            && active.state != SessionState::Closing
+        {
             if let Ok(cancelled) = self.cancel(
                 "main",
                 &active.session_id,
@@ -1006,8 +1180,18 @@ impl SessionSupervisor {
             .push(SessionEvent::State(SessionState::Failed));
         active.events.push(SessionEvent::Terminal(terminal.clone()));
         active.terminal = Some(terminal);
-        let cleanup = cleanup_session_directory(&active.output_directory, &active.session_id)
-            .unwrap_or(CleanupStatus::Required);
+        let output_directory = active.output_directory.clone();
+        let window_label = active.window_label.clone();
+        let active_session_id = active.session_id.clone();
+        let active_generation = active.generation;
+        let storage = active.storage.clone();
+        let cleanup = self.cleanup_for_identity(
+            &window_label,
+            &active_session_id,
+            active_generation,
+            &output_directory,
+            storage.as_ref(),
+        );
         active.cleanup = Some(cleanup.clone());
         active.events.push(SessionEvent::Cleanup(cleanup));
         Ok(snapshot(active))
@@ -1060,7 +1244,6 @@ impl SessionSupervisor {
                     active
                         .events
                         .push(SessionEvent::State(SessionState::Analyzing));
-                    transition(active, SessionState::Complete)?;
                     let terminal = SessionTerminal::Complete(result);
                     active.events.push(SessionEvent::Terminal(terminal.clone()));
                     active.terminal = Some(terminal);
@@ -1094,11 +1277,25 @@ impl SessionSupervisor {
         }
 
         if !matches!(active.terminal, Some(SessionTerminal::Complete(_))) {
-            let cleanup = cleanup_session_directory(&active.output_directory, &active.session_id);
-            let status = match cleanup {
-                Ok(status) => status,
-                Err(_) => CleanupStatus::Required,
-            };
+            if active.worker.is_some() {
+                active.cleanup = Some(CleanupStatus::Required);
+                active
+                    .events
+                    .push(SessionEvent::Cleanup(CleanupStatus::Required));
+                return Ok(snapshot(active));
+            }
+            let output_directory = active.output_directory.clone();
+            let window_label = active.window_label.clone();
+            let session_id = active.session_id.clone();
+            let generation = active.generation;
+            let storage = active.storage.clone();
+            let status = self.cleanup_for_identity(
+                &window_label,
+                &session_id,
+                generation,
+                &output_directory,
+                storage.as_ref(),
+            );
             active.cleanup = Some(status.clone());
             active.events.push(SessionEvent::Cleanup(status));
         }
@@ -1121,6 +1318,10 @@ impl SessionSupervisor {
             active.cleanup = Some(CleanupStatus::Required);
             return Err(SupervisorError::new(SupervisorErrorCode::CleanupRequired));
         }
+        if active.worker.is_some() {
+            active.cleanup = Some(CleanupStatus::Required);
+            return Err(SupervisorError::new(SupervisorErrorCode::CleanupRequired));
+        }
         if !matches!(active.cleanup, Some(CleanupStatus::Complete { .. })) {
             if active.state != SessionState::Closing && active.state != SessionState::Discarding {
                 transition(active, SessionState::Discarding)?;
@@ -1128,8 +1329,18 @@ impl SessionSupervisor {
                     .events
                     .push(SessionEvent::State(SessionState::Discarding));
             }
-            let status = cleanup_session_directory(&active.output_directory, &active.session_id)
-                .unwrap_or(CleanupStatus::Required);
+            let output_directory = active.output_directory.clone();
+            let active_window = active.window_label.clone();
+            let active_session = active.session_id.clone();
+            let active_generation = active.generation;
+            let storage = active.storage.clone();
+            let status = self.cleanup_for_identity(
+                &active_window,
+                &active_session,
+                active_generation,
+                &output_directory,
+                storage.as_ref(),
+            );
             active.cleanup = Some(status.clone());
             active.events.push(SessionEvent::Cleanup(status));
         }
@@ -1176,6 +1387,36 @@ impl SessionSupervisor {
         }
     }
 
+    fn wait_for_worker_termination(&self, session_id: &str, generation: u64) -> bool {
+        let worker = self.inner.lock().ok().and_then(|inner| {
+            inner.active.as_ref().and_then(|active| {
+                (active.session_id == session_id && active.generation == generation)
+                    .then(|| active.worker.clone())
+                    .flatten()
+            })
+        });
+        let Some(worker) = worker else {
+            return true;
+        };
+        if !worker.wait_for_termination(GRACEFUL_CANCEL_GRACE) {
+            worker.force_terminate();
+            if !worker.wait_for_termination(FINAL_KILL_WAIT) {
+                self.mark_cleanup_required(session_id, generation);
+                return false;
+            }
+        }
+        if let Ok(mut inner) = self.inner.lock() {
+            if let Some(active) = inner
+                .active
+                .as_mut()
+                .filter(|active| active.session_id == session_id && active.generation == generation)
+            {
+                active.worker = None;
+            }
+        }
+        true
+    }
+
     fn force_worker_termination(&self, session_id: &str, generation: u64) {
         let worker = self.inner.lock().ok().and_then(|inner| {
             inner.active.as_ref().and_then(|active| {
@@ -1186,6 +1427,45 @@ impl SessionSupervisor {
         });
         if let Some(worker) = worker {
             worker.force_terminate();
+        }
+    }
+
+    fn cleanup_for_identity(
+        &self,
+        window_label: &str,
+        session_id: &str,
+        generation: u64,
+        directory: &Path,
+        storage: Option<&crate::secure_storage::SecureStorage>,
+    ) -> CleanupStatus {
+        let key = CleanupKey::new(window_label, session_id, generation);
+        let storage = storage.cloned();
+        let outcome =
+            self.cleanup_coordinator.run(key.clone(), || {
+                match cleanup_session_directory(storage.as_ref(), directory, session_id) {
+                    Ok(CleanupStatus::Complete {
+                        removed_entry_count,
+                    }) => CleanupTerminal::Complete {
+                        removed_entry_count,
+                    },
+                    Ok(CleanupStatus::Required) | Err(_) => CleanupTerminal::Required,
+                }
+            });
+        if !outcome.is_complete() {
+            self.cleanup_coordinator.forget(&key);
+        }
+        match outcome {
+            CleanupTerminal::Complete {
+                removed_entry_count,
+            } => CleanupStatus::Complete {
+                removed_entry_count,
+            },
+            CleanupTerminal::Required
+            | CleanupTerminal::Timeout
+            | CleanupTerminal::UnsafeEntry
+            | CleanupTerminal::OwnerMismatch
+            | CleanupTerminal::ModeMismatch
+            | CleanupTerminal::TypeMismatch => CleanupStatus::Required,
         }
     }
 
@@ -1426,6 +1706,15 @@ fn spawn_sidecar(
             ));
         }
     };
+    let executable_fingerprint = match executable_fingerprint(&executable) {
+        Ok(fingerprint) => fingerprint,
+        Err(_) => {
+            terminate_spawn_failure(&mut child);
+            return Err(SupervisorError::new(
+                SupervisorErrorCode::SidecarStartFailed,
+            ));
+        }
+    };
     let Some(stdin) = child.stdin.take() else {
         terminate_spawn_failure(&mut child);
         return Err(SupervisorError::new(
@@ -1449,11 +1738,15 @@ fn spawn_sidecar(
             pid,
             group_id,
             executable,
+            executable_fingerprint,
             start_fingerprint,
             nonce: launch.nonce,
+            session_id: session_id.to_string(),
+            generation,
         },
         stdin: Mutex::new(Some(stdin)),
         forced: AtomicBool::new(false),
+        signal_stage: AtomicU8::new(0),
     });
     {
         let mut input = match control.stdin.lock() {
@@ -1511,8 +1804,9 @@ fn monitor_child(
 ) -> Result<SidecarTerminalResult, SupervisorErrorCode> {
     let session_id = session_id.to_string();
     let (stdout_sender, stdout_receiver) = mpsc::channel();
+    let stdout_session_id = session_id.clone();
     let stdout_thread = thread::spawn(move || {
-        let result = parse_stdout(stdout, &session_id, generation);
+        let result = parse_stdout(stdout, &stdout_session_id, generation);
         let _ = stdout_sender.send(result);
     });
     let (stderr_sender, stderr_receiver) = mpsc::channel();
@@ -1533,7 +1827,7 @@ fn monitor_child(
         if stdout_result.as_ref().is_some_and(Result::is_err)
             || stderr_result.as_ref().is_some_and(Result::is_err)
         {
-            let _ = process.force_kill();
+            let _ = process.force_kill(&session_id, generation);
         }
         match child.try_wait() {
             Ok(Some(status)) => break status,
@@ -2067,6 +2361,15 @@ fn opaque_id(prefix: &str) -> Result<String, SupervisorError> {
     Ok(value)
 }
 
+/// Opaque host-owned identifier for a renderer analytics Worker lease.
+pub fn new_worker_operation_id() -> Result<String, SupervisorError> {
+    opaque_id("wrk_")
+}
+
+pub fn new_worker_nonce() -> Result<String, SupervisorError> {
+    opaque_id("nonce_")
+}
+
 const MINIMUM_SESSION_FREE_BYTES: u64 = 128 * 1024 * 1024;
 const SESSION_OVERHEAD_BYTES: u64 = 64 * 1024 * 1024;
 
@@ -2094,10 +2397,10 @@ fn available_free_bytes(path: &Path) -> Result<u64, SupervisorError> {
             ));
         }
         let statistics = unsafe { statistics.assume_init() };
-        let block_size = u64::from(statistics.f_frsize.max(statistics.f_bsize));
-        return block_size
+        let block_size = statistics.f_frsize.max(statistics.f_bsize);
+        block_size
             .checked_mul(u64::from(statistics.f_bavail))
-            .ok_or_else(|| SupervisorError::new(SupervisorErrorCode::DiskSpaceInsufficient));
+            .ok_or_else(|| SupervisorError::new(SupervisorErrorCode::DiskSpaceInsufficient))
     }
     #[cfg(not(unix))]
     {
@@ -2108,105 +2411,33 @@ fn available_free_bytes(path: &Path) -> Result<u64, SupervisorError> {
     }
 }
 
-fn create_private_file(path: &Path, contents: &[u8]) -> Result<(), SupervisorError> {
-    let mut file = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(path)
-        .map_err(|_| SupervisorError::new(SupervisorErrorCode::SidecarStartFailed))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o600))
-            .map_err(|_| SupervisorError::new(SupervisorErrorCode::SidecarStartFailed))?;
-    }
-    file.write_all(contents)
-        .and_then(|_| file.sync_all())
+fn write_owner_record(
+    storage: &crate::secure_storage::SecureStorage,
+    session_id: &str,
+    generation: u64,
+    identity: &ProcessIdentity,
+) -> Result<(), SupervisorError> {
+    let record = crate::secure_storage::OwnerRecord {
+        schema_version: crate::secure_storage::OWNER_RECORD_SCHEMA_VERSION.to_string(),
+        state_version: "active.v1".to_string(),
+        pid: identity.pid,
+        process_group_id: identity.group_id,
+        start_fingerprint: identity.start_fingerprint.clone(),
+        executable_fingerprint: identity.executable_fingerprint.clone(),
+        session_id: session_id.to_string(),
+        generation,
+        nonce: identity.nonce.clone(),
+    };
+    storage
+        .write_owner_record(session_id, &record)
         .map_err(|_| SupervisorError::new(SupervisorErrorCode::SidecarStartFailed))
 }
 
-fn read_private_file(path: &Path, maximum: usize) -> Result<Vec<u8>, ()> {
-    if !is_secure_regular_file(path) {
-        return Err(());
-    }
-    let mut options = fs::OpenOptions::new();
-    options.read(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.custom_flags(libc::O_NOFOLLOW);
-    }
-    let mut file = options.open(path).map_err(|_| ())?;
-    let metadata = file.metadata().map_err(|_| ())?;
-    if !is_secure_regular_metadata(&metadata) || metadata.len() > maximum as u64 {
-        return Err(());
-    }
-    let mut bytes = Vec::with_capacity(metadata.len() as usize);
-    file.read_to_end(&mut bytes).map_err(|_| ())?;
-    if bytes.len() > maximum {
-        return Err(());
-    }
-    Ok(bytes)
-}
-
-fn prepare_session_directory(
-    session_directory: &Path,
-    session_id: &str,
-    generation: u64,
-    raw_bytes: u64,
-) -> Result<PathBuf, SupervisorError> {
-    let parent = session_directory
-        .parent()
-        .ok_or_else(|| SupervisorError::new(SupervisorErrorCode::SidecarStartFailed))?;
-    if !secure_directory(parent)
-        || session_directory
-            .file_name()
-            .and_then(|value| value.to_str())
-            != Some(session_id)
-    {
-        return Err(SupervisorError::new(
-            SupervisorErrorCode::SidecarStartFailed,
-        ));
-    }
-    let free_bytes = available_free_bytes(parent)?;
-    if !free_space_satisfies(free_bytes, required_session_bytes(raw_bytes)) {
-        return Err(SupervisorError::new(
-            SupervisorErrorCode::DiskSpaceInsufficient,
-        ));
-    }
-    if session_directory.exists() || session_directory.symlink_metadata().is_ok() {
-        return Err(SupervisorError::new(
-            SupervisorErrorCode::SidecarStartFailed,
-        ));
-    }
-    fs::create_dir(session_directory)
+fn executable_fingerprint(path: &Path) -> Result<String, SupervisorError> {
+    let bytes = fs::read(path)
         .map_err(|_| SupervisorError::new(SupervisorErrorCode::SidecarStartFailed))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        if fs::set_permissions(session_directory, fs::Permissions::from_mode(0o700)).is_err() {
-            let _ = fs::remove_dir(session_directory);
-            return Err(SupervisorError::new(
-                SupervisorErrorCode::SidecarStartFailed,
-            ));
-        }
-    }
-    if let Err(error) = create_private_file(
-        &session_directory.join(".session-marker"),
-        SESSION_MARKER_CONTENT,
-    )
-    .and_then(|_| {
-        create_private_file(
-            &session_directory.join("session-state"),
-            format!("sessionId={session_id}\ngeneration={generation}\n").as_bytes(),
-        )
-    }) {
-        let _ = fs::remove_file(session_directory.join(".session-marker"));
-        let _ = fs::remove_file(session_directory.join("session-state"));
-        let _ = fs::remove_dir(session_directory);
-        return Err(error);
-    }
-    Ok(session_directory.join("normalized"))
+    let digest = Sha256::digest(bytes);
+    Ok(digest.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -2222,69 +2453,80 @@ pub struct StartupRecovery {
 pub fn recover_startup_sessions(
     application_cache_root: &Path,
 ) -> Result<StartupRecovery, SupervisorError> {
-    ensure_secure_directory(application_cache_root)?;
-    let sessions_root = application_cache_root.join(ANALYSIS_SESSIONS_DIRECTORY);
-    ensure_secure_directory(&sessions_root)?;
-    let entries = fs::read_dir(&sessions_root)
+    let storage = crate::secure_storage::SecureStorage::new_or_create(application_cache_root)
         .map_err(|_| SupervisorError::new(SupervisorErrorCode::SessionCleanupFailed))?;
-    let mut recovery = StartupRecovery::default();
-    for entry in entries {
-        let Ok(entry) = entry else {
-            recovery.cleanup_required = true;
-            continue;
-        };
-        let path = entry.path();
-        let name = entry.file_name().to_string_lossy().into_owned();
-        let metadata = match fs::symlink_metadata(&path) {
-            Ok(metadata) => metadata,
-            Err(_) => {
-                recovery.cleanup_required = true;
-                continue;
+    let recovery = storage
+        .recover_startup_with(recover_owner_record)
+        .map_err(|_| SupervisorError::new(SupervisorErrorCode::SessionCleanupFailed))?;
+    Ok(StartupRecovery {
+        recognized_session_count: recovery.recognized_session_count,
+        cleaned_session_count: recovery.cleaned_session_count,
+        cleanup_required: recovery.cleanup_required,
+    })
+}
+
+fn recover_owner_record(
+    owner: &crate::secure_storage::OwnerRecord,
+) -> crate::secure_storage::RecoveryDisposition {
+    for (signal, wait) in [
+        (2, GRACEFUL_CANCEL_GRACE),
+        (15, TERM_CANCEL_GRACE),
+        (9, FINAL_KILL_WAIT),
+    ] {
+        match owner_identity_status(owner) {
+            IdentityStatus::Exited => {
+                return if signal == 2 {
+                    crate::secure_storage::RecoveryDisposition::Dead
+                } else {
+                    crate::secure_storage::RecoveryDisposition::Terminated
+                };
             }
-        };
-        if !valid_session_id(&name)
-            || metadata.file_type().is_symlink()
-            || !metadata.is_dir()
-            || !secure_directory(&path)
-            || !recognized_session_state(&path, &name)
-        {
-            recovery.cleanup_required = true;
-            continue;
+            IdentityStatus::Mismatch => {
+                return crate::secure_storage::RecoveryDisposition::UnownedLive;
+            }
+            IdentityStatus::Alive => {}
         }
-        recovery.recognized_session_count += 1;
-        match cleanup_session_directory(&path, &name) {
-            Ok(CleanupStatus::Complete { .. }) => recovery.cleaned_session_count += 1,
-            Ok(CleanupStatus::Required) | Err(_) => recovery.cleanup_required = true,
+        if send_process_group_signal(owner.process_group_id, signal).is_err() {
+            return crate::secure_storage::RecoveryDisposition::TerminationFailed;
+        }
+        if wait_for_process_exit(owner.pid, wait) {
+            return crate::secure_storage::RecoveryDisposition::Terminated;
         }
     }
-    Ok(recovery)
+    crate::secure_storage::RecoveryDisposition::TerminationFailed
 }
 
-fn valid_session_id(value: &str) -> bool {
-    value.len() == 36
-        && value.starts_with("ses_")
-        && value[4..]
-            .bytes()
-            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+fn owner_identity_status(owner: &crate::secure_storage::OwnerRecord) -> IdentityStatus {
+    if !process_is_alive(owner.pid) {
+        return IdentityStatus::Exited;
+    }
+    let executable_matches = process_executable(owner.pid).is_some_and(|path| {
+        executable_fingerprint(&path)
+            .ok()
+            .is_some_and(|fingerprint| fingerprint == owner.executable_fingerprint)
+    });
+    if owner.session_id.is_empty()
+        || owner.generation == 0
+        || process_group_id(owner.pid) != Some(owner.process_group_id)
+        || process_start_fingerprint(owner.pid).as_deref() != Some(owner.start_fingerprint.as_str())
+        || !process_nonce_matches(owner.pid, &owner.nonce)
+        || !executable_matches
+    {
+        IdentityStatus::Mismatch
+    } else {
+        IdentityStatus::Alive
+    }
 }
 
-fn recognized_session_state(directory: &Path, session_id: &str) -> bool {
-    let marker = directory.join(".session-marker");
-    let state = directory.join("session-state");
-    let expected_state = format!("sessionId={session_id}\ngeneration=");
-    read_private_file(&marker, SESSION_MARKER_CONTENT.len())
-        .ok()
-        .as_deref()
-        == Some(SESSION_MARKER_CONTENT)
-        && read_private_file(&state, 256).ok().is_some_and(|contents| {
-            contents.starts_with(expected_state.as_bytes())
-                && contents.ends_with(b"\n")
-                && contents.len() > expected_state.len() + 1
-                && std::str::from_utf8(&contents[expected_state.len()..contents.len() - 1])
-                    .ok()
-                    .and_then(|value| value.parse::<u64>().ok())
-                    .is_some_and(|generation| generation > 0)
-        })
+fn wait_for_process_exit(pid: u32, timeout: Duration) -> bool {
+    let deadline = Instant::now() + timeout;
+    while Instant::now() < deadline {
+        if !process_is_alive(pid) {
+            return true;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+    !process_is_alive(pid)
 }
 
 fn fill_random(bytes: &mut [u8]) -> io::Result<()> {
@@ -2304,249 +2546,63 @@ fn fill_random(bytes: &mut [u8]) -> io::Result<()> {
 }
 
 fn cleanup_session_directory(
+    pinned_storage: Option<&crate::secure_storage::SecureStorage>,
     directory: &Path,
     session_id: &str,
 ) -> Result<CleanupStatus, SupervisorError> {
-    if !absolute_path(directory)
-        || directory.file_name().and_then(|value| value.to_str()) != Some(session_id)
-        || directory
-            .parent()
-            .and_then(|parent| parent.file_name())
-            .and_then(|value| value.to_str())
-            != Some(ANALYSIS_SESSIONS_DIRECTORY)
-    {
-        return Ok(CleanupStatus::Required);
-    }
-    let metadata = match fs::symlink_metadata(directory) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            return Ok(CleanupStatus::Complete {
-                removed_entry_count: 0,
-            });
-        }
-        Err(_) => return Ok(CleanupStatus::Required),
-    };
-    if metadata.file_type().is_symlink()
-        || !metadata.is_dir()
-        || !secure_directory(directory)
-        || !secure_directory(directory.parent().unwrap_or(directory))
-    {
-        return Ok(CleanupStatus::Required);
-    }
-    if !recognized_session_state(directory, session_id) {
-        return Ok(CleanupStatus::Required);
-    }
-    let mut removed = 0u64;
-    let mut unsafe_entry = false;
-    let entries = match fs::read_dir(directory) {
-        Ok(entries) => entries.collect::<Result<Vec<_>, _>>(),
-        Err(_) => return Ok(CleanupStatus::Required),
-    };
-    let Ok(entries) = entries else {
-        return Ok(CleanupStatus::Required);
-    };
-    for entry in &entries {
-        let path = entry.path();
-        let Ok(entry_metadata) = fs::symlink_metadata(&path) else {
-            unsafe_entry = true;
-            continue;
-        };
-        let name = entry.file_name().to_string_lossy().into_owned();
-        if entry_metadata.file_type().is_symlink() {
-            unsafe_entry = true;
-        } else if entry_metadata.is_file()
-            && is_secure_regular_file(&path)
-            && is_known_session_file(&name)
-        {
-        } else if entry_metadata.is_dir() && name == "normalized" {
-            if validate_known_directory(&path).is_err() {
-                unsafe_entry = true;
-            }
-        } else if entry_metadata.is_dir() && is_known_staging_directory(&name) {
-            if validate_known_staging_directory(&path).is_err() {
-                unsafe_entry = true;
-            }
-        } else {
-            unsafe_entry = true;
-        }
-    }
-    if unsafe_entry {
-        return Ok(CleanupStatus::Required);
-    }
-    for entry in entries {
-        let path = entry.path();
-        let Ok(entry_metadata) = fs::symlink_metadata(&path) else {
+    let storage = if let Some(storage) = pinned_storage {
+        storage.clone()
+    } else {
+        let Some(sessions_root) = directory.parent() else {
             return Ok(CleanupStatus::Required);
         };
-        let name = entry.file_name().to_string_lossy().into_owned();
-        if entry_metadata.is_file() {
-            if fs::remove_file(&path).is_err() {
-                return Ok(CleanupStatus::Required);
-            }
-            removed += 1;
-        } else if name == "normalized" {
-            let count = cleanup_known_directory(&path).map_err(|_| ());
-            if let Ok(count) = count {
-                removed += count;
-            } else {
-                return Ok(CleanupStatus::Required);
-            }
-        } else if is_known_staging_directory(&name) {
-            let count = cleanup_known_staging_directory(&path).map_err(|_| ());
-            if let Ok(count) = count {
-                removed += count;
-            } else {
-                return Ok(CleanupStatus::Required);
-            }
-        }
-    }
-    let mut entries = match fs::read_dir(directory) {
-        Ok(entries) => entries,
-        Err(_) => return Ok(CleanupStatus::Required),
-    };
-    if entries.next().is_some() {
-        return Ok(CleanupStatus::Required);
-    }
-    if fs::remove_dir(directory).is_ok() {
-        removed += 1;
-        Ok(CleanupStatus::Complete {
-            removed_entry_count: removed,
-        })
-    } else {
-        Ok(CleanupStatus::Required)
-    }
-}
-
-fn validate_known_directory(path: &Path) -> Result<(), ()> {
-    if !secure_directory(path) {
-        return Err(());
-    }
-    for entry in fs::read_dir(path).map_err(|_| ())? {
-        let entry = entry.map_err(|_| ())?;
-        let entry_path = entry.path();
-        if !is_secure_regular_file(&entry_path)
-            || !is_known_session_file(&entry.file_name().to_string_lossy())
+        if sessions_root.file_name().and_then(|value| value.to_str())
+            != Some(ANALYSIS_SESSIONS_DIRECTORY)
         {
-            return Err(());
+            return Ok(CleanupStatus::Required);
         }
-    }
-    Ok(())
-}
-
-fn validate_known_staging_directory(path: &Path) -> Result<(), ()> {
-    if !secure_directory(path) {
-        return Err(());
-    }
-    for entry in fs::read_dir(path).map_err(|_| ())? {
-        let entry = entry.map_err(|_| ())?;
-        let entry_path = entry.path();
-        let name = entry.file_name().to_string_lossy().into_owned();
-        if !is_secure_regular_file(&entry_path) || !is_known_staging_file(&name) {
-            return Err(());
+        let Some(application_cache_root) = sessions_root.parent() else {
+            return Ok(CleanupStatus::Required);
+        };
+        match crate::secure_storage::SecureStorage::new(application_cache_root) {
+            Ok(storage) => storage,
+            Err(_) => return Ok(CleanupStatus::Required),
         }
-    }
-    Ok(())
-}
-
-fn cleanup_known_directory(path: &Path) -> Result<u64, ()> {
-    if !secure_directory(path) {
-        return Err(());
-    }
-    let mut removed = 0u64;
-    for entry in fs::read_dir(path).map_err(|_| ())? {
-        let entry = entry.map_err(|_| ())?;
-        let entry_path = entry.path();
-        if !is_secure_regular_file(&entry_path) {
-            return Err(());
-        }
-        if !is_known_session_file(&entry.file_name().to_string_lossy()) {
-            return Err(());
-        }
-        fs::remove_file(entry_path).map_err(|_| ())?;
-        removed += 1;
-    }
-    fs::remove_dir(path).map_err(|_| ())?;
-    Ok(removed + 1)
-}
-
-fn cleanup_known_staging_directory(path: &Path) -> Result<u64, ()> {
-    if !secure_directory(path) {
-        return Err(());
-    }
-    let mut removed = 0u64;
-    for entry in fs::read_dir(path).map_err(|_| ())? {
-        let entry = entry.map_err(|_| ())?;
-        let entry_path = entry.path();
-        if !is_secure_regular_file(&entry_path) {
-            return Err(());
-        }
-        let name = entry.file_name().to_string_lossy().into_owned();
-        if !is_known_staging_file(&name) {
-            return Err(());
-        }
-        fs::remove_file(entry_path).map_err(|_| ())?;
-        removed += 1;
-    }
-    fs::remove_dir(path).map_err(|_| ())?;
-    Ok(removed + 1)
-}
-
-fn is_secure_regular_file(path: &Path) -> bool {
-    let Ok(metadata) = fs::symlink_metadata(path) else {
-        return false;
     };
-    is_secure_regular_metadata(&metadata)
-}
-
-fn is_secure_regular_metadata(metadata: &fs::Metadata) -> bool {
-    if metadata.file_type().is_symlink() || !metadata.is_file() {
-        return false;
+    match storage.cleanup_session(session_id) {
+        crate::secure_storage::CleanupOutcome::Complete {
+            removed_entry_count,
+        } => Ok(CleanupStatus::Complete {
+            removed_entry_count,
+        }),
+        crate::secure_storage::CleanupOutcome::Required
+        | crate::secure_storage::CleanupOutcome::UnsafeEntry
+        | crate::secure_storage::CleanupOutcome::OwnerMismatch
+        | crate::secure_storage::CleanupOutcome::ModeMismatch
+        | crate::secure_storage::CleanupOutcome::TypeMismatch => Ok(CleanupStatus::Required),
     }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::{MetadataExt, PermissionsExt};
-        metadata.uid() == unsafe { libc_getuid() } && metadata.permissions().mode() & 0o777 == 0o600
-    }
-    #[cfg(not(unix))]
-    true
-}
-
-fn is_known_session_file(name: &str) -> bool {
-    matches!(
-        name,
-        ".session-marker" | "session-state" | "manifest.json" | ".cleanup-required"
-    ) || (name.starts_with("chunk-")
-        && name.ends_with(".ndjson")
-        && name.len() > 6 + ".ndjson".len()
-        && name[6..name.len() - ".ndjson".len()].len() >= 4
-        && name[6..name.len() - ".ndjson".len()]
-            .bytes()
-            .all(|byte| byte.is_ascii_digit()))
-}
-
-fn is_known_staging_directory(name: &str) -> bool {
-    name.starts_with(".chathistoryanalysis-stage-v2-")
-        && name.len() == ".chathistoryanalysis-stage-v2-".len() + 32
-        && name[".chathistoryanalysis-stage-v2-".len()..]
-            .bytes()
-            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
-}
-
-fn is_known_staging_file(name: &str) -> bool {
-    name == ".chathistoryanalysis-private-stage-v2"
-        || name == ".staging-events.sqlite3"
-        || is_known_session_file(name)
 }
 
 fn process_identity_status(identity: &ProcessIdentity) -> IdentityStatus {
     if !process_is_alive(identity.pid) {
         return IdentityStatus::Exited;
     }
-    if identity.nonce.is_empty() || !process_nonce_matches(identity.pid, &identity.nonce) {
+    if identity.session_id.is_empty()
+        || identity.generation == 0
+        || identity.nonce.is_empty()
+        || identity.executable_fingerprint.len() != 64
+        || !process_nonce_matches(identity.pid, &identity.nonce)
+    {
         return IdentityStatus::Mismatch;
     }
+    let executable_matches = process_executable(identity.pid).is_some_and(|path| {
+        path == identity.executable
+            && executable_fingerprint(&path)
+                .ok()
+                .is_some_and(|fingerprint| fingerprint == identity.executable_fingerprint)
+    });
     if process_group_id(identity.pid) != Some(identity.group_id)
-        || process_executable(identity.pid).as_deref() != Some(identity.executable.as_path())
+        || !executable_matches
         || process_start_fingerprint(identity.pid).as_deref()
             != Some(identity.start_fingerprint.as_str())
     {
@@ -2820,6 +2876,7 @@ mod tests {
     fn state_transitions_are_explicit_and_fail_closed() {
         let mut active = ActiveSession {
             input: SessionInput::new(Vec::new(), Vec::new(), PathBuf::new(), PathBuf::new()),
+            storage: None,
             output_directory: PathBuf::new(),
             window_label: "main".to_string(),
             session_id: "ses_00000000000000000000000000000001".to_string(),
@@ -2833,11 +2890,15 @@ mod tests {
                     pid: 0,
                     group_id: 0,
                     executable: PathBuf::new(),
+                    executable_fingerprint: String::new(),
                     start_fingerprint: String::new(),
                     nonce: String::new(),
+                    session_id: String::new(),
+                    generation: 0,
                 },
                 stdin: Mutex::new(None),
                 forced: AtomicBool::new(false),
+                signal_stage: AtomicU8::new(0),
             }),
             outcome_receiver: None,
             watcher_active: false,

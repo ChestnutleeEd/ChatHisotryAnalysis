@@ -17,7 +17,11 @@ import {
   isGeneration,
   isSessionId,
 } from "../desktop/ipc-contract";
-import type { DatasetCorrelation } from "./analytics-contract";
+import type {
+  CanonicalAnalysisResult,
+  DatasetCorrelation,
+} from "./analytics-contract";
+import { isWorkerOperationCapability, type WorkerOperationCapability } from "./protocol";
 
 export interface AnalysisWorkerScope {
   onmessage: ((event: MessageEvent<WorkerRequest>) => void) | null;
@@ -29,13 +33,20 @@ export type DesktopDatasetSourceFactory = (
   request: DesktopDatasetSourceRequest,
 ) => Promise<DatasetByteSource>;
 
+export type DesktopWorkerResultCommitter = (
+  capability: WorkerOperationCapability,
+  result: CanonicalAnalysisResult,
+) => Promise<string>;
+
 export interface AnalysisWorkerHandlerOptions {
   readonly createDesktopDatasetSource?: DesktopDatasetSourceFactory;
+  readonly commitDesktopWorkerResult?: DesktopWorkerResultCommitter;
 }
 
 interface ResolvedDatasetSource {
   readonly source: DatasetByteSource | readonly File[];
   readonly correlation: DatasetCorrelation;
+  readonly workerCapability?: WorkerOperationCapability;
 }
 
 export function createAnalysisWorkerHandler(
@@ -43,6 +54,9 @@ export function createAnalysisWorkerHandler(
   runtime: AnalysisWorkerRuntime,
   options: AnalysisWorkerHandlerOptions = {},
 ): (event: MessageEvent<WorkerRequest>) => void {
+  let activeCorrelation: DatasetCorrelation | undefined;
+  let activeWorkerCapability: WorkerOperationCapability | undefined;
+
   async function resolveDatasetSource(
     request: Extract<WorkerRequest, { readonly type: "load-dataset" }>,
   ): Promise<ResolvedDatasetSource> {
@@ -64,7 +78,11 @@ export function createAnalysisWorkerHandler(
       !isGeneration(request.source.generation) ||
       request.source.generation === 0 ||
       !isDatasetId(request.source.datasetId) ||
-      request.source.generation !== request.generation
+      request.source.generation !== request.generation ||
+      !isWorkerOperationCapability(request.source.workerCapability) ||
+      request.source.workerCapability.sessionId !== request.source.sessionId ||
+      request.source.workerCapability.generation !== request.source.generation ||
+      request.source.workerCapability.datasetId !== request.source.datasetId
     ) {
       throw new WorkerAnalysisError("DATASET_TRANSPORT_INVALID", "manifest");
     }
@@ -80,6 +98,7 @@ export function createAnalysisWorkerHandler(
           datasetId: request.source.datasetId,
           generation: request.source.generation,
         },
+        workerCapability: request.source.workerCapability,
       };
     } catch (error) {
       if (error instanceof DatasetByteSourceError) {
@@ -153,6 +172,8 @@ export function createAnalysisWorkerHandler(
       return;
     }
     if (request.type === "load-dataset") {
+      activeCorrelation = undefined;
+      activeWorkerCapability = undefined;
       void resolveDatasetSource(request).then(
         (resolved) =>
           runtime
@@ -164,6 +185,8 @@ export function createAnalysisWorkerHandler(
               resolved.correlation,
             )
             .then((accepted) => {
+              activeCorrelation = resolved.correlation;
+              activeWorkerCapability = resolved.workerCapability;
               const metadata = runtime.nextResponseMetadata(
                 request.operationId,
                 request.generation,
@@ -193,7 +216,36 @@ export function createAnalysisWorkerHandler(
         generation: request.generation,
         sequence: request.sequence,
       })
-      .then((result) => {
+      .then(async (result) => {
+        let resultId: string | undefined;
+        const correlation = activeCorrelation;
+        if (
+          correlation !== undefined &&
+          correlation.sessionId !== null &&
+          correlation.datasetId !== null &&
+          "activity" in result
+        ) {
+          const commit = options.commitDesktopWorkerResult;
+          const capability = request.workerCapability ?? activeWorkerCapability;
+          if (
+            capability === undefined ||
+            commit === undefined ||
+            capability.sessionId !== correlation.sessionId ||
+            capability.generation !== correlation.generation ||
+            capability.datasetId !== correlation.datasetId
+          ) {
+            throw new WorkerAnalysisError("WORKER_COMMIT_REJECTED", "aggregation");
+          }
+          try {
+            resultId = await commit(
+              capability,
+              result as CanonicalAnalysisResult,
+            );
+            activeWorkerCapability = capability;
+          } catch {
+            throw new WorkerAnalysisError("WORKER_COMMIT_REJECTED", "aggregation");
+          }
+        }
         const metadata = runtime.nextResponseMetadata(
           request.operationId,
           request.generation,
@@ -206,6 +258,7 @@ export function createAnalysisWorkerHandler(
           operationId: request.operationId,
           ...metadata,
           result,
+          ...(resultId === undefined ? {} : { resultId }),
         });
       })
       .catch((error: unknown) => {

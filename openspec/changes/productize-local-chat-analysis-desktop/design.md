@@ -51,6 +51,43 @@ packaging, signing, and clean-machine hardening. These requirements remain in
 the specifications and task list, and are not silently removed or treated as
 complete by the Alpha gate.
 
+### Stage 10 Alpha threat model and acceptance boundary
+
+The protected Alpha assets are the selected raw JSON, canonical dataset and
+SQLite staging data, aggregate results, explicit export output, owner-only
+session/cache directories, the sidecar process, dataset transport, structured
+logs, and host registries plus session/generation/result capabilities.
+
+Trusted components are the Rust/Tauri host, host-owned registries and
+`SecureStorage`, the fixed-digest Alpha sidecar, and native operating-system
+file dialogs. The WebView renderer, React UI, analytics Worker, and all
+renderer/Worker messages are untrusted and form one frontend threat domain.
+The host does not attempt to prove that a commit originated from a Worker
+thread rather than renderer code. Its boundary is instead a closed numeric
+aggregate DTO with complete runtime validation and binding to window, session,
+generation, dataset, canonical query, and analytics contract. Paths,
+filenames, bodies, arbitrary strings, schemas, and export payloads never cross
+that commit seam.
+
+Representative Alpha evidence covers malformed/oversized input, forged or
+stale capability replay, unsafe storage objects and directory escape, unsafe
+navigation/network paths, content-free logs, orphan cleanup, and write,
+rename, and fsync failure. The accepted residuals are the macOS PID/PGID
+reuse window between the last identity check and a signal syscall, races
+against a fully malicious same-UID process, renderer/Worker indistinguishability
+after renderer compromise, and OS/kernel/filesystem/WebKit vulnerabilities.
+macOS has no Linux-pidfd-equivalent primitive for eliminating the signal window;
+formal and exhaustive proof is not an Alpha acceptance condition.
+
+The deferred mapping is explicit: packaged WKWebView/runtime permission proof
+is D.1; exhaustive storage/tamper combinations are D.3; exhaustive
+lifecycle/crash/disconnect/reuse cases are D.4; exhaustive IPC/capability
+vectors and cross-language race proof are D.8; and formal capacity,
+performance, and resource certification is D.9. Alpha acceptance requires no
+unresolved current Alpha Critical, no realistically exploitable current Alpha
+High, representative production/integration evidence, and documented
+residuals; it does not require a formal or Cartesian-product proof.
+
 ## Goals / Non-Goals
 
 **Goals:**

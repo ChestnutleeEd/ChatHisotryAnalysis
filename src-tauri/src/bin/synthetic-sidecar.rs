@@ -40,7 +40,9 @@ fn read_configuration() -> (String, u64, PathBuf) {
 }
 
 fn write_synthetic_dataset(output: &PathBuf) {
-    std::fs::create_dir(output).expect("synthetic normalized directory");
+    if !output.exists() {
+        std::fs::create_dir(output).expect("synthetic normalized directory");
+    }
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

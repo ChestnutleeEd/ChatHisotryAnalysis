@@ -1793,8 +1793,25 @@ footer a {
   background: var(--desktop-surface-muted);
 }
 
-.dashboard-bar-track span {
+.dashboard-bar-progress {
   display: block;
+  width: 100%;
+  height: 8px;
+  border: 0;
+  border-radius: 0;
+  background: var(--desktop-surface-muted);
+  appearance: none;
+}
+
+.dashboard-bar-progress::-webkit-progress-bar {
+  background: var(--desktop-surface-muted);
+}
+
+.dashboard-bar-progress::-webkit-progress-value {
+  background: var(--desktop-accent);
+}
+
+.dashboard-bar-progress::-moz-progress-bar {
   height: 100%;
   background: var(--desktop-accent);
 }
@@ -1979,6 +1996,25 @@ footer a {
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 18px;
+}
+
+.dashboard-export-chart-select {
+  display: grid;
+  gap: 6px;
+  max-width: 280px;
+  margin-top: 16px;
+  color: var(--desktop-ink-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.dashboard-export-warning {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--desktop-warning);
+  background: #fff7e8;
+  color: var(--desktop-ink);
+  font-size: 0.78rem;
 }
 
 .dashboard-methodology {

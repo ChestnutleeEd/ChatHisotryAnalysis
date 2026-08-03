@@ -72,6 +72,20 @@ const FAILURE_MESSAGES: Readonly<Partial<Record<DesktopFailureCode, string>>> = 
   DATASET_HANDOFF_INVALID: "本地分析数据交接校验失败，可重试。",
   DATASET_TAMPERED: "本地分析数据完整性校验失败，可重试。",
   DIALOG_UNAVAILABLE: "当前平台无法打开原生文件选择器。",
+  EXPORT_BUSY: "已有导出正在进行，请等待当前保存流程结束。",
+  EXPORT_RESULT_PENDING: "当前聚合结果仍在计算，请等待完整结果后重试。",
+  EXPORT_STALE_RESULT: "当前导出结果已过期，请回到最新结果后重试。",
+  EXPORT_SCHEMA_INVALID: "当前聚合结果未通过导出契约校验，请重试本地统计。",
+  EXPORT_LIMIT_EXCEEDED: "导出结果超过本地文件大小或行数限制。",
+  EXPORT_RENDER_FAILED: "批准的图表无法渲染为 PNG，请重试。",
+  EXPORT_PERMISSION_DENIED: "保存位置不可写，请选择其他本地位置。",
+  EXPORT_DISK_FULL: "保存位置空间不足，请选择其他本地位置。",
+  EXPORT_WRITE_FAILED: "本地导出写入失败，请重试。",
+  EXPORT_FLUSH_FAILED: "本地导出未能完成落盘，请重试。",
+  EXPORT_DURABILITY_UNCERTAIN: "本地导出已写入但持久化状态不确定，请检查目标文件后再继续。",
+  EXPORT_RENAME_FAILED: "本地导出未能安全替换目标文件，请重试。",
+  EXPORT_CLEANUP_REQUIRED: "导出临时文件需要清理，请重试导出。",
+  EXPORT_RESULT_NOT_FOUND: "当前导出结果不存在，请重新运行本地统计。",
 };
 
 export function desktopFailureMessage(code: DesktopFailureCode | undefined): string | undefined {

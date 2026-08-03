@@ -1,8 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { WorkerRequest, WorkerResponse } from "../src/worker-analysis/protocol";
+import {
+  ANALYTICS_RESULT_CONTRACT_VERSION,
+  WORKER_CAPABILITY_PROTOCOL_VERSION,
+  type WorkerRequest,
+  type WorkerResponse,
+} from "../src/worker-analysis/protocol";
 import { createAnalysisWorkerHandler } from "../src/worker-analysis/worker-handler";
 import { AnalysisWorkerRuntime } from "../src/worker-analysis/worker-runtime";
+import { canonicalQueryKey } from "../src/worker-analysis/analytics-contract";
 import type { DatasetByteSource } from "../src/worker-analysis/dataset-byte-source";
 import type {
   DatasetId,
@@ -20,6 +26,28 @@ function tokenizer(cut = (value: string) => value.split(/\s+/u)) {
     initialize: vi.fn(async () => undefined),
     cutWithoutHmm: vi.fn(cut),
   };
+}
+
+function workerCapability(generation: Generation) {
+  const datasetId = "dat_00000000000000000000000000000001" as DatasetId;
+  return {
+    protocolVersion: WORKER_CAPABILITY_PROTOCOL_VERSION,
+    operationId: "wrk_00000000000000000000000000000001",
+    nonce: "nonce_00000000000000000000000000000001",
+    windowId: "main",
+    sessionId: "ses_00000000000000000000000000000001" as SessionId,
+    generation,
+    datasetId,
+    queryKey: canonicalQueryKey(datasetId, generation, {
+      startDate: "2025-01-01",
+      endDate: "2025-01-01",
+      sender: "both",
+      selectedYear: null,
+      sessionThresholdHours: 6,
+    }),
+    analyticsContractVersion: ANALYTICS_RESULT_CONTRACT_VERSION,
+    expiresAtMillis: Date.now() + 60_000,
+  } as const;
 }
 
 async function dispatch(
@@ -331,6 +359,7 @@ describe("production Worker message path", () => {
             sessionId: "ses_00000000000000000000000000000001" as SessionId,
             generation: generation as Generation,
             datasetId: "dat_00000000000000000000000000000001" as DatasetId,
+            workerCapability: workerCapability(generation as Generation),
           }
         : {
             kind: "browser-file-source",

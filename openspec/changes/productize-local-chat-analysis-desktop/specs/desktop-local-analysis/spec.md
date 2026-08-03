@@ -29,6 +29,39 @@ formal release claim; none blocks the unsigned local Alpha.
 - **WHEN** OpenSpec status is inspected after the Alpha batch
 - **THEN** every deferred hardening item remains an unchecked task and no release evidence is reported as complete
 
+### Requirement: Stage 10 Alpha threat model and acceptance boundary
+Stage 10 Alpha SHALL protect selected raw JSON, canonical dataset and staging
+data, aggregate results, explicit export output, owner-only session/cache
+storage, the fixed-digest Alpha sidecar, dataset transport, content-free
+structured logs, and host session/generation/result capabilities. Trusted
+components SHALL be limited to the Rust/Tauri host, host-owned registries and
+`SecureStorage`, the fixed-digest sidecar, and native operating-system file
+dialogs. The renderer, UI, analytics Worker, and all messages between them
+SHALL be treated as one untrusted frontend domain.
+
+The host SHALL NOT claim to establish Worker-vs-renderer caller identity. It
+SHALL accept no path, filename, body, arbitrary string, arbitrary schema, or
+arbitrary export payload at the result boundary. It SHALL accept only a
+closed, runtime-validated numeric aggregate DTO bound to the current window,
+session, generation, dataset, canonical query, and analytics contract, and it
+SHALL reject stale, replayed, cross-dataset, cross-query, cross-generation, or
+schema-invalid submissions.
+
+Alpha acceptance SHALL require no unresolved current Alpha Critical, no
+realistically exploitable current Alpha High, representative production and
+integration evidence, and explicit residual-risk documentation. It SHALL NOT
+require formal or exhaustive proof of the macOS signal-reuse window,
+same-UID filesystem races, renderer/Worker caller identity, or every seam by
+every lifecycle event.
+
+#### Scenario: Apply the Alpha boundary to a forged frontend submission
+- **WHEN** renderer or Worker code submits a schema-shaped result for a different window, session, generation, dataset, query, or contract
+- **THEN** the host rejects it without a privileged commit or export
+
+#### Scenario: Keep release hardening deferred
+- **WHEN** Alpha evidence is reviewed
+- **THEN** packaged WebKit/runtime permissions map to D.1, exhaustive storage/tamper combinations to D.3, exhaustive lifecycle/crash/disconnect/reuse cases to D.4, exhaustive IPC/capability proof to D.8, and formal capacity/performance/resource certification to D.9
+
 ### Requirement: Host-owned dataset registry and transport authority
 The Rust host SHALL create session and dataset IDs and SHALL derive record
 count, chunk count, chunk byte sizes, dataset size, and all host dataset
