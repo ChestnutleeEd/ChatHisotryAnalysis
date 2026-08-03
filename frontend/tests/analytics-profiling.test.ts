@@ -21,7 +21,7 @@ function createProfileRuntime(): AnalysisWorkerRuntime {
 
 describe("synthetic analytics profiling harness", () => {
   it("exercises multi-year chunks, category mixes, filter churn, and threshold churn in memory", async () => {
-    const events = syntheticAnalyticsEvents();
+    const events = syntheticAnalyticsEvents(20_000);
     const dataset = createCanonicalDataset(events, 4_096);
     const runtime = createProfileRuntime();
     const started = performance.now();
@@ -75,15 +75,22 @@ describe("synthetic analytics profiling harness", () => {
     const elapsed = performance.now() - started;
     expect(elapsed).toBeGreaterThanOrEqual(0);
     expect(results).toHaveLength(settings.length);
+    expect(dataset.files).toHaveLength(3);
     expect(results[0]).toMatchObject({
       aggregate: {
         eventCount: summary.eventCount,
         userMessageCount: summary.userMessageCount,
         systemEventCount: summary.systemEventCount,
       },
+      replySessions: {
+        replyIntervals: { thresholdHours: 6 },
+        conversationSessions: { thresholdHours: 6 },
+      },
     });
     expect(new Set(results.map((result) => result.queryKey)).size).toBe(
       settings.length,
     );
+    expect(results.every((result) => result.replySessions !== undefined)).toBe(true);
+    expect(results[0] && JSON.stringify(results[0]).length).toBeGreaterThan(0);
   });
 });

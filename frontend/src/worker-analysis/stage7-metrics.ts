@@ -11,6 +11,11 @@ import type {
 import { isCalendarDate } from "./calendar";
 import type { CanonicalIndex } from "./canonical-index";
 import type { CanonicalActivityMetrics } from "./activity-metrics";
+import type { ReplySessionMetrics } from "./reply-session-metrics";
+import {
+  REPLY_INTERVAL_DEFINITION_VERSION,
+  SESSION_INITIATOR_DEFINITION_VERSION,
+} from "./reply-session-metrics";
 
 export const STAGE7_METRICS_SCHEMA_VERSION =
   "chat-history-analysis.stage7-metrics.v1" as const;
@@ -471,6 +476,7 @@ function buildSummary(
   activity: CanonicalActivityMetrics,
   messageTypes: Stage7MessageTypes,
   yearlyKeywords: Stage7YearlyKeywords,
+  replySessions?: ReplySessionMetrics,
 ): Stage7YearlySummary {
   const clauses: Stage7SummaryClause[] = [];
   const omissions: Stage7SummaryOmission[] = [];
@@ -588,18 +594,72 @@ function buildSummary(
       definitionVersion: STAGE7_DEFINITION_VERSIONS.yearlyKeywords,
     });
   }
-  omissions.push(
-    {
+  if (replySessions === undefined) {
+    omissions.push(
+      {
+        metricId: "reply-interval",
+        reason: "DEFERRED_TO_STAGE_8",
+        definitionVersion: "deferred",
+      },
+      {
+        metricId: "session-initiator",
+        reason: "DEFERRED_TO_STAGE_8",
+        definitionVersion: "deferred",
+      },
+    );
+    return {
+      schemaVersion: STAGE7_METRICS_SCHEMA_VERSION,
+      definitionVersion: STAGE7_DEFINITION_VERSIONS.summary,
+      activeYear: yearlyKeywords.activeYear,
+      clauses,
+      omissions,
+    };
+  }
+  const replyStats = replySessions.replyIntervals;
+  if (replyStats.overall.count > 0) {
+    const directionText = replyStats.directions
+      .filter((direction) => direction.stats.count > 0)
+      .map(
+        (direction) =>
+          `${direction.direction} median ${direction.stats.medianSeconds} 秒`,
+      )
+      .join("、");
+    add(
+      "reply-interval",
+      `回复间隔：${directionText}（阈值 ${replyStats.thresholdHours} 小时）`,
+      trace("reply-interval", REPLY_INTERVAL_DEFINITION_VERSION, filters, {
+        count: replyStats.overall.count,
+        medianSeconds: replyStats.overall.medianSeconds,
+        thresholdHours: replyStats.thresholdHours,
+      }),
+    );
+  } else {
+    omissions.push({
       metricId: "reply-interval",
-      reason: "DEFERRED_TO_STAGE_8",
-      definitionVersion: "deferred",
-    },
-    {
+      reason: "NO_REPLY_INTERVALS",
+      definitionVersion: REPLY_INTERVAL_DEFINITION_VERSION,
+    });
+  }
+  const sessions = replySessions.conversationSessions;
+  if (sessions.sessionCount > 0) {
+    add(
+      "session-initiator",
+      `会话开场次数（阈值 ${sessions.thresholdHours} 小时）：owner ${sessions.initiatorCounts.owner.count}、other ${sessions.initiatorCounts.other.count}、unknown ${sessions.initiatorCounts.unknown.count}`,
+      trace("session-initiator", SESSION_INITIATOR_DEFINITION_VERSION, filters, {
+        sessionCount: sessions.sessionCount,
+        ownerCount: sessions.initiatorCounts.owner.count,
+        otherCount: sessions.initiatorCounts.other.count,
+        unknownCount: sessions.initiatorCounts.unknown.count,
+        thresholdHours: sessions.thresholdHours,
+      }),
+    );
+  } else {
+    omissions.push({
       metricId: "session-initiator",
-      reason: "DEFERRED_TO_STAGE_8",
-      definitionVersion: "deferred",
-    },
-  );
+      reason: "NO_SESSIONS_IN_OPENING_DATE_RANGE",
+      definitionVersion: SESSION_INITIATOR_DEFINITION_VERSION,
+    });
+  }
   return {
     schemaVersion: STAGE7_METRICS_SCHEMA_VERSION,
     definitionVersion: STAGE7_DEFINITION_VERSIONS.summary,
@@ -615,6 +675,7 @@ export async function deriveStage7Metrics(
   activity: CanonicalActivityMetrics,
   filters: CanonicalAnalysisFilters,
   checkpoint: () => Promise<void>,
+  replySessions?: ReplySessionMetrics,
 ): Promise<Stage7Metrics> {
   const evidence = collectSelectedEvidence(shared);
   await checkpoint();
@@ -635,7 +696,7 @@ export async function deriveStage7Metrics(
   );
   await checkpoint();
   const messageTypes = buildMessageTypes(filters, shared);
-  const summary = buildSummary(filters, activity, messageTypes, yearlyKeywords);
+  const summary = buildSummary(filters, activity, messageTypes, yearlyKeywords, replySessions);
   await checkpoint();
   return {
     schemaVersion: STAGE7_METRICS_SCHEMA_VERSION,
@@ -951,6 +1012,8 @@ function validateSummary(
     "peak-hour",
     "message-types",
     "yearly-keywords",
+    "reply-interval",
+    "session-initiator",
   ];
   const seenClauseIds = new Set<string>();
   let previousClauseOrder = -1;

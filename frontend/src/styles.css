@@ -511,6 +511,75 @@ h2 {
   text-align: right;
 }
 
+.stage8-dashboard {
+  margin-top: 20px;
+}
+
+.stage8-threshold-control {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+  margin: 22px 0 12px;
+}
+
+.stage8-threshold-control label {
+  display: grid;
+  flex: 1 1 220px;
+  gap: 7px;
+  max-width: 360px;
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.stage8-threshold-control .activity-filter-button {
+  width: auto;
+  flex: 0 0 auto;
+}
+
+.stage8-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.stage8-kpis > div {
+  display: grid;
+  gap: 5px;
+  padding: 14px;
+  border: 1px solid rgb(96 108 56 / 24%);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 38%);
+}
+
+.stage8-kpis dt {
+  color: var(--accent-ink);
+  font-size: 0.72rem;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.stage8-kpis dd {
+  margin: 0;
+  font-size: 1.35rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.stage8-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 20px;
+}
+
+.stage8-wide-card {
+  grid-column: 1 / -1;
+}
+
+.stage8-table {
+  min-width: 620px;
+}
+
 .activity-card {
   min-width: 0;
   padding: 20px;
@@ -948,7 +1017,8 @@ footer a {
   .selection-panel,
   .analysis-layout,
   .activity-grid,
-  .stage7-grid {
+  .stage7-grid,
+  .stage8-grid {
     grid-template-columns: 1fr;
   }
 
@@ -984,11 +1054,18 @@ footer a {
   .ranking,
   .activity-filters,
   .activity-kpis,
-  .stage7-year-control {
+  .stage8-kpis,
+  .stage7-year-control,
+  .stage8-threshold-control {
     grid-template-columns: 1fr;
   }
 
   .stage7-year-control {
+    display: grid;
+    align-items: stretch;
+  }
+
+  .stage8-threshold-control {
     display: grid;
     align-items: stretch;
   }
@@ -998,6 +1075,14 @@ footer a {
   }
 
   .stage7-year-control .activity-filter-button {
+    width: 100%;
+  }
+
+  .stage8-threshold-control label {
+    max-width: none;
+  }
+
+  .stage8-threshold-control .activity-filter-button {
     width: 100%;
   }
 

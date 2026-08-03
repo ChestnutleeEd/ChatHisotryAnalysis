@@ -8,12 +8,16 @@ import {
   type CanonicalAnalysisFilters,
 } from "./analytics-contract";
 import {
-  activateSessionIndex,
   OWNER_SENDER_CODE,
   SYSTEM_SENDER_CODE,
   type CanonicalIndex,
 } from "./canonical-index";
 import type { SessionThresholdHours } from "./analytics-contract";
+import {
+  buildConversationSessionIndex,
+  buildConversationSessionIndexAsync,
+  type ConversationSessionIndex,
+} from "./reply-session-metrics";
 
 export interface SharedAggregateAccumulator {
   readonly eventCount: number;
@@ -28,6 +32,7 @@ export interface SharedAggregateAccumulator {
   readonly eligibleTextCodePointCount: number;
   readonly tokenCount: number;
   readonly activeSessionThresholdHours: SessionThresholdHours;
+  readonly conversationIndex: ConversationSessionIndex;
   readonly hourCounts: Uint32Array;
   readonly weekdayCounts: Uint32Array;
   readonly selectedDayCounts: ReadonlyMap<number, number>;
@@ -153,10 +158,10 @@ export function createSharedAggregate(
 ): SharedAggregateAccumulator {
   const start = canonicalDateCode(filters.startDate);
   const end = canonicalDateCode(filters.endDate);
-  const activeSessionThresholdHours = activateSessionIndex(
+  const conversationIndex = buildConversationSessionIndex(
     index,
     filters.sessionThresholdHours,
-  ).thresholdHours;
+  );
   const categoryCounts = emptyCategoryCounts();
   const senderCounts = { owner: 0, other: 0 };
   const hourCounts = new Uint32Array(24);
@@ -225,7 +230,8 @@ export function createSharedAggregate(
     unknownSenderCount,
     eligibleTextCodePointCount,
     tokenCount,
-    activeSessionThresholdHours,
+    activeSessionThresholdHours: conversationIndex.thresholdHours,
+    conversationIndex,
     hourCounts,
     weekdayCounts,
     selectedDayCounts,
@@ -253,13 +259,19 @@ export async function createSharedAggregateAsync(
   index: CanonicalIndex,
   filters: CanonicalAnalysisFilters,
   checkpoint: () => Promise<void>,
+  conversationIndex?: ConversationSessionIndex,
 ): Promise<SharedAggregateAccumulator> {
   const start = canonicalDateCode(filters.startDate);
   const end = canonicalDateCode(filters.endDate);
-  const activeSessionThresholdHours = activateSessionIndex(
-    index,
-    filters.sessionThresholdHours,
-  ).thresholdHours;
+  const activeConversationIndex =
+    conversationIndex ??
+    (await buildConversationSessionIndexAsync(
+      index,
+      filters.sessionThresholdHours,
+      async () => {
+        await checkpoint();
+      },
+    ));
   const categoryCounts = emptyCategoryCounts();
   const senderCounts = { owner: 0, other: 0 };
   const hourCounts = new Uint32Array(24);
@@ -333,7 +345,8 @@ export async function createSharedAggregateAsync(
     unknownSenderCount,
     eligibleTextCodePointCount,
     tokenCount,
-    activeSessionThresholdHours,
+    activeSessionThresholdHours: activeConversationIndex.thresholdHours,
+    conversationIndex: activeConversationIndex,
     hourCounts,
     weekdayCounts,
     selectedDayCounts,

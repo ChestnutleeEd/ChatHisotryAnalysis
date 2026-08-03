@@ -21,6 +21,7 @@ import type {
   CanonicalAnalysisResult,
 } from "../worker-analysis/analytics-contract";
 import { ActivityMetricsPanel } from "./ActivityMetricsPanel";
+import { ReplySessionMetricsPanel } from "./ReplySessionMetricsPanel";
 import { Stage7MetricsPanel } from "./Stage7MetricsPanel";
 
 const WINDOW_ID = "main";
@@ -193,7 +194,7 @@ export function DesktopImportPanel() {
         return "本地 canonical dataset 通道校验失败。";
       }
       if (error.code === "MANIFEST_VERSION_UNSUPPORTED") {
-        return "当前 dataset 版本不支持 Stage 6/7 产品化统计。";
+        return "当前 dataset 版本不支持 Stage 6–8 产品化统计。";
       }
     }
     return "本地 analytics Worker 未完成，当前结果未替换。";
@@ -232,7 +233,7 @@ export function DesktopImportPanel() {
       }
       setAnalyticsResult(accepted.result as CanonicalAnalysisResult);
       setAnalyticsError(undefined);
-      setStatus("本地活动统计已就绪");
+      setStatus("本地活动、回复与会话统计已就绪");
       setProgress(undefined);
     } catch (error) {
       if (
@@ -292,7 +293,7 @@ export function DesktopImportPanel() {
         return;
       }
       setAnalyticsResult(next);
-      setStatus("本地活动统计已更新");
+      setStatus("本地活动、回复与会话统计已更新");
       setProgress(undefined);
     } catch (error) {
       if (
@@ -632,8 +633,8 @@ export function DesktopImportPanel() {
           </dl>
           <p>
             dataset/result 句柄已由 host 绑定到当前 generation；后续 analytics
-            Worker 会复用这个 opaque dataset 计算 Stage 6 活动统计和 Stage 7
-            词频、长度、关键词、摘要与消息类型。
+            Worker 会复用这个 opaque dataset 计算 Stage 6 活动、Stage 7
+            词频/长度/关键词/摘要/消息类型，以及 Stage 8 回复间隔与会话统计。
           </p>
         </section>
       )}
@@ -641,7 +642,7 @@ export function DesktopImportPanel() {
       {analyticsError !== undefined && (
         <section className="results-panel desktop-result-panel" role="alert">
           <p className="section-number">ANALYTICS FAILURE</p>
-          <h2>活动统计未提交</h2>
+          <h2>本地统计未提交</h2>
           <p>{analyticsError} 可以重试当前本地分析；没有部分或旧 generation 结果被显示。</p>
           <button
             className="file-button secondary"
@@ -649,7 +650,7 @@ export function DesktopImportPanel() {
             disabled={analyticsPending}
             onClick={retryAnalytics}
           >
-            重试活动统计
+            重试本地统计
           </button>
         </section>
       )}
@@ -664,6 +665,13 @@ export function DesktopImportPanel() {
             }}
           />
           <Stage7MetricsPanel
+            result={analyticsResult}
+            pending={analyticsPending}
+            onFilterChange={(filters) => {
+              void updateAnalyticsFilters(filters);
+            }}
+          />
+          <ReplySessionMetricsPanel
             result={analyticsResult}
             pending={analyticsPending}
             onFilterChange={(filters) => {

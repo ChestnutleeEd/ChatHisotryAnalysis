@@ -32,9 +32,13 @@ import {
   validateStage7Metrics,
   type Stage7Metrics,
 } from "./stage7-metrics";
+import {
+  validateReplySessionMetrics,
+  type ReplySessionMetrics,
+} from "./reply-session-metrics";
 
 export const ANALYTICS_RESULT_SCHEMA_VERSION =
-  "chat-history-analysis.analytics-result.v2" as const;
+  "chat-history-analysis.analytics-result.v3" as const;
 
 export type CanonicalSenderFilter = "both" | "owner" | "other";
 
@@ -111,6 +115,7 @@ export interface CanonicalAnalysisResult {
   readonly aggregate: CanonicalAggregateSummary;
   readonly activity: CanonicalActivityMetrics;
   readonly stage7: Stage7Metrics;
+  readonly replySessions: ReplySessionMetrics;
 }
 
 export interface CanonicalAnalysisSettings extends CanonicalAnalysisFilters {
@@ -716,6 +721,7 @@ export function validateCanonicalAnalyticsResult(
       "index",
       "metricDefinitionVersions",
       "queryKey",
+      "replySessions",
       "schemaVersion",
       "sessionId",
       "stage7",
@@ -859,6 +865,7 @@ export function validateCanonicalAnalyticsResult(
   const aggregate = validateAggregate(result.aggregate);
   const activity = validateActivityMetrics(result.activity);
   const stage7 = validateStage7Metrics(result.stage7, filters as unknown as CanonicalAnalysisFilters);
+  const replySessions = validateReplySessionMetrics(result.replySessions);
   validateTrendRange(
     activity.trends,
     filters as unknown as CanonicalAnalysisFilters,
@@ -880,7 +887,11 @@ export function validateCanonicalAnalyticsResult(
     activity.trends.yearly.reduce((total, bucket) => total + bucket.count, 0) !==
       aggregate.userMessageCount ||
     stage7.messageTypes.denominator !== aggregate.userMessageCount ||
-    stage7.messageTypes.eligibleTextCount !== aggregate.eligibleTextCount
+    stage7.messageTypes.eligibleTextCount !== aggregate.eligibleTextCount ||
+    replySessions.replyIntervals.thresholdHours !==
+      (filters.sessionThresholdHours as SessionThresholdHours) ||
+    replySessions.conversationSessions.thresholdHours !==
+      (filters.sessionThresholdHours as SessionThresholdHours)
   ) {
     throw new Error("INVALID_RESULT");
   }
@@ -901,5 +912,11 @@ export function validateCanonicalAnalyticsResult(
   ) {
     throw new Error("INVALID_RESULT");
   }
-  return { ...result, aggregate, activity, stage7 } as unknown as CanonicalAnalysisResult;
+  return {
+    ...result,
+    aggregate,
+    activity,
+    stage7,
+    replySessions,
+  } as unknown as CanonicalAnalysisResult;
 }

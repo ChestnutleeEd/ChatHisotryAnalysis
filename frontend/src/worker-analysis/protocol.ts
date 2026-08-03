@@ -28,6 +28,7 @@ export type WorkerPhase =
   | "records"
   | "tokenization"
   | "base"
+  | "sessionization"
   | "derived"
   | "aggregation";
 

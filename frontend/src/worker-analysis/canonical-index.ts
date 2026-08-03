@@ -19,6 +19,7 @@ import {
 export const OWNER_SENDER_CODE = 0;
 export const OTHER_SENDER_CODE = 1;
 export const SYSTEM_SENDER_CODE = 2;
+export const UNKNOWN_SENDER_CODE = 3;
 
 export interface ActiveSessionIndexSeam {
   readonly thresholdHours: SessionThresholdHours;
@@ -153,7 +154,9 @@ export class CanonicalIndexBuilder {
         ? SYSTEM_SENDER_CODE
         : event.senderScope === "owner"
           ? OWNER_SENDER_CODE
-          : OTHER_SENDER_CODE;
+          : event.senderScope === "other"
+            ? OTHER_SENDER_CODE
+            : UNKNOWN_SENDER_CODE;
     this.categoryCodes[this.records] = categoryCode(event.messageCategory);
     this.eligibleFlags[this.records] = event.textEligible ? 1 : 0;
     this.fileRanks[this.records] = event.fileRank;
@@ -202,6 +205,15 @@ export class CanonicalIndexBuilder {
         userRecordIndex += 1;
       }
     }
+    const sortableIndexes = [...sortedUserRecordIndexes];
+    sortableIndexes.sort(
+      (left, right) =>
+        this.createTimes[left] - this.createTimes[right] ||
+        this.fileRanks[left] - this.fileRanks[right] ||
+        this.sourceIndexes[left] - this.sourceIndexes[right] ||
+        left - right,
+    );
+    sortedUserRecordIndexes.set(sortableIndexes);
     const typedArrayBytes =
       this.createTimes.byteLength +
       this.calendarDates.byteLength +

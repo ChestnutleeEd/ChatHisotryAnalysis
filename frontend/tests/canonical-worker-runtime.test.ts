@@ -125,11 +125,46 @@ describe("canonical v2 analytics Worker core", () => {
     expect(result.activity.trends.daily).toHaveLength(4);
     expect(result.activity.hourActivity.buckets).toHaveLength(24);
     expect(result.activity.weekdayActivity.buckets).toHaveLength(7);
+    expect(result.replySessions).toMatchObject({
+      schemaVersion: "chat-history-analysis.reply-session-metrics.v1",
+      replyIntervals: {
+        thresholdHours: 6,
+        overall: { count: 1, medianSeconds: 3_600 },
+      },
+      conversationSessions: {
+        thresholdHours: 6,
+        sessionCount: 3,
+      },
+    });
     expect(JSON.stringify(result)).not.toContain("alpha beta");
     expect(JSON.stringify(result)).not.toContain("beta gamma");
     expect(JSON.stringify(result)).not.toContain('"content"');
     expect(tokenizer.initialize).toHaveBeenCalledOnce();
     expect(tokenizer.cutWithoutHmm).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects a Stage 8 DTO whose effective threshold diverges from the result filters", async () => {
+    const { runtime } = createRuntime();
+    const dataset = createCanonicalDataset(canonicalMixedEvents());
+    const accepted = await runtime.loadDataset(
+      1,
+      new BrowserFileDatasetSource(dataset.files),
+      { minimumTokenLength: 2, additionalStopWords: [] },
+    );
+    const result = asCanonicalResult(accepted.result);
+    const invalid = {
+      ...result,
+      replySessions: {
+        ...result.replySessions,
+        conversationSessions: {
+          ...result.replySessions.conversationSessions,
+          thresholdHours: 1,
+        },
+      },
+    };
+    expect(() => validateCanonicalAnalyticsResult(invalid)).toThrow(
+      "INVALID_REPLY_SESSION_RESULT",
+    );
   });
 
   it("keeps system diagnostics while applying an owner filter", async () => {
@@ -205,6 +240,85 @@ describe("canonical v2 analytics Worker core", () => {
     expect(recomputed).not.toBe(first);
     expect(phases).toContain("base");
     expect(recomputed.stage7).toEqual(first.stage7);
+  });
+
+  it("recomputes reply and initiator metrics for a new threshold and reuses one active threshold index", async () => {
+    const phases: string[] = [];
+    const { runtime } = createRuntime((progress) => {
+      phases.push(progress.phase);
+    });
+    const dataset = createCanonicalDataset([
+      canonicalEvent(1_735_689_600, 0, { senderScope: "owner" }),
+      canonicalEvent(1_735_693_200, 1, { senderScope: "other" }),
+      canonicalEvent(1_735_704_000, 2, { senderScope: "owner" }),
+    ]);
+    await runtime.loadDataset(
+      1,
+      new BrowserFileDatasetSource(dataset.files),
+      { minimumTokenLength: 2, additionalStopWords: [] },
+    );
+    phases.length = 0;
+    const oneHour = await runtime.analyze(2, {
+      kind: "canonical-v2",
+      ...canonicalFilters({ startDate: "2025-01-01", endDate: "2025-01-01", sessionThresholdHours: 1 }),
+    });
+    expect(oneHour.replySessions.conversationSessions.sessionCount).toBe(2);
+    expect(oneHour.replySessions.replyIntervals.overall.count).toBe(1);
+    expect(phases).toContain("sessionization");
+
+    phases.length = 0;
+    const sixHours = await runtime.analyze(3, {
+      kind: "canonical-v2",
+      ...canonicalFilters({ startDate: "2025-01-01", endDate: "2025-01-01", sessionThresholdHours: 6 }),
+    });
+    expect(sixHours.replySessions.conversationSessions.sessionCount).toBe(1);
+    expect(sixHours.replySessions.replyIntervals.overall.count).toBe(2);
+    expect(phases).toContain("sessionization");
+
+    phases.length = 0;
+    const cached = await runtime.analyze(4, {
+      kind: "canonical-v2",
+      ...canonicalFilters({ startDate: "2025-01-01", endDate: "2025-01-01", sessionThresholdHours: 6 }),
+    });
+    expect(cached).toBe(sixHours);
+    expect(phases).toEqual(["derived"]);
+  });
+
+  it("cancels threshold sessionization without publishing a mixed result", async () => {
+    const runtimeRef: { current?: AnalysisWorkerRuntime } = {};
+    const runtime = createRuntime((progress) => {
+      if (progress.operationId === 2 && progress.phase === "sessionization" && progress.completed >= 4_096) {
+        runtimeRef.current?.cancel(2);
+      }
+    }).runtime;
+    runtimeRef.current = runtime;
+    const events = Array.from({ length: 5_000 }, (_, sourceIndex) =>
+      canonicalEvent(1_735_689_600 + sourceIndex * 3_600, sourceIndex, {
+        senderScope: sourceIndex % 2 === 0 ? "owner" : "other",
+      }),
+    );
+    const dataset = createCanonicalDataset(events);
+    await runtime.loadDataset(
+      1,
+      new BrowserFileDatasetSource(dataset.files),
+      { minimumTokenLength: 2, additionalStopWords: [] },
+    );
+    await expect(
+      runtime.analyze(2, {
+        kind: "canonical-v2",
+        ...canonicalFilters({ sessionThresholdHours: 1 }),
+      }),
+    ).rejects.toBeInstanceOf(WorkerCancellation);
+    await expect(
+      runtime.analyze(3, {
+        kind: "canonical-v2",
+        ...canonicalFilters({ sessionThresholdHours: 6 }),
+      }),
+    ).resolves.toMatchObject({
+      replySessions: {
+        conversationSessions: { thresholdHours: 6 },
+      },
+    });
   });
 
   it("accepts media-only data without initializing the tokenizer", async () => {
@@ -409,7 +523,7 @@ describe("canonical v2 analytics Worker core", () => {
       { minimumTokenLength: 2, additionalStopWords: [] },
     );
     expect(phases).toEqual(
-      new Set(["manifest", "transport", "hash", "parse", "wasm", "tokenization", "index", "base", "derived"]),
+      new Set(["manifest", "transport", "hash", "parse", "wasm", "tokenization", "index", "sessionization", "base", "derived"]),
     );
     await expect(
       runtime.analyze(2, {

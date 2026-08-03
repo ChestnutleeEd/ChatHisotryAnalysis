@@ -117,6 +117,7 @@ const PHASE_LABELS: Readonly<Record<WorkerProgress["phase"], string>> = {
   records: "验证 normalized records",
   tokenization: "分词并构建 compact cache",
   base: "计算共享基础聚合",
+  sessionization: "按阈值划分会话",
   derived: "整理本地统计结果",
   aggregation: "计算词频",
 };

@@ -59,6 +59,11 @@ import {
   type CanonicalIndex,
 } from "./canonical-index";
 import {
+  buildConversationSessionIndexAsync,
+  deriveReplySessionMetrics,
+  type ConversationSessionIndex,
+} from "./reply-session-metrics";
+import {
   aggregateSummary,
   createSharedAggregateAsync,
   type SharedAggregateAccumulator,
@@ -963,6 +968,12 @@ export class AnalysisWorkerRuntime {
   private initialized = false;
   private initializationPromise: Promise<void> | undefined;
   private acceptedCache: AcceptedCache | undefined;
+  private activeSessionIndex:
+    | {
+        readonly cacheGeneration: number;
+        readonly index: ConversationSessionIndex;
+      }
+    | undefined;
   private cacheGeneration = 0;
   private readonly canonicalResultCache = new Map<
     string,
@@ -994,6 +1005,7 @@ export class AnalysisWorkerRuntime {
     this.activeOperation = undefined;
     this.cancelled.clear();
     this.acceptedCache = undefined;
+    this.activeSessionIndex = undefined;
     this.canonicalResultCache.clear();
     this.initialized = false;
     this.initializationPromise = undefined;
@@ -1904,6 +1916,11 @@ export class AnalysisWorkerRuntime {
       this.progress(operationId, "derived", 1, 1, 100);
       return cached;
     }
+    const conversationIndex = await this.getConversationSessionIndex(
+      operationId,
+      cache,
+      filters.sessionThresholdHours,
+    );
     this.progress(
       operationId,
       "base",
@@ -1918,6 +1935,7 @@ export class AnalysisWorkerRuntime {
         async () => {
           await this.checkpoint(operationId, true);
         },
+        conversationIndex,
       );
     await this.checkpoint(operationId, false);
     this.progress(
@@ -1929,6 +1947,11 @@ export class AnalysisWorkerRuntime {
     );
     const aggregate = aggregateSummary(shared);
     const activity = deriveActivityMetrics(shared, filters);
+    const replySessions = deriveReplySessionMetrics(
+      cache.index,
+      shared.conversationIndex,
+      filters,
+    );
     const stage7 = await deriveStage7Metrics(
       cache.index,
       shared,
@@ -1937,6 +1960,7 @@ export class AnalysisWorkerRuntime {
       async () => {
         await this.checkpoint(operationId, true);
       },
+      replySessions,
     );
     const result: CanonicalAnalysisResult = {
       schemaVersion: ANALYTICS_RESULT_SCHEMA_VERSION,
@@ -1952,6 +1976,7 @@ export class AnalysisWorkerRuntime {
       aggregate,
       activity,
       stage7,
+      replySessions,
     };
     try {
       validateCanonicalAnalyticsResult(result);
@@ -1968,6 +1993,43 @@ export class AnalysisWorkerRuntime {
     }
     this.canonicalResultCache.set(queryKey, result);
     return result;
+  }
+
+  private async getConversationSessionIndex(
+    operationId: number,
+    cache: CanonicalCache,
+    thresholdHours: CanonicalAnalysisFilters["sessionThresholdHours"],
+  ): Promise<ConversationSessionIndex> {
+    const active = this.activeSessionIndex;
+    if (
+      active !== undefined &&
+      active.cacheGeneration === cache.generation &&
+      active.index.thresholdHours === thresholdHours
+    ) {
+      return active.index;
+    }
+    const total = cache.index.sessionIndex.sortedUserRecordIndexes.length;
+    this.progress(operationId, "sessionization", 0, total, 80);
+    const next = await buildConversationSessionIndexAsync(
+      cache.index,
+      thresholdHours,
+      async (completed, count) => {
+        this.progress(
+          operationId,
+          "sessionization",
+          completed,
+          count,
+          count === 0 ? 85 : 80 + Math.floor((completed / count) * 5),
+        );
+        await this.checkpoint(operationId, true);
+      },
+    );
+    this.activeSessionIndex = {
+      cacheGeneration: cache.generation,
+      index: next,
+    };
+    this.progress(operationId, "sessionization", total, total, 85);
+    return next;
   }
 
   private async aggregate(
