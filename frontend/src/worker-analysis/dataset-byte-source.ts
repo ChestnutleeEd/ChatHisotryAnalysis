@@ -29,6 +29,12 @@ export interface DatasetByteSource {
     expectedBytes: number,
     checkpoint?: DatasetReadCheckpoint,
   ): Promise<ArrayBuffer>;
+  /** Reads a manifest-declared chunk by its exact safe filename. */
+  readChunkByName?(
+    name: string,
+    expectedBytes: number,
+    checkpoint?: DatasetReadCheckpoint,
+  ): Promise<ArrayBuffer>;
   close(): Promise<void>;
   /** Cancels an in-flight native stream before the generic close path. */
   cancel?(): Promise<void>;
@@ -165,6 +171,27 @@ export class BrowserFileDatasetSource implements DatasetByteSource {
     const name = `chunk-${String(ordinal).padStart(4, "0")}.ndjson`;
     const file = this.files.get(name);
     if (file === undefined || file.size !== expectedBytes) {
+      throw new DatasetByteSourceError("FILE_SET_INVALID");
+    }
+    return readStream(file, expectedBytes, checkpoint);
+  }
+
+  readChunkByName(
+    name: string,
+    expectedBytes: number,
+    checkpoint?: DatasetReadCheckpoint,
+  ): Promise<ArrayBuffer> {
+    if (!isNormalizedChunkName(name)) {
+      throw new DatasetByteSourceError("FILE_NAME_INVALID");
+    }
+    const file = this.files.get(name);
+    if (
+      file === undefined ||
+      !Number.isSafeInteger(expectedBytes) ||
+      expectedBytes < 1 ||
+      expectedBytes > MAX_NORMALIZED_CHUNK_BYTES ||
+      file.size !== expectedBytes
+    ) {
       throw new DatasetByteSourceError("FILE_SET_INVALID");
     }
     return readStream(file, expectedBytes, checkpoint);

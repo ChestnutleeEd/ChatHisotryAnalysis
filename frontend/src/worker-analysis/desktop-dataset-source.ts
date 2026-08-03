@@ -21,6 +21,7 @@ export type DatasetTransportKind = "manifest" | "chunk";
 const MAX_DESKTOP_RECORD_COUNT = 2_000_000;
 const MAX_DESKTOP_CHUNK_COUNT = 16_384;
 const MAX_DESKTOP_CHUNK_BYTES = 33_554_432;
+const CHUNK_NAME_PATTERN = /^chunk-([0-9]{4})\.ndjson$/u;
 
 export interface DatasetTransportRequest {
   readonly protocolVersion: typeof DESKTOP_IPC_PROTOCOL_VERSION;
@@ -164,6 +165,39 @@ export class DesktopSessionDatasetSource implements DatasetByteSource {
       datasetId: this.datasetId,
       kind: "chunk",
       ordinal,
+      expectedBytes,
+    });
+    await checkpoint?.();
+    return assertReadBytes(bytes, expectedBytes, MAX_NORMALIZED_CHUNK_BYTES);
+  }
+
+  async readChunkByName(
+    name: string,
+    expectedBytes: number,
+    checkpoint?: DatasetReadCheckpoint,
+  ): Promise<ArrayBuffer> {
+    this.assertOpen();
+    const match = CHUNK_NAME_PATTERN.exec(name);
+    if (
+      match === null ||
+      !Number.isSafeInteger(expectedBytes) ||
+      expectedBytes < 1 ||
+      expectedBytes > MAX_NORMALIZED_CHUNK_BYTES
+    ) {
+      throw new DatasetByteSourceError("FILE_NAME_INVALID");
+    }
+    const zeroBasedOrdinal = Number(match[1]);
+    if (zeroBasedOrdinal > 16_383) {
+      throw new DatasetByteSourceError("CHUNK_LIMIT_EXCEEDED");
+    }
+    await checkpoint?.();
+    const bytes = await this.transport.read({
+      protocolVersion: DESKTOP_IPC_PROTOCOL_VERSION,
+      sessionId: this.sessionId,
+      generation: this.generation,
+      datasetId: this.datasetId,
+      kind: "chunk",
+      ordinal: zeroBasedOrdinal + 1,
       expectedBytes,
     });
     await checkpoint?.();

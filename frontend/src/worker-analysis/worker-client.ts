@@ -10,6 +10,10 @@ import type {
   DesktopDatasetSourceRequest,
 } from "./protocol";
 import { DEFAULT_TOKENIZER_SETTINGS } from "./protocol";
+import type {
+  CanonicalAnalysisResult,
+  CanonicalAnalysisSettings,
+} from "./analytics-contract";
 
 export interface WorkerPort {
   onmessage: ((event: MessageEvent<WorkerResponse>) => void) | null;
@@ -60,7 +64,9 @@ export class AnalysisWorkerClient {
   private activeOperationId: number | undefined;
   private readonly pending = new Map<
     number,
-    PendingOperation<AcceptedDatasetResult | AnalysisResult>
+    PendingOperation<
+      AcceptedDatasetResult | AnalysisResult | CanonicalAnalysisResult
+    >
   >();
   private readonly cancelWaiters = new Map<number, () => void>();
 
@@ -116,6 +122,22 @@ export class AnalysisWorkerClient {
     onProgress?: (progress: WorkerProgress) => void,
   ): Promise<AnalysisResult> {
     return this.startOperation<AnalysisResult>(
+      (operationId, generation, sequence) => ({
+        type: "analyze",
+        operationId,
+        generation,
+        sequence,
+        settings,
+      }),
+      onProgress,
+    );
+  }
+
+  analyzeCanonical(
+    settings: CanonicalAnalysisSettings,
+    onProgress?: (progress: WorkerProgress) => void,
+  ): Promise<CanonicalAnalysisResult> {
+    return this.startOperation<CanonicalAnalysisResult>(
       (operationId, generation, sequence) => ({
         type: "analyze",
         operationId,
@@ -185,7 +207,12 @@ export class AnalysisWorkerClient {
     this.terminateWorker(new WorkerClientError("WORKER_TERMINATED"));
   }
 
-  private startOperation<Result extends AcceptedDatasetResult | AnalysisResult>(
+  private startOperation<
+    Result extends
+      | AcceptedDatasetResult
+      | AnalysisResult
+      | CanonicalAnalysisResult,
+  >(
     request: (
       operationId: number,
       generation: number,
@@ -231,7 +258,10 @@ export class AnalysisWorkerClient {
         generation,
         lastSequence: 1,
         resolve: resolve as (
-          result: AcceptedDatasetResult | AnalysisResult,
+          result:
+            | AcceptedDatasetResult
+            | AnalysisResult
+            | CanonicalAnalysisResult,
         ) => void,
         reject,
         onProgress,
@@ -320,11 +350,14 @@ export class AnalysisWorkerClient {
     if (this.activeOperationId === response.operationId) {
       this.activeOperationId = undefined;
     }
-    operation.resolve(
+    const resolved =
       response.type === "accepted"
-        ? { summary: response.summary, result: response.result }
-        : response.result,
-    );
+        ? ({
+            summary: response.summary,
+            result: response.result,
+          } as AcceptedDatasetResult)
+        : response.result;
+    operation.resolve(resolved);
   }
 
   private rejectOperation(operationId: number, error: Error): void {

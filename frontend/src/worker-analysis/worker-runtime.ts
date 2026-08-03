@@ -13,6 +13,16 @@ import {
   type NormalizedTextRecord,
 } from "../normalized/schema";
 import {
+  CANONICAL_EVENT_SCHEMA_VERSION,
+  CANONICAL_MANIFEST_SCHEMA_VERSION,
+  CANONICAL_MESSAGE_CATEGORIES,
+  METRIC_DEFINITION_VERSIONS,
+  validateCanonicalEventV2,
+  validateCanonicalManifestV2,
+  type CanonicalEventV2,
+  type CanonicalManifestV2,
+} from "../canonical-v2/schema";
+import {
   BrowserFileDatasetSource,
   DatasetByteSourceError,
   type DatasetByteSource,
@@ -22,12 +32,37 @@ import type {
   AcceptedDatasetResult,
   AnalysisResult,
   AnalysisSettings,
+  LegacyAcceptedDatasetResult,
   TokenizerSettings,
   WorkerFailureCode,
   WorkerPhase,
   WorkerProgress,
 } from "./protocol";
 import { parseStrictJson, type JsonValue } from "./strict-json";
+import {
+  ANALYTICS_RESULT_SCHEMA_VERSION,
+  DEFAULT_SESSION_THRESHOLD_HOURS,
+  canonicalQueryKey,
+  isCanonicalEligibleText,
+  isCanonicalSystemDiagnostic,
+  isCanonicalUserMessage,
+  validateCanonicalAnalyticsResult,
+  validateCanonicalFilters,
+  type CanonicalAnalysisFilters,
+  type CanonicalAnalysisResult,
+  type CanonicalAnalysisSettings,
+  type CanonicalDatasetSummary,
+  type DatasetCorrelation,
+} from "./analytics-contract";
+import {
+  CanonicalIndexBuilder,
+  type CanonicalIndex,
+} from "./canonical-index";
+import {
+  aggregateSummary,
+  createSharedAggregateAsync,
+  type SharedAggregateAccumulator,
+} from "./analytics-aggregates";
 
 const HASH_PATTERN = /^[0-9a-f]{64}$/u;
 const DATE_PATTERN = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/u;
@@ -178,6 +213,7 @@ interface ValidatedManifest {
 }
 
 interface TokenCache {
+  readonly kind: "v1";
   readonly tokenIds: Uint32Array;
   readonly recordOffsets: Uint32Array;
   readonly senderScopes: Uint8Array;
@@ -186,6 +222,15 @@ interface TokenCache {
   readonly summary: DatasetSummary;
   readonly generation: number;
 }
+
+interface CanonicalCache {
+  readonly kind: "v2";
+  readonly index: CanonicalIndex;
+  readonly correlation: DatasetCorrelation;
+  readonly generation: number;
+}
+
+type AcceptedCache = TokenCache | CanonicalCache;
 
 interface OperationMetadata {
   readonly generation?: number;
@@ -268,6 +313,7 @@ class CompactCacheBuilder {
     this.recordOffsets[this.records] = this.tokenIds.length;
     this.tokenMap = undefined;
     return {
+      kind: "v1",
       tokenIds: this.tokenIds.finish(),
       recordOffsets: this.recordOffsets,
       senderScopes: this.senderScopes,
@@ -914,8 +960,12 @@ export class AnalysisWorkerRuntime {
   private lastStartedGeneration = 0;
   private initialized = false;
   private initializationPromise: Promise<void> | undefined;
-  private acceptedCache: TokenCache | undefined;
+  private acceptedCache: AcceptedCache | undefined;
   private cacheGeneration = 0;
+  private readonly canonicalResultCache = new Map<
+    string,
+    CanonicalAnalysisResult
+  >();
 
   constructor(
     private readonly tokenizer: TokenizerDependencies,
@@ -942,15 +992,42 @@ export class AnalysisWorkerRuntime {
     this.activeOperation = undefined;
     this.cancelled.clear();
     this.acceptedCache = undefined;
+    this.canonicalResultCache.clear();
     this.initialized = false;
     this.initializationPromise = undefined;
   }
 
+  loadDataset(
+    operationId: number,
+    sourceOrFiles: readonly RuntimeFile[],
+    tokenizerSettings: TokenizerSettings,
+    metadata?: OperationMetadata,
+    correlation?: DatasetCorrelation,
+  ): Promise<LegacyAcceptedDatasetResult>;
+  loadDataset(
+    operationId: number,
+    sourceOrFiles: DatasetByteSource,
+    tokenizerSettings: TokenizerSettings,
+    metadata?: OperationMetadata,
+    correlation?: DatasetCorrelation,
+  ): Promise<AcceptedDatasetResult>;
+  loadDataset(
+    operationId: number,
+    sourceOrFiles: DatasetByteSource | readonly RuntimeFile[],
+    tokenizerSettings: TokenizerSettings,
+    metadata?: OperationMetadata,
+    correlation?: DatasetCorrelation,
+  ): Promise<AcceptedDatasetResult>;
   async loadDataset(
     operationId: number,
     sourceOrFiles: DatasetByteSource | readonly RuntimeFile[],
     tokenizerSettings: TokenizerSettings,
     metadata: OperationMetadata = {},
+    correlation: DatasetCorrelation = {
+      sessionId: null,
+      datasetId: null,
+      generation: (metadata.generation ?? operationId) as DatasetCorrelation["generation"],
+    },
   ): Promise<AcceptedDatasetResult> {
     this.begin(operationId, metadata);
     let source: DatasetByteSource | undefined;
@@ -1009,6 +1086,20 @@ export class AnalysisWorkerRuntime {
         manifestJson = parseStrictJson(manifestText);
       } catch {
         throw new WorkerAnalysisError("MANIFEST_INVALID", "manifest");
+      }
+      if (
+        isObject(manifestJson) &&
+        manifestJson.schemaVersion === CANONICAL_MANIFEST_SCHEMA_VERSION
+      ) {
+        return await this.loadCanonicalDataset(
+          operationId,
+          activeSource,
+          manifestJson,
+          stopWords,
+          tokenizerSettings,
+          metadata,
+          correlation,
+        );
       }
       const manifest = validateManifest(manifestJson);
       try {
@@ -1272,11 +1363,334 @@ export class AnalysisWorkerRuntime {
     }
   }
 
-  async analyze(
+  private async loadCanonicalDataset(
+    operationId: number,
+    source: DatasetByteSource,
+    manifestValue: JsonValue,
+    stopWords: ReadonlySet<string>,
+    tokenizerSettings: TokenizerSettings,
+    metadata: OperationMetadata,
+    correlation: DatasetCorrelation,
+  ): Promise<AcceptedDatasetResult> {
+    let manifest: CanonicalManifestV2;
+    try {
+      manifest = validateCanonicalManifestV2(manifestValue);
+    } catch {
+      throw new WorkerAnalysisError("MANIFEST_INVALID", "manifest");
+    }
+    try {
+      source.assertManifestChunks?.(
+        manifest.chunks.map((chunk) => chunk.name),
+      );
+    } catch (error) {
+      throw this.mapSourceError(error, "manifest");
+    }
+    const expectedRecords = manifest.aggregates.eventCount;
+    const builder = new CanonicalIndexBuilder(expectedRecords);
+    const categoryCounts = Object.fromEntries(
+      CANONICAL_MESSAGE_CATEGORIES.map((category) => [category, 0]),
+    ) as Record<(typeof CANONICAL_MESSAGE_CATEGORIES)[number], number>;
+    let eventCount = 0;
+    let systemEventCount = 0;
+    let eligibleTextCount = 0;
+    let unknownSenderCount = 0;
+    let minimumCalendarDate: string | undefined;
+    let maximumCalendarDate: string | undefined;
+    let previousOrder: readonly [number, number, number] | undefined;
+    let initializedForCandidate = false;
+
+    this.progress(operationId, "parse", 0, expectedRecords, 5);
+    for (const [chunkIndex, chunk] of manifest.chunks.entries()) {
+      const chunkOrdinal = chunkIndex + 1;
+      this.progress(
+        operationId,
+        "transport",
+        chunkIndex,
+        manifest.chunks.length,
+        5 + Math.floor((chunkIndex / manifest.chunks.length) * 15),
+        chunkOrdinal,
+        manifest.chunks.length,
+      );
+      let buffer: ArrayBuffer;
+      try {
+        buffer = await (source.readChunkByName === undefined
+          ? source.readChunk(
+              chunk.ordinal + 1,
+              chunk.byteSize,
+              () => this.checkpoint(operationId, false),
+            )
+          : source.readChunkByName(
+              chunk.name,
+              chunk.byteSize,
+              () => this.checkpoint(operationId, false),
+            ));
+      } catch (error) {
+        throw this.mapSourceError(error, "transport", chunkOrdinal);
+      }
+      await this.checkpoint(operationId, false);
+      this.progress(
+        operationId,
+        "transport",
+        chunkIndex + 1,
+        manifest.chunks.length,
+        5 + Math.floor(((chunkIndex + 1) / manifest.chunks.length) * 15),
+        chunkOrdinal,
+        manifest.chunks.length,
+      );
+      const digest = bytesToHex(
+        await crypto.subtle.digest("SHA-256", buffer),
+      );
+      if (digest !== chunk.sha256) {
+        throw new WorkerAnalysisError("HASH_MISMATCH", "hash", {
+          chunkOrdinal,
+        });
+      }
+      this.progress(
+        operationId,
+        "hash",
+        chunkIndex + 1,
+        manifest.chunks.length,
+        5 + Math.floor(((chunkIndex + 1) / manifest.chunks.length) * 15),
+        chunkOrdinal,
+        manifest.chunks.length,
+      );
+      const bytes = new Uint8Array(buffer);
+      if (bytes.length === 0 || bytes[bytes.length - 1] !== 0x0a) {
+        throw new WorkerAnalysisError("NDJSON_INVALID", "parse", {
+          chunkOrdinal,
+        });
+      }
+      const text = decodeUtf8(buffer, "parse", chunkOrdinal);
+      let start = 0;
+      let lineOrdinal = 0;
+      let chunkRecordCount = 0;
+      while (start < text.length) {
+        const end = text.indexOf("\n", start);
+        if (end < 0) {
+          throw new WorkerAnalysisError("NDJSON_INVALID", "parse", {
+            chunkOrdinal,
+            lineOrdinal: lineOrdinal + 1,
+          });
+        }
+        lineOrdinal += 1;
+        const line = text.slice(start, end);
+        start = end + 1;
+        if (line === "" || line.endsWith("\r")) {
+          throw new WorkerAnalysisError("NDJSON_INVALID", "parse", {
+            chunkOrdinal,
+            lineOrdinal,
+          });
+        }
+        let value: JsonValue;
+        try {
+          value = parseStrictJson(line);
+        } catch {
+          throw new WorkerAnalysisError("NDJSON_INVALID", "parse", {
+            chunkOrdinal,
+            lineOrdinal,
+          });
+        }
+        let event: CanonicalEventV2;
+        try {
+          event = validateCanonicalEventV2(value);
+        } catch {
+          throw new WorkerAnalysisError("RECORD_SCHEMA_INVALID", "parse", {
+            chunkOrdinal,
+            lineOrdinal,
+          });
+        }
+        if (event.sourceIndex !== eventCount) {
+          throw new WorkerAnalysisError("RECORD_ORDER_INVALID", "index", {
+            chunkOrdinal,
+            lineOrdinal,
+          });
+        }
+        const order: readonly [number, number, number] = [
+          event.createTime,
+          event.fileRank,
+          event.sourceIndex,
+        ];
+        if (
+          previousOrder !== undefined &&
+          (order[0] < previousOrder[0] ||
+            (order[0] === previousOrder[0] && order[1] < previousOrder[1]) ||
+            (order[0] === previousOrder[0] &&
+              order[1] === previousOrder[1] &&
+              order[2] < previousOrder[2]))
+        ) {
+          throw new WorkerAnalysisError("RECORD_ORDER_INVALID", "index", {
+            chunkOrdinal,
+            lineOrdinal,
+          });
+        }
+        previousOrder = order;
+        categoryCounts[event.messageCategory] += 1;
+        if (isCanonicalSystemDiagnostic(event)) {
+          systemEventCount += 1;
+        } else if (!isCanonicalUserMessage(event)) {
+          unknownSenderCount += 1;
+        }
+        if (isCanonicalEligibleText(event)) {
+          eligibleTextCount += 1;
+          if (!initializedForCandidate) {
+            await this.initializeTokenizer(operationId);
+            initializedForCandidate = true;
+          }
+        }
+        const tokens = event.textEligible
+          ? tokenizeNormalizedContent(
+              event.content ?? "",
+              (valueToTokenize) =>
+                this.tokenizer.cutWithoutHmm(valueToTokenize),
+              stopWords,
+              tokenizerSettings.minimumTokenLength,
+            )
+          : [];
+        builder.append(event, tokens);
+        minimumCalendarDate =
+          minimumCalendarDate === undefined ||
+          event.calendarDate < minimumCalendarDate
+            ? event.calendarDate
+            : minimumCalendarDate;
+        maximumCalendarDate =
+          maximumCalendarDate === undefined ||
+          event.calendarDate > maximumCalendarDate
+            ? event.calendarDate
+            : maximumCalendarDate;
+        eventCount += 1;
+        chunkRecordCount += 1;
+        if (eventCount % 1024 === 0) {
+          this.progress(
+            operationId,
+            "tokenization",
+            eventCount,
+            expectedRecords,
+            20 + Math.floor((eventCount / expectedRecords) * 60),
+            chunkOrdinal,
+            manifest.chunks.length,
+          );
+          this.progress(
+            operationId,
+            "index",
+            eventCount,
+            expectedRecords,
+            20 + Math.floor((eventCount / expectedRecords) * 60),
+            chunkOrdinal,
+            manifest.chunks.length,
+          );
+          await this.checkpoint(operationId, true);
+        }
+      }
+      if (chunkRecordCount !== chunk.recordCount) {
+        throw new WorkerAnalysisError("COUNT_MISMATCH", "index", {
+          chunkOrdinal,
+        });
+      }
+      await this.checkpoint(operationId, true);
+    }
+    this.progress(
+      operationId,
+      "parse",
+      expectedRecords,
+      expectedRecords,
+      80,
+    );
+    this.progress(
+      operationId,
+      "index",
+      expectedRecords,
+      expectedRecords,
+      80,
+    );
+    this.progress(
+      operationId,
+      "tokenization",
+      expectedRecords,
+      expectedRecords,
+      80,
+    );
+    const aggregate = manifest.aggregates;
+    if (
+      eventCount !== aggregate.eventCount ||
+      aggregate.userMessageCount !== eventCount - systemEventCount ||
+      aggregate.eligibleTextCount !== eligibleTextCount ||
+      aggregate.systemEventCount !== systemEventCount ||
+      aggregate.unknownSenderCount !== unknownSenderCount ||
+      CANONICAL_MESSAGE_CATEGORIES.some(
+        (category) => categoryCounts[category] !== aggregate.messageCategoryCounts[category],
+      )
+    ) {
+      throw new WorkerAnalysisError("COUNT_MISMATCH", "index");
+    }
+    if (minimumCalendarDate === undefined || maximumCalendarDate === undefined) {
+      throw new WorkerAnalysisError("COUNT_MISMATCH", "index");
+    }
+    const dataset: CanonicalDatasetSummary = {
+      schemaVersion: CANONICAL_MANIFEST_SCHEMA_VERSION,
+      eventCount: aggregate.eventCount,
+      userMessageCount: aggregate.userMessageCount,
+      eligibleTextCount: aggregate.eligibleTextCount,
+      systemEventCount: aggregate.systemEventCount,
+      chunkCount: aggregate.chunkCount,
+      totalBytes: aggregate.totalBytes,
+      warningCount: aggregate.warningCount,
+      messageCategoryCounts: aggregate.messageCategoryCounts,
+      unknownSenderCount: aggregate.unknownSenderCount,
+      minimumCalendarDate,
+      maximumCalendarDate,
+      pseudonymous: true,
+    };
+    const index = builder.finish(dataset);
+    const cacheGeneration = this.cacheGeneration + 1;
+    const candidateCache: CanonicalCache = {
+      kind: "v2",
+      index,
+      correlation,
+      generation: cacheGeneration,
+    };
+    const filters: CanonicalAnalysisFilters = {
+      startDate: dataset.minimumCalendarDate,
+      endDate: dataset.maximumCalendarDate,
+      sender: "both",
+      selectedYear: null,
+      sessionThresholdHours: DEFAULT_SESSION_THRESHOLD_HOURS,
+    };
+    const result = await this.aggregateCanonical(
+      operationId,
+      candidateCache,
+      filters,
+    );
+    await this.checkpoint(operationId, false);
+    await source.complete?.();
+    await this.checkpoint(operationId, false);
+    this.acceptedCache = candidateCache;
+    this.cacheGeneration = cacheGeneration;
+    this.canonicalResultCache.clear();
+    this.finish(operationId, metadata.generation ?? operationId);
+    this.cancelled.delete(operationId);
+    return { summary: dataset, result };
+  }
+
+  analyze(
     operationId: number,
     settings: AnalysisSettings,
+    metadata?: OperationMetadata,
+  ): Promise<AnalysisResult>;
+  analyze(
+    operationId: number,
+    settings: CanonicalAnalysisSettings,
+    metadata?: OperationMetadata,
+  ): Promise<CanonicalAnalysisResult>;
+  analyze(
+    operationId: number,
+    settings: AnalysisSettings | CanonicalAnalysisSettings,
+    metadata?: OperationMetadata,
+  ): Promise<AnalysisResult | CanonicalAnalysisResult>;
+  async analyze(
+    operationId: number,
+    settings: AnalysisSettings | CanonicalAnalysisSettings,
     metadata: OperationMetadata = {},
-  ): Promise<AnalysisResult> {
+  ): Promise<AnalysisResult | CanonicalAnalysisResult> {
     this.begin(operationId, metadata);
     const cache = this.acceptedCache;
     if (cache === undefined) {
@@ -1288,6 +1702,24 @@ export class AnalysisWorkerRuntime {
       throw error;
     }
     try {
+      if (cache.kind === "v2") {
+        if (!("kind" in settings) || settings.kind !== "canonical-v2") {
+          throw new WorkerAnalysisError("SETTINGS_INVALID", "aggregation");
+        }
+        const result = await this.aggregateCanonical(operationId, cache, {
+          sender: settings.sender,
+          startDate: settings.startDate,
+          endDate: settings.endDate,
+          selectedYear: settings.selectedYear,
+          sessionThresholdHours: settings.sessionThresholdHours,
+        });
+        this.finish(operationId, metadata.generation ?? operationId);
+        this.cancelled.delete(operationId);
+        return result;
+      }
+      if ("kind" in settings) {
+        throw new WorkerAnalysisError("SETTINGS_INVALID", "aggregation");
+      }
       const result = await this.aggregate(operationId, cache, settings);
       this.finish(operationId, metadata.generation ?? operationId);
       this.cancelled.delete(operationId);
@@ -1448,6 +1880,80 @@ export class AnalysisWorkerRuntime {
     } finally {
       this.initializationPromise = undefined;
     }
+  }
+
+  private async aggregateCanonical(
+    operationId: number,
+    cache: CanonicalCache,
+    filters: CanonicalAnalysisFilters,
+  ): Promise<CanonicalAnalysisResult> {
+    try {
+      validateCanonicalFilters(filters, cache.index.dataset);
+    } catch {
+      throw new WorkerAnalysisError("SETTINGS_INVALID", "base");
+    }
+    const queryKey = canonicalQueryKey(
+      cache.correlation.generation,
+      filters,
+    );
+    const cached = this.canonicalResultCache.get(queryKey);
+    if (cached !== undefined) {
+      await this.checkpoint(operationId, false);
+      this.progress(operationId, "derived", 1, 1, 100);
+      return cached;
+    }
+    this.progress(
+      operationId,
+      "base",
+      0,
+      cache.index.summary.indexedRecordCount,
+      85,
+    );
+    const shared: SharedAggregateAccumulator =
+      await createSharedAggregateAsync(
+        cache.index,
+        filters,
+        async () => {
+          await this.checkpoint(operationId, true);
+        },
+      );
+    await this.checkpoint(operationId, false);
+    this.progress(
+      operationId,
+      "base",
+      cache.index.summary.indexedRecordCount,
+      cache.index.summary.indexedRecordCount,
+      90,
+    );
+    const aggregate = aggregateSummary(shared);
+    const result: CanonicalAnalysisResult = {
+      schemaVersion: ANALYTICS_RESULT_SCHEMA_VERSION,
+      datasetSchemaVersion: CANONICAL_EVENT_SCHEMA_VERSION,
+      sessionId: cache.correlation.sessionId,
+      datasetId: cache.correlation.datasetId,
+      generation: cache.correlation.generation,
+      metricDefinitionVersions: METRIC_DEFINITION_VERSIONS,
+      queryKey,
+      filters,
+      dataset: cache.index.dataset,
+      index: cache.index.summary,
+      aggregate,
+    };
+    try {
+      validateCanonicalAnalyticsResult(result);
+    } catch {
+      throw new WorkerAnalysisError("WORKER_RUNTIME_FAILED", "derived");
+    }
+    this.progress(operationId, "derived", 1, 1, 100);
+    await this.checkpoint(operationId, false);
+    if (this.canonicalResultCache.size >= 8) {
+      const oldest = this.canonicalResultCache.keys().next().value;
+      if (oldest !== undefined) {
+        this.canonicalResultCache.delete(oldest);
+      }
+    }
+    this.canonicalResultCache.set(queryKey, result);
+    return result;
   }
 
   private async aggregate(

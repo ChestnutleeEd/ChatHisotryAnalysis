@@ -17,6 +17,7 @@ import {
   isGeneration,
   isSessionId,
 } from "../desktop/ipc-contract";
+import type { DatasetCorrelation } from "./analytics-contract";
 
 export interface AnalysisWorkerScope {
   onmessage: ((event: MessageEvent<WorkerRequest>) => void) | null;
@@ -32,6 +33,11 @@ export interface AnalysisWorkerHandlerOptions {
   readonly createDesktopDatasetSource?: DesktopDatasetSourceFactory;
 }
 
+interface ResolvedDatasetSource {
+  readonly source: DatasetByteSource | readonly File[];
+  readonly correlation: DatasetCorrelation;
+}
+
 export function createAnalysisWorkerHandler(
   scope: AnalysisWorkerScope,
   runtime: AnalysisWorkerRuntime,
@@ -39,12 +45,19 @@ export function createAnalysisWorkerHandler(
 ): (event: MessageEvent<WorkerRequest>) => void {
   async function resolveDatasetSource(
     request: Extract<WorkerRequest, { readonly type: "load-dataset" }>,
-  ): Promise<DatasetByteSource | readonly File[]> {
+  ): Promise<ResolvedDatasetSource> {
     if (request.source.kind === "browser-file-source") {
       if (!Array.isArray(request.source.files)) {
         throw new WorkerAnalysisError("FILE_SET_INVALID", "manifest");
       }
-      return request.source.files;
+      return {
+        source: request.source.files,
+        correlation: {
+          sessionId: null,
+          datasetId: null,
+          generation: request.generation as DatasetCorrelation["generation"],
+        },
+      };
     }
     if (
       !isSessionId(request.source.sessionId) ||
@@ -60,7 +73,14 @@ export function createAnalysisWorkerHandler(
       throw new WorkerAnalysisError("DATASET_TRANSPORT_INVALID", "manifest");
     }
     try {
-      return await factory(request.source);
+      return {
+        source: await factory(request.source),
+        correlation: {
+          sessionId: request.source.sessionId,
+          datasetId: request.source.datasetId,
+          generation: request.source.generation,
+        },
+      };
     } catch (error) {
       if (error instanceof DatasetByteSourceError) {
         throw new WorkerAnalysisError(error.code, "manifest");
@@ -134,13 +154,14 @@ export function createAnalysisWorkerHandler(
     }
     if (request.type === "load-dataset") {
       void resolveDatasetSource(request).then(
-        (source) =>
+        (resolved) =>
           runtime
             .loadDataset(
               request.operationId,
-              source,
+              resolved.source,
               request.tokenizerSettings,
               { generation: request.generation, sequence: request.sequence },
+              resolved.correlation,
             )
             .then((accepted) => {
               const metadata = runtime.nextResponseMetadata(

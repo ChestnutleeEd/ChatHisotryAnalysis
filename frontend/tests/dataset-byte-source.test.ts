@@ -76,6 +76,9 @@ describe("DatasetByteSource adapters", () => {
     );
     expect(new TextDecoder().decode(await source.readManifest())).toBe("{}\n");
     expect(new TextDecoder().decode(await source.readChunk(1, 5))).toBe("one!\n");
+    expect(
+      new TextDecoder().decode(await source.readChunkByName("chunk-0000.ndjson", 5)),
+    ).toBe("one!\n");
     await source.cancel();
     await expect(source.readManifest()).rejects.toMatchObject({
       code: "WORKER_TERMINATED",

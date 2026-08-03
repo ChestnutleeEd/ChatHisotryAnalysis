@@ -7,6 +7,11 @@ import type {
   Generation,
   SessionId,
 } from "../desktop/ipc-contract";
+import type {
+  CanonicalAnalysisResult,
+  CanonicalAnalysisSettings,
+  CanonicalDatasetSummary,
+} from "./analytics-contract";
 
 export const STOP_WORDS_VERSION =
   "chat-history-analysis.stopwords.zh-en.v1";
@@ -14,11 +19,16 @@ export const STOP_WORDS_SHA256 =
   "a967184c888afe1fe52a430ba7bf838b39390c1902e6c5b35951a6633068e54b";
 
 export type WorkerPhase =
+  | "transport"
   | "manifest"
   | "hash"
+  | "parse"
+  | "index"
   | "wasm"
   | "records"
   | "tokenization"
+  | "base"
+  | "derived"
   | "aggregation";
 
 export type WorkerFailureCode =
@@ -65,6 +75,9 @@ export interface AnalysisSettings {
   readonly maximumWords: number;
   readonly minimumFrequency: number;
 }
+
+export type { CanonicalAnalysisFilters, CanonicalAnalysisSettings } from "./analytics-contract";
+export type { CanonicalAnalysisResult, CanonicalDatasetSummary } from "./analytics-contract";
 
 export interface RankedToken {
   readonly token: string;
@@ -127,7 +140,7 @@ export type WorkerRequest =
       readonly operationId: number;
       readonly generation: number;
       readonly sequence: number;
-      readonly settings: AnalysisSettings;
+      readonly settings: AnalysisSettings | CanonicalAnalysisSettings;
     }
   | {
       readonly type: "cancel";
@@ -146,15 +159,15 @@ export type WorkerResponse =
       readonly operationId: number;
       readonly generation: number;
       readonly sequence: number;
-      readonly summary: DatasetSummary;
-      readonly result: AnalysisResult;
+      readonly summary: DatasetSummary | CanonicalDatasetSummary;
+      readonly result: AnalysisResult | CanonicalAnalysisResult;
     }
   | {
       readonly type: "result";
       readonly operationId: number;
       readonly generation: number;
       readonly sequence: number;
-      readonly result: AnalysisResult;
+      readonly result: AnalysisResult | CanonicalAnalysisResult;
     }
   | {
       readonly type: "cancelled";
@@ -173,7 +186,16 @@ export type WorkerResponse =
       readonly lineOrdinal?: number;
     };
 
-export interface AcceptedDatasetResult {
+export interface LegacyAcceptedDatasetResult {
   readonly summary: DatasetSummary;
   readonly result: AnalysisResult;
 }
+
+export interface CanonicalAcceptedDatasetResult {
+  readonly summary: CanonicalDatasetSummary;
+  readonly result: CanonicalAnalysisResult;
+}
+
+export type AcceptedDatasetResult =
+  | LegacyAcceptedDatasetResult
+  | CanonicalAcceptedDatasetResult;

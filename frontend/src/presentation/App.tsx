@@ -108,11 +108,16 @@ const FAILURE_MESSAGES: Readonly<Record<SafeFailureCode, string>> = {
 };
 
 const PHASE_LABELS: Readonly<Record<WorkerProgress["phase"], string>> = {
+  transport: "读取本地数据通道",
   manifest: "验证 manifest",
   hash: "校验 chunk 完整性",
+  parse: "解析 canonical records",
+  index: "构建共享索引",
   wasm: "初始化本地分词",
   records: "验证 normalized records",
   tokenization: "分词并构建 compact cache",
+  base: "计算共享基础聚合",
+  derived: "整理本地统计结果",
   aggregation: "计算词频",
 };
 
@@ -328,6 +333,12 @@ export function App() {
       const next = await client().loadDataset(staged.files, onProgress);
       if (attemptId !== attemptIdRef.current) {
         return;
+      }
+      if (
+        !("normalizedRecordCount" in next.summary) ||
+        !("words" in next.result)
+      ) {
+        throw new WorkerClientError("MANIFEST_VERSION_UNSUPPORTED");
       }
       setAccepted({
         files: staged.files,

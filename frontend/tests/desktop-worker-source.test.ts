@@ -75,6 +75,9 @@ describe("desktop source through the Worker runtime", () => {
       { minimumTokenLength: 2, additionalStopWords: [] },
       { generation: GENERATION, sequence: 1 },
     );
+    if (!("normalizedRecordCount" in accepted.summary)) {
+      throw new Error("synthetic source must use the v1 contract");
+    }
     expect(accepted.summary.normalizedRecordCount).toBe(3);
     expect(calls).toEqual([
       "open_dataset_stream",
