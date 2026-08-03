@@ -524,6 +524,9 @@ export function App() {
           <span>无外部请求</span>
         </div>
       </header>
+      <p className="compatibility-note" role="status">
+        浏览器 v1 兼容模式：当前入口只处理用户主动选择的 normalized text dataset 和词频结果；桌面 v2 的媒体、回复、会话与消息类型面板在此模式明确不可用。
+      </p>
 
       <section
         className={`selection-panel${dragActive ? " is-dragging" : ""}`}

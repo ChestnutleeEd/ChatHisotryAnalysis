@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
 import type { DatasetTransportInvoker } from "../src/worker-analysis/desktop-dataset-source";
 import { openTauriDatasetSource } from "../src/worker-analysis/desktop-dataset-source";
@@ -19,6 +21,8 @@ import {
   canonicalMixedEvents,
   createCanonicalDataset,
 } from "./canonical-analytics-fixtures";
+import { createDashboardViewModel } from "../src/presentation/desktop-dashboard";
+import { DesktopDashboard } from "../src/presentation/DesktopDashboard";
 
 const PROTOCOL = "chat-history-analysis.desktop-ipc.v1" as const;
 const SESSION = "ses_00000000000000000000000000000001" as SessionId;
@@ -368,6 +372,26 @@ describe("desktop dataset source through the production Worker handler", () => {
         },
       },
     });
+    const dashboard = createDashboardViewModel(
+      (response as Extract<WorkerResponse, { readonly type: "accepted" }>).result as never,
+    );
+    expect(dashboard.correlation.generation).toBe(1);
+    expect(dashboard.overview.selectedUserMessages).toBe(4);
+    expect(dashboard.overview.totalChatDays).toBeGreaterThan(0);
+    expect(dashboard.yearOptions).toEqual([2025]);
+    const markup = renderToStaticMarkup(
+      createElement(DesktopDashboard, {
+        result: dashboard.result,
+        pending: false,
+        onFilterChange: () => undefined,
+        onAnalyzeOtherFiles: () => undefined,
+        onExport: () => undefined,
+      }),
+    );
+    expect((markup.match(/role="tab"/gu) ?? []).length).toBe(8);
+    expect(markup).toContain("全局筛选");
+    expect(markup).toContain("方法与隐私");
+    expect(markup).toContain("所有处理均在本地完成");
     expect(calls).toContain("open_dataset_stream");
     expect(calls.filter((command) => command === "receive_dataset_chunk")).toHaveLength(3);
     expect(JSON.stringify(response)).not.toContain("alpha beta");

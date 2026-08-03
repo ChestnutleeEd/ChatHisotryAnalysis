@@ -6,6 +6,7 @@
     "skipLibCheck": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
     "allowImportingTsExtensions": true,
     "strict": true,
     "noEmit": true,
@@ -13,6 +14,7 @@
   },
   "include": [
     "src/**/*.ts",
+    "src/**/*.tsx",
     "eslint.config.js",
     "vite.config.ts",
     "playwright.shared.ts",
