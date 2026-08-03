@@ -28,6 +28,10 @@ import {
   calendarDayOrdinal,
   daysInMonth,
 } from "./calendar";
+import {
+  validateStage7Metrics,
+  type Stage7Metrics,
+} from "./stage7-metrics";
 
 export const ANALYTICS_RESULT_SCHEMA_VERSION =
   "chat-history-analysis.analytics-result.v2" as const;
@@ -106,6 +110,7 @@ export interface CanonicalAnalysisResult {
   readonly index: CanonicalIndexSummary;
   readonly aggregate: CanonicalAggregateSummary;
   readonly activity: CanonicalActivityMetrics;
+  readonly stage7: Stage7Metrics;
 }
 
 export interface CanonicalAnalysisSettings extends CanonicalAnalysisFilters {
@@ -713,6 +718,7 @@ export function validateCanonicalAnalyticsResult(
       "queryKey",
       "schemaVersion",
       "sessionId",
+      "stage7",
     ]) ||
     result.schemaVersion !== ANALYTICS_RESULT_SCHEMA_VERSION ||
     result.datasetSchemaVersion !== CANONICAL_EVENT_SCHEMA_VERSION ||
@@ -852,6 +858,7 @@ export function validateCanonicalAnalyticsResult(
   }
   const aggregate = validateAggregate(result.aggregate);
   const activity = validateActivityMetrics(result.activity);
+  const stage7 = validateStage7Metrics(result.stage7, filters as unknown as CanonicalAnalysisFilters);
   validateTrendRange(
     activity.trends,
     filters as unknown as CanonicalAnalysisFilters,
@@ -871,7 +878,9 @@ export function validateCanonicalAnalyticsResult(
     activity.trends.monthly.reduce((total, bucket) => total + bucket.count, 0) !==
       aggregate.userMessageCount ||
     activity.trends.yearly.reduce((total, bucket) => total + bucket.count, 0) !==
-      aggregate.userMessageCount
+      aggregate.userMessageCount ||
+    stage7.messageTypes.denominator !== aggregate.userMessageCount ||
+    stage7.messageTypes.eligibleTextCount !== aggregate.eligibleTextCount
   ) {
     throw new Error("INVALID_RESULT");
   }
@@ -892,5 +901,5 @@ export function validateCanonicalAnalyticsResult(
   ) {
     throw new Error("INVALID_RESULT");
   }
-  return result as unknown as CanonicalAnalysisResult;
+  return { ...result, aggregate, activity, stage7 } as unknown as CanonicalAnalysisResult;
 }

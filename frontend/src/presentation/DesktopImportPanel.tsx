@@ -21,6 +21,7 @@ import type {
   CanonicalAnalysisResult,
 } from "../worker-analysis/analytics-contract";
 import { ActivityMetricsPanel } from "./ActivityMetricsPanel";
+import { Stage7MetricsPanel } from "./Stage7MetricsPanel";
 
 const WINDOW_ID = "main";
 
@@ -192,7 +193,7 @@ export function DesktopImportPanel() {
         return "本地 canonical dataset 通道校验失败。";
       }
       if (error.code === "MANIFEST_VERSION_UNSUPPORTED") {
-        return "当前 dataset 版本不支持 Stage 6 活动统计。";
+        return "当前 dataset 版本不支持 Stage 6/7 产品化统计。";
       }
     }
     return "本地 analytics Worker 未完成，当前结果未替换。";
@@ -631,7 +632,8 @@ export function DesktopImportPanel() {
           </dl>
           <p>
             dataset/result 句柄已由 host 绑定到当前 generation；后续 analytics
-            Worker 会复用这个 opaque dataset 计算 Stage 6 活动统计。
+            Worker 会复用这个 opaque dataset 计算 Stage 6 活动统计和 Stage 7
+            词频、长度、关键词、摘要与消息类型。
           </p>
         </section>
       )}
@@ -653,13 +655,22 @@ export function DesktopImportPanel() {
       )}
 
       {analyticsResult !== undefined && (
-        <ActivityMetricsPanel
-          result={analyticsResult}
-          pending={analyticsPending}
-          onFilterChange={(filters) => {
-            void updateAnalyticsFilters(filters);
-          }}
-        />
+        <>
+          <ActivityMetricsPanel
+            result={analyticsResult}
+            pending={analyticsPending}
+            onFilterChange={(filters) => {
+              void updateAnalyticsFilters(filters);
+            }}
+          />
+          <Stage7MetricsPanel
+            result={analyticsResult}
+            pending={analyticsPending}
+            onFilterChange={(filters) => {
+              void updateAnalyticsFilters(filters);
+            }}
+          />
+        </>
       )}
     </main>
   );

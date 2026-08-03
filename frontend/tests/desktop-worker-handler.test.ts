@@ -370,7 +370,9 @@ describe("desktop dataset source through the production Worker handler", () => {
     });
     expect(calls).toContain("open_dataset_stream");
     expect(calls.filter((command) => command === "receive_dataset_chunk")).toHaveLength(3);
-    expect(JSON.stringify(response)).not.toContain("alpha");
+    expect(JSON.stringify(response)).not.toContain("alpha beta");
+    expect(JSON.stringify(response)).not.toContain("beta gamma");
+    expect(JSON.stringify(response)).not.toContain('"content"');
   });
 
   it("rejects an invalid opaque capability before invoking the host", async () => {

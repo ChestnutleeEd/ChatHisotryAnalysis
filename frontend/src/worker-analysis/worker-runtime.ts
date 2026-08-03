@@ -64,6 +64,7 @@ import {
   type SharedAggregateAccumulator,
 } from "./analytics-aggregates";
 import { deriveActivityMetrics } from "./activity-metrics";
+import { deriveStage7Metrics } from "./stage7-metrics";
 
 const HASH_PATTERN = /^[0-9a-f]{64}$/u;
 const DATE_PATTERN = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/u;
@@ -1928,6 +1929,15 @@ export class AnalysisWorkerRuntime {
     );
     const aggregate = aggregateSummary(shared);
     const activity = deriveActivityMetrics(shared, filters);
+    const stage7 = await deriveStage7Metrics(
+      cache.index,
+      shared,
+      activity,
+      filters,
+      async () => {
+        await this.checkpoint(operationId, true);
+      },
+    );
     const result: CanonicalAnalysisResult = {
       schemaVersion: ANALYTICS_RESULT_SCHEMA_VERSION,
       datasetSchemaVersion: CANONICAL_EVENT_SCHEMA_VERSION,
@@ -1941,6 +1951,7 @@ export class AnalysisWorkerRuntime {
       index: cache.index.summary,
       aggregate,
       activity,
+      stage7,
     };
     try {
       validateCanonicalAnalyticsResult(result);

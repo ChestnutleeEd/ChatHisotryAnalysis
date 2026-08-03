@@ -414,6 +414,103 @@ h2 {
   margin-top: 20px;
 }
 
+.stage7-dashboard {
+  margin-top: 20px;
+}
+
+.stage7-year-control {
+  display: flex;
+  gap: 12px;
+  align-items: end;
+  margin: 22px 0 12px;
+}
+
+.stage7-year-control label {
+  display: grid;
+  flex: 1 1 240px;
+  gap: 7px;
+  max-width: 360px;
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.stage7-year-control .activity-filter-button {
+  width: auto;
+  flex: 0 0 auto;
+}
+
+.stage7-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 20px;
+}
+
+.stage7-wide-card {
+  grid-column: 1 / -1;
+}
+
+.stage7-table {
+  min-width: 520px;
+}
+
+.stage7-token-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  min-width: 360px;
+}
+
+.stage7-token-values span {
+  padding: 4px 7px;
+  border-radius: 7px;
+  background: rgb(232 220 199 / 64%);
+  font-variant-numeric: tabular-nums;
+}
+
+.stage7-summary-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding-left: 22px;
+}
+
+.stage7-summary-list li {
+  display: grid;
+  gap: 4px;
+  line-height: 1.55;
+}
+
+.stage7-summary-list small {
+  color: var(--accent-ink);
+  font-size: 0.68rem;
+}
+
+.stage7-trace-values {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 12px;
+  margin: 8px 0 0;
+  font-size: 0.72rem;
+}
+
+.stage7-trace-values div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px dashed rgb(96 108 56 / 22%);
+}
+
+.stage7-trace-values dt {
+  color: var(--accent-ink);
+}
+
+.stage7-trace-values dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
 .activity-card {
   min-width: 0;
   padding: 20px;
@@ -850,7 +947,8 @@ footer a {
 
   .selection-panel,
   .analysis-layout,
-  .activity-grid {
+  .activity-grid,
+  .stage7-grid {
     grid-template-columns: 1fr;
   }
 
@@ -885,7 +983,25 @@ footer a {
   .result-metrics,
   .ranking,
   .activity-filters,
-  .activity-kpis {
+  .activity-kpis,
+  .stage7-year-control {
+    grid-template-columns: 1fr;
+  }
+
+  .stage7-year-control {
+    display: grid;
+    align-items: stretch;
+  }
+
+  .stage7-year-control label {
+    max-width: none;
+  }
+
+  .stage7-year-control .activity-filter-button {
+    width: 100%;
+  }
+
+  .stage7-trace-values {
     grid-template-columns: 1fr;
   }
 

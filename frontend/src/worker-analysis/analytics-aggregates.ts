@@ -31,6 +31,36 @@ export interface SharedAggregateAccumulator {
   readonly hourCounts: Uint32Array;
   readonly weekdayCounts: Uint32Array;
   readonly selectedDayCounts: ReadonlyMap<number, number>;
+  readonly yearlyTokenEvidence: ReadonlyMap<number, YearTokenAggregate>;
+  readonly eligibleTextLengths: EligibleTextLengthAggregate;
+}
+
+export interface YearTokenAggregate {
+  readonly year: number;
+  readonly messageCount: number;
+  readonly tokenTotal: number;
+  readonly tokenCounts: ReadonlyMap<number, number>;
+  readonly messageFrequencies: ReadonlyMap<number, number>;
+}
+
+export interface EligibleTextLengthAggregate {
+  readonly overall: readonly number[];
+  readonly owner: readonly number[];
+  readonly other: readonly number[];
+}
+
+interface MutableYearTokenAggregate {
+  readonly year: number;
+  messageCount: number;
+  tokenTotal: number;
+  readonly tokenCounts: Map<number, number>;
+  readonly messageFrequencies: Map<number, number>;
+}
+
+interface MutableEligibleTextLengthAggregate {
+  readonly overall: number[];
+  readonly owner: number[];
+  readonly other: number[];
 }
 
 function emptyCategoryCounts(): Record<CanonicalMessageCategory, number> {
@@ -45,6 +75,76 @@ function matchesSender(code: number, sender: CanonicalAnalysisFilters["sender"])
     (sender === "owner" && code === OWNER_SENDER_CODE) ||
     (sender === "other" && code !== OWNER_SENDER_CODE && code !== SYSTEM_SENDER_CODE)
   );
+}
+
+function addStage7Evidence(
+  index: CanonicalIndex,
+  record: number,
+  years: Map<number, MutableYearTokenAggregate>,
+  lengths: MutableEligibleTextLengthAggregate,
+): void {
+  const year = index.years[record];
+  const state = years.get(year) ?? {
+    year,
+    messageCount: 0,
+    tokenTotal: 0,
+    tokenCounts: new Map<number, number>(),
+    messageFrequencies: new Map<number, number>(),
+  };
+  state.messageCount += 1;
+  years.set(year, state);
+  if (index.eligibleFlags[record] !== 1) {
+    return;
+  }
+  const length = index.textLengths[record];
+  lengths.overall.push(length);
+  if (index.senderCodes[record] === OWNER_SENDER_CODE) {
+    lengths.owner.push(length);
+  } else {
+    lengths.other.push(length);
+  }
+  const seen = new Set<number>();
+  for (
+    let cursor = index.recordOffsets[record];
+    cursor < index.recordOffsets[record + 1];
+    cursor += 1
+  ) {
+    const tokenId = index.tokenIds[cursor];
+    state.tokenTotal += 1;
+    state.tokenCounts.set(tokenId, (state.tokenCounts.get(tokenId) ?? 0) + 1);
+    seen.add(tokenId);
+  }
+  for (const tokenId of seen) {
+    state.messageFrequencies.set(
+      tokenId,
+      (state.messageFrequencies.get(tokenId) ?? 0) + 1,
+    );
+  }
+}
+
+function finishStage7Evidence(
+  years: Map<number, MutableYearTokenAggregate>,
+  lengths: MutableEligibleTextLengthAggregate,
+): {
+  readonly yearlyTokenEvidence: ReadonlyMap<number, YearTokenAggregate>;
+  readonly eligibleTextLengths: EligibleTextLengthAggregate;
+} {
+  return {
+    yearlyTokenEvidence: new Map(
+      [...years.entries()].map(([year, state]) => [year, {
+        year: state.year,
+        messageCount: state.messageCount,
+        tokenTotal: state.tokenTotal,
+        tokenCounts: state.tokenCounts,
+        messageFrequencies: state.messageFrequencies,
+      }]),
+    ),
+    eligibleTextLengths: {
+      overall: lengths.overall,
+      owner: lengths.owner,
+      other: lengths.other,
+    },
+  };
 }
 
 export function createSharedAggregate(
@@ -62,6 +162,12 @@ export function createSharedAggregate(
   const hourCounts = new Uint32Array(24);
   const weekdayCounts = new Uint32Array(7);
   const selectedDayCounts = new Map<number, number>();
+  const yearlyTokenEvidence = new Map<number, MutableYearTokenAggregate>();
+  const eligibleTextLengths: MutableEligibleTextLengthAggregate = {
+    overall: [],
+    owner: [],
+    other: [],
+  };
   let eventCount = 0;
   let userMessageCount = 0;
   let eligibleTextCount = 0;
@@ -93,6 +199,7 @@ export function createSharedAggregate(
     userMessageCount += 1;
     const category = CANONICAL_MESSAGE_CATEGORIES[index.categoryCodes[record]];
     categoryCounts[category] += 1;
+    addStage7Evidence(index, record, yearlyTokenEvidence, eligibleTextLengths);
     if (index.eligibleFlags[record] === 1) {
       eligibleTextCount += 1;
       eligibleTextCodePointCount += index.textLengths[record];
@@ -104,6 +211,10 @@ export function createSharedAggregate(
     const day = index.calendarDays[record];
     selectedDayCounts.set(day, (selectedDayCounts.get(day) ?? 0) + 1);
   }
+  const stage7Evidence = finishStage7Evidence(
+    yearlyTokenEvidence,
+    eligibleTextLengths,
+  );
   return {
     eventCount,
     userMessageCount,
@@ -118,6 +229,7 @@ export function createSharedAggregate(
     hourCounts,
     weekdayCounts,
     selectedDayCounts,
+    ...stage7Evidence,
   };
 }
 
@@ -153,6 +265,12 @@ export async function createSharedAggregateAsync(
   const hourCounts = new Uint32Array(24);
   const weekdayCounts = new Uint32Array(7);
   const selectedDayCounts = new Map<number, number>();
+  const yearlyTokenEvidence = new Map<number, MutableYearTokenAggregate>();
+  const eligibleTextLengths: MutableEligibleTextLengthAggregate = {
+    overall: [],
+    owner: [],
+    other: [],
+  };
   let eventCount = 0;
   let userMessageCount = 0;
   let eligibleTextCount = 0;
@@ -183,6 +301,7 @@ export async function createSharedAggregateAsync(
           index.categoryCodes[record]
         ];
         categoryCounts[category] += 1;
+        addStage7Evidence(index, record, yearlyTokenEvidence, eligibleTextLengths);
         if (index.eligibleFlags[record] === 1) {
           eligibleTextCount += 1;
           eligibleTextCodePointCount += index.textLengths[record];
@@ -200,6 +319,10 @@ export async function createSharedAggregateAsync(
     }
   }
   await checkpoint();
+  const stage7Evidence = finishStage7Evidence(
+    yearlyTokenEvidence,
+    eligibleTextLengths,
+  );
   return {
     eventCount,
     userMessageCount,
@@ -214,5 +337,6 @@ export async function createSharedAggregateAsync(
     hourCounts,
     weekdayCounts,
     selectedDayCounts,
+    ...stage7Evidence,
   };
 }

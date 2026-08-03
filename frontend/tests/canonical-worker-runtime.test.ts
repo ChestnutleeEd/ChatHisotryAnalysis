@@ -125,7 +125,9 @@ describe("canonical v2 analytics Worker core", () => {
     expect(result.activity.trends.daily).toHaveLength(4);
     expect(result.activity.hourActivity.buckets).toHaveLength(24);
     expect(result.activity.weekdayActivity.buckets).toHaveLength(7);
-    expect(JSON.stringify(result)).not.toContain("alpha");
+    expect(JSON.stringify(result)).not.toContain("alpha beta");
+    expect(JSON.stringify(result)).not.toContain("beta gamma");
+    expect(JSON.stringify(result)).not.toContain('"content"');
     expect(tokenizer.initialize).toHaveBeenCalledOnce();
     expect(tokenizer.cutWithoutHmm).toHaveBeenCalledTimes(2);
   });
@@ -153,6 +155,56 @@ describe("canonical v2 analytics Worker core", () => {
         senderCounts: { owner: 2, other: 2 },
       },
     });
+  });
+
+  it("caches complete Stage 7 results and evicts the oldest canonical query", async () => {
+    const phases: string[] = [];
+    const { runtime } = createRuntime((progress) => {
+      phases.push(progress.phase);
+    });
+    const dataset = createCanonicalDataset(canonicalMixedEvents());
+    await runtime.loadDataset(
+      1,
+      new BrowserFileDatasetSource(dataset.files),
+      { minimumTokenLength: 2, additionalStopWords: [] },
+    );
+    const initialFilters = canonicalFilters();
+    const first = await runtime.analyze(2, {
+      kind: "canonical-v2",
+      ...initialFilters,
+    });
+    phases.length = 0;
+    const cached = await runtime.analyze(3, {
+      kind: "canonical-v2",
+      ...initialFilters,
+    });
+    expect(cached).toBe(first);
+    expect(phases).toEqual(["derived"]);
+
+    const distinctFilters = [
+      { sender: "owner" as const },
+      { sender: "other" as const },
+      { sessionThresholdHours: 1 as const },
+      { sessionThresholdHours: 3 as const },
+      { sessionThresholdHours: 12 as const },
+      { sessionThresholdHours: 24 as const },
+      { sender: "owner" as const, sessionThresholdHours: 1 as const },
+      { sender: "other" as const, sessionThresholdHours: 1 as const },
+    ];
+    for (const [index, overrides] of distinctFilters.entries()) {
+      await runtime.analyze(index + 4, {
+        kind: "canonical-v2",
+        ...canonicalFilters(overrides),
+      });
+    }
+    phases.length = 0;
+    const recomputed = await runtime.analyze(12, {
+      kind: "canonical-v2",
+      ...initialFilters,
+    });
+    expect(recomputed).not.toBe(first);
+    expect(phases).toContain("base");
+    expect(recomputed.stage7).toEqual(first.stage7);
   });
 
   it("accepts media-only data without initializing the tokenizer", async () => {
