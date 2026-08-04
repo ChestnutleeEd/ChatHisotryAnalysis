@@ -115,6 +115,23 @@ pub struct CommandAck {
     pub accepted: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SelectionOutcome {
+    Registered,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectionCommandAck {
+    pub protocol_version: &'static str,
+    pub request_id: String,
+    pub accepted: bool,
+    pub outcome: SelectionOutcome,
+    pub selection: Option<crate::desktop_selection::SelectionSummary>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct SelectCommand {
@@ -1934,6 +1951,20 @@ fn command_ack(request_id: String) -> CommandAck {
     }
 }
 
+fn selection_command_ack(
+    request_id: String,
+    outcome: SelectionOutcome,
+    selection: Option<crate::desktop_selection::SelectionSummary>,
+) -> SelectionCommandAck {
+    SelectionCommandAck {
+        protocol_version: PROTOCOL_VERSION,
+        request_id,
+        accepted: true,
+        outcome,
+        selection,
+    }
+}
+
 fn now_unix_millis() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -2579,7 +2610,7 @@ pub fn select_annual_sources(
     window: tauri::WebviewWindow,
     state: tauri::State<'_, IpcCoreState>,
     request: Value,
-) -> Result<CommandAck, IpcError> {
+) -> Result<SelectionCommandAck, IpcError> {
     let request_id = validate_command(&request)?;
     if request.get("type").and_then(Value::as_str) != Some("select-annual-sources") {
         return Err(IpcError::invalid(Some(request_id)));
@@ -2596,7 +2627,11 @@ pub fn select_annual_sources(
         IpcError::with_code(Some(request_id.clone()), selection_failure_code(error))
     })?
     else {
-        return Ok(command_ack(request_id));
+        return Ok(selection_command_ack(
+            request_id,
+            SelectionOutcome::Cancelled,
+            None,
+        ));
     };
     let summary = state
         .replace_selection(crate::desktop_selection::SourceRole::Annual, paths)
@@ -2604,7 +2639,11 @@ pub fn select_annual_sources(
     state
         .publish_selection_ready(&window, &summary)
         .map_err(|code| IpcError::with_code(Some(request_id.clone()), code))?;
-    Ok(command_ack(request_id))
+    Ok(selection_command_ack(
+        request_id,
+        SelectionOutcome::Registered,
+        Some(summary),
+    ))
 }
 
 #[tauri::command]
@@ -2612,7 +2651,7 @@ pub fn select_verification_sources(
     window: tauri::WebviewWindow,
     state: tauri::State<'_, IpcCoreState>,
     request: Value,
-) -> Result<CommandAck, IpcError> {
+) -> Result<SelectionCommandAck, IpcError> {
     let request_id = validate_command(&request)?;
     if request.get("type").and_then(Value::as_str) != Some("select-verification-sources") {
         return Err(IpcError::invalid(Some(request_id)));
@@ -2629,7 +2668,11 @@ pub fn select_verification_sources(
         IpcError::with_code(Some(request_id.clone()), selection_failure_code(error))
     })?
     else {
-        return Ok(command_ack(request_id));
+        return Ok(selection_command_ack(
+            request_id,
+            SelectionOutcome::Cancelled,
+            None,
+        ));
     };
     let summary = state
         .replace_selection(crate::desktop_selection::SourceRole::Verification, paths)
@@ -2637,7 +2680,32 @@ pub fn select_verification_sources(
     state
         .publish_selection_ready(&window, &summary)
         .map_err(|code| IpcError::with_code(Some(request_id.clone()), code))?;
-    Ok(command_ack(request_id))
+    Ok(selection_command_ack(
+        request_id,
+        SelectionOutcome::Registered,
+        Some(summary),
+    ))
+}
+
+/// Test-only packaged UI assertion sink.  It accepts no renderer data and is
+/// registered only in the dedicated synthetic native-dialog smoke build.
+#[cfg(feature = "synthetic-dialog-adapter")]
+#[tauri::command]
+pub fn record_selection_smoke(window: tauri::WebviewWindow) -> Result<(), IpcError> {
+    if !crate::security::trusted_main_window_label(window.label()) {
+        return Err(IpcError::with_code(None, FailureCode::WindowNotAuthorized));
+    }
+    let root = std::env::var_os("CHAT_HISTORY_ANALYSIS_SYNTHETIC_ROOT")
+        .map(std::path::PathBuf::from)
+        .ok_or_else(|| IpcError::with_code(None, FailureCode::InvalidState))?;
+    std::fs::create_dir_all(&root)
+        .map_err(|_| IpcError::with_code(None, FailureCode::InvalidState))?;
+    std::fs::write(root.join("selection-smoke-passed"), b"passed\n")
+        .map_err(|_| IpcError::with_code(None, FailureCode::InvalidState))?;
+    // This feature-gated harness has no active session to clean.  Exit after
+    // the marker so the packaged smoke does not depend on accessibility APIs
+    // or the production close-request loop.
+    std::process::exit(0);
 }
 
 #[tauri::command]
@@ -3179,6 +3247,47 @@ mod tests {
         assert!(!valid_state_transition("closing", "idle"));
         assert!(!valid_state_transition("complete", "analyzing"));
         assert!(valid_state_transition("ready", "preprocessing"));
+    }
+
+    #[test]
+    fn selection_command_ack_is_content_free_and_distinguishes_cancel() {
+        let summary = crate::desktop_selection::SelectionSummary {
+            selection_id: "sel_00000000000000000000000000000001".to_string(),
+            annual_source_count: 1,
+            verification_source_count: 0,
+        };
+        let registered = serde_json::to_value(selection_command_ack(
+            "req_00000000000000000000000000000001".to_string(),
+            SelectionOutcome::Registered,
+            Some(summary),
+        ))
+        .expect("selection response serializes");
+        assert_eq!(
+            registered,
+            serde_json::json!({
+                "protocolVersion": PROTOCOL_VERSION,
+                "requestId": "req_00000000000000000000000000000001",
+                "accepted": true,
+                "outcome": "registered",
+                "selection": {
+                    "selectionId": "sel_00000000000000000000000000000001",
+                    "annualSourceCount": 1,
+                    "verificationSourceCount": 0,
+                },
+            })
+        );
+        let cancelled = serde_json::to_value(selection_command_ack(
+            "req_00000000000000000000000000000002".to_string(),
+            SelectionOutcome::Cancelled,
+            None,
+        ))
+        .expect("cancel response serializes");
+        assert_eq!(cancelled["outcome"], "cancelled");
+        assert_eq!(cancelled["selection"], Value::Null);
+        let encoded = cancelled.to_string();
+        assert!(!encoded.contains("path"));
+        assert!(!encoded.contains("filename"));
+        assert!(!encoded.contains("body"));
     }
 
     #[test]

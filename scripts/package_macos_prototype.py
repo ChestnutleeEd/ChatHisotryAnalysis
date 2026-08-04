@@ -152,7 +152,13 @@ def _build_sidecar(output_root: Path, python312: Path) -> Path:
     return bundle
 
 
-def _build_app(output_root: Path, sidecar_bundle: Path) -> Path:
+def _build_app(
+    output_root: Path,
+    sidecar_bundle: Path,
+    *,
+    features: tuple[str, ...] = (),
+    target_dir: Path | None = None,
+) -> Path:
     package_config = output_root / "tauri.stage11.generated.json"
     _write_tauri_package_config(package_config, sidecar_bundle)
     _run(
@@ -166,6 +172,16 @@ def _build_app(output_root: Path, sidecar_bundle: Path) -> Path:
     cargo = _tool("cargo", Path.home() / ".cargo" / "bin" / "cargo")
     environment = dict(os.environ)
     environment["PATH"] = f"{cargo.parent}:{environment.get('PATH', '')}"
+    if target_dir is not None:
+        target_dir.mkdir(parents=True)
+        environment["CARGO_TARGET_DIR"] = os.fspath(target_dir)
+    cargo_arguments = [
+        "--no-default-features",
+        "--bin",
+        APP_EXECUTABLE,
+    ]
+    if features:
+        cargo_arguments.extend(["--features", ",".join(features)])
     _run(
         [
             npm,
@@ -184,14 +200,18 @@ def _build_app(output_root: Path, sidecar_bundle: Path) -> Path:
             "--config",
             package_config,
             "--",
-            "--no-default-features",
-            "--bin",
-            APP_EXECUTABLE,
+            *cargo_arguments,
         ],
         env=environment,
         timeout=1_200,
     )
-    bundle_root = ROOT / "src-tauri" / "target" / TARGET / "release" / "bundle" / "macos"
+    bundle_root = (
+        (target_dir if target_dir is not None else ROOT / "src-tauri" / "target")
+        / TARGET
+        / "release"
+        / "bundle"
+        / "macos"
+    )
     app = bundle_root / APP_NAME
     if not app.is_dir():
         raise RuntimeError("APP_BUNDLE_NOT_FOUND")
@@ -496,6 +516,7 @@ def _clean_environment(root: Path) -> tuple[dict[str, str], Path]:
     temp = root / "isolated-temp"
     cwd = root / "working directory 空间"
     home.mkdir()
+    (home / "Library" / "Caches").mkdir(parents=True)
     temp.mkdir()
     cwd.mkdir()
     environment = {
@@ -512,7 +533,22 @@ def _clean_environment(root: Path) -> tuple[dict[str, str], Path]:
     return environment, cwd
 
 
-def _run_clean_user_smoke(app: Path, root: Path) -> dict[str, object]:
+def _stop_exact_process(process: subprocess.Popen[bytes]) -> None:
+    if process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=10)
+
+
+def _run_clean_user_smoke(
+    app: Path,
+    root: Path,
+    selection_smoke_app: Path,
+) -> dict[str, object]:
     root.mkdir(parents=True)
     environment, cwd = _clean_environment(root)
     app_executable = app / "Contents" / "MacOS" / APP_EXECUTABLE
@@ -543,28 +579,61 @@ def _run_clean_user_smoke(app: Path, root: Path) -> dict[str, object]:
     if synthetic.stderr or synthetic_payload.get("status") != "synthetic-cli-ready":
         raise RuntimeError("PACKAGED_SIDECAR_SYNTHETIC_FAILED")
 
-    host = subprocess.Popen(
-        [app_executable],
-        cwd=cwd,
-        env=environment,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    time.sleep(4)
-    if host.poll() is not None:
-        raise RuntimeError("PACKAGED_HOST_STARTUP_FAILED")
-    host.terminate()
+    selection_root = root / "selection-smoke"
+    selection_root.mkdir()
+    selection_environment, selection_cwd = _clean_environment(selection_root)
+    selection_environment["CHAT_HISTORY_ANALYSIS_SYNTHETIC_NATIVE_DIALOG_ROLE"] = "annual"
+    selection_executable = selection_smoke_app / "Contents" / "MacOS" / APP_EXECUTABLE
+    selection_host: subprocess.Popen[bytes] | None = None
     try:
-        host.wait(timeout=10)
+        selection_host = subprocess.Popen(
+            [selection_executable],
+            cwd=selection_cwd,
+            env=selection_environment,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        selection_marker = selection_root / "isolated-temp" / "selection-smoke-passed"
+        selection_deadline = time.monotonic() + 30
+        while not selection_marker.is_file() and time.monotonic() < selection_deadline:
+            if selection_host.poll() is not None:
+                raise RuntimeError("PACKAGED_SELECTION_SMOKE_FAILED")
+            time.sleep(0.1)
+        if not selection_marker.is_file():
+            raise RuntimeError("PACKAGED_SELECTION_SMOKE_FAILED")
+        selection_host.wait(timeout=10)
     except subprocess.TimeoutExpired:
-        host.kill()
-        host.wait(timeout=10)
+        pass
+    finally:
+        if selection_host is not None:
+            _stop_exact_process(selection_host)
+    if selection_host.returncode not in (0, None):
+        raise RuntimeError("PACKAGED_SELECTION_SMOKE_FAILED")
+
+    host: subprocess.Popen[bytes] | None = None
+    try:
+        host = subprocess.Popen(
+            [app_executable],
+            cwd=cwd,
+            env=environment,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        time.sleep(4)
+        if host.poll() is not None:
+            raise RuntimeError("PACKAGED_HOST_STARTUP_FAILED")
+    finally:
+        if host is not None:
+            _stop_exact_process(host)
 
     return {
         "finderEquivalentHostLaunch": "passed",
         "sidecarHandshake": "passed",
         "syntheticPreprocessing": "passed",
         "networkBlocked": "passed",
+        "selectionCommandResponse": "passed",
+        "annualCount": 1,
+        "startEnabled": "passed",
         "isolatedWorkingDirectory": "passed",
         "isolatedHome": "passed",
         "hostClose": "passed",
@@ -632,13 +701,24 @@ def build_and_verify() -> Path:
     python312 = _python312()
     output_root = _new_output_root()
     sidecar_bundle = _build_sidecar(output_root, python312)
+    selection_smoke_app = _build_app(
+        output_root,
+        sidecar_bundle,
+        features=("synthetic-dialog-adapter",),
+        target_dir=output_root / "selection-smoke-target",
+    )
+    _validate_app_contents(selection_smoke_app)
     app = _build_app(output_root, sidecar_bundle)
     metadata = _validate_info_plist(app)
     _validate_app_contents(app)
     members = _sign_nested_first(app)
     negative_checks = _run_negative_package_checks(output_root, app)
     dmg, copied_app = _make_dmg(output_root, app)
-    smoke = _run_clean_user_smoke(copied_app, output_root / "clean-user")
+    smoke = _run_clean_user_smoke(
+        copied_app,
+        output_root / "clean-user",
+        selection_smoke_app,
+    )
     manifest = _write_manifest(
         output_root,
         app,

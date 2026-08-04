@@ -94,7 +94,8 @@ impl fmt::Debug for SelectionRecord {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SelectionSummary {
     pub selection_id: String,
     pub annual_source_count: u64,
@@ -195,6 +196,10 @@ pub fn choose_sources(
     window: &WebviewWindow,
     role: SourceRole,
 ) -> Result<Option<Vec<PathBuf>>, SelectionError> {
+    #[cfg(feature = "synthetic-dialog-adapter")]
+    if let Some(result) = choose_synthetic_sources(role)? {
+        return Ok(Some(result));
+    }
     let _ = role;
     #[cfg(target_os = "macos")]
     {
@@ -204,15 +209,61 @@ pub fn choose_sources(
                 let _ = sender.send(show_macos_panel());
             })
             .map_err(|_| SelectionError::new(SelectionErrorCode::DialogUnavailable))?;
-        return receiver
+        receiver
             .recv()
-            .map_err(|_| SelectionError::new(SelectionErrorCode::DialogUnavailable))?;
+            .map_err(|_| SelectionError::new(SelectionErrorCode::DialogUnavailable))
+            .and_then(|result| result)
     }
     #[cfg(not(target_os = "macos"))]
     {
         let _ = window;
         Err(SelectionError::new(SelectionErrorCode::DialogUnavailable))
     }
+}
+
+/// Test-only replacement for the user click in a native open panel.
+///
+/// The adapter is compiled only into a dedicated smoke build.  It creates one
+/// public synthetic CipherTalk fixture in the caller-provided temporary root,
+/// then returns it through the same production command/registry path as the
+/// real AppKit panel.  No renderer-supplied path or test shortcut reaches the
+/// production command.
+#[cfg(feature = "synthetic-dialog-adapter")]
+fn choose_synthetic_sources(role: SourceRole) -> Result<Option<Vec<PathBuf>>, SelectionError> {
+    const ENV_ROLE: &str = "CHAT_HISTORY_ANALYSIS_SYNTHETIC_NATIVE_DIALOG_ROLE";
+    const ENV_ROOT: &str = "CHAT_HISTORY_ANALYSIS_SYNTHETIC_ROOT";
+    let requested = std::env::var(ENV_ROLE).unwrap_or_default();
+    let expected = match role {
+        SourceRole::Annual => "annual",
+        SourceRole::Verification => "verification",
+    };
+    if requested != expected {
+        return Ok(None);
+    }
+    let root = std::env::var_os(ENV_ROOT)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            std::env::temp_dir().join(format!(
+                "chat-history-analysis-selection-smoke-{}",
+                std::process::id()
+            ))
+        });
+    fs::create_dir_all(&root)
+        .map_err(|_| SelectionError::new(SelectionErrorCode::DialogUnavailable))?;
+    let filename = match role {
+        SourceRole::Annual => "synthetic-annual-source.json",
+        SourceRole::Verification => "synthetic-verification-source.json",
+    };
+    let path = root.join(filename);
+    fs::write(
+        &path,
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../contracts/sidecar-synthetic-fixture.json"
+        )),
+    )
+    .map_err(|_| SelectionError::new(SelectionErrorCode::DialogUnavailable))?;
+    Ok(Some(vec![path]))
 }
 
 #[cfg(target_os = "macos")]

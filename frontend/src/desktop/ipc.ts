@@ -3,6 +3,8 @@ import {
   isRequestId,
   type DesktopCommand,
   type DesktopCommandAck,
+  parseSelectionCommandAck,
+  type SelectionCommandAck,
   type RequestId,
   type ResultId,
   type SelectionId,
@@ -90,8 +92,8 @@ export function isWorkerPreparationAck(value: unknown): value is WorkerPreparati
 }
 
 export interface DesktopApi {
-  selectAnnualSources(requestId: RequestId): Promise<DesktopCommandAck>;
-  selectVerificationSources(requestId: RequestId): Promise<DesktopCommandAck>;
+  selectAnnualSources(requestId: RequestId): Promise<SelectionCommandAck>;
+  selectVerificationSources(requestId: RequestId): Promise<SelectionCommandAck>;
   startAnalysis(requestId: RequestId, selectionId: SelectionId): Promise<DesktopCommandAck>;
   cancelAnalysis(requestId: RequestId, sessionId: SessionId, generation: Generation): Promise<DesktopCommandAck>;
   retryAnalysis(requestId: RequestId, sessionId: SessionId, generation: Generation): Promise<DesktopCommandAck>;
@@ -131,6 +133,20 @@ function invokeCommand(
   });
 }
 
+async function invokeSelectionCommand(
+  invoker: DesktopInvoker,
+  command: Extract<DesktopCommand, { type: "select-annual-sources" | "select-verification-sources" }>,
+): Promise<SelectionCommandAck> {
+  const parsed = parseDesktopCommand(command);
+  if (parsed.type !== "select-annual-sources" && parsed.type !== "select-verification-sources") {
+    return Promise.reject(new Error("INVALID_SELECTION_COMMAND"));
+  }
+  const value = await invoker.invoke<unknown>(TAURI_COMMAND_BY_TYPE[parsed.type], {
+    request: parsed,
+  });
+  return parseSelectionCommandAck(value, parsed.requestId);
+}
+
 function invokePreparationCommand(
   invoker: DesktopInvoker,
   command: DesktopCommand,
@@ -148,14 +164,14 @@ function invokePreparationCommand(
 export function createDesktopApi(invoker: DesktopInvoker): DesktopApi {
   return {
     selectAnnualSources(requestId) {
-      return invokeCommand(invoker, {
+      return invokeSelectionCommand(invoker, {
         protocolVersion: "chat-history-analysis.desktop-ipc.v1",
         type: "select-annual-sources",
         requestId,
       });
     },
     selectVerificationSources(requestId) {
-      return invokeCommand(invoker, {
+      return invokeSelectionCommand(invoker, {
         protocolVersion: "chat-history-analysis.desktop-ipc.v1",
         type: "select-verification-sources",
         requestId,

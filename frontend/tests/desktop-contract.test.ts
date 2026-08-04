@@ -6,18 +6,22 @@ import {
   acceptDesktopEvent,
   isApprovedChartKey,
   isGeneration,
+  parseSelectionCommandAck,
   parseDesktopCommand,
   parseDesktopEvent,
   type EventCursor,
   type Generation,
   type RequestId,
   type SessionId,
+  type SelectionId,
 } from "../src/desktop/ipc-contract";
 import {
   createDesktopApi,
   DESKTOP_COMMAND_ALLOWLIST,
   TAURI_COMMAND_ALLOWLIST,
 } from "../src/desktop/ipc";
+import { applySelectionCommand } from "../src/desktop/selection-state";
+import type { SelectionCommandAck } from "../src/desktop/ipc-contract";
 import { isRendererAggregateInput } from "../src/desktop/export-contract";
 
 const SESSION = "ses_00000000000000000000000000000001" as SessionId;
@@ -199,6 +203,12 @@ describe("versioned desktop IPC contract", () => {
           protocolVersion: DESKTOP_IPC_PROTOCOL_VERSION,
           requestId: "req_00000000000000000000000000000001",
           accepted: true,
+          outcome: "registered",
+          selection: {
+            selectionId: "sel_00000000000000000000000000000001" as SelectionId,
+            annualSourceCount: 1,
+            verificationSourceCount: 0,
+          },
         } as T;
       },
     };
@@ -208,6 +218,70 @@ describe("versioned desktop IPC contract", () => {
         "req_00000000000000000000000000000001" as RequestId,
       ),
     ).resolves.toMatchObject({ accepted: true });
+  });
+
+  it("uses the command response as the canonical registered selection", async () => {
+    const response: SelectionCommandAck = {
+      protocolVersion: DESKTOP_IPC_PROTOCOL_VERSION,
+      requestId: "req_00000000000000000000000000000001" as RequestId,
+      accepted: true,
+      outcome: "registered",
+      selection: {
+        selectionId: "sel_00000000000000000000000000000001" as SelectionId,
+        annualSourceCount: 1,
+        verificationSourceCount: 0,
+      },
+    };
+    const next = applySelectionCommand(
+      {
+        selectionId: undefined,
+        annualCount: 0,
+        verificationCount: 0,
+        desktopState: "selecting",
+        status: "正在打开本地文件选择器",
+      },
+      response,
+    );
+    expect(next).toMatchObject({
+      selectionId: "sel_00000000000000000000000000000001",
+      annualCount: 1,
+      verificationCount: 0,
+      desktopState: "ready",
+    });
+  });
+
+  it("keeps the previous valid selection when the native dialog is cancelled", () => {
+    const previous = {
+      selectionId: "sel_00000000000000000000000000000001" as never,
+      annualCount: 1,
+      verificationCount: 0,
+      desktopState: "ready" as const,
+      status: "本地源选择已更新",
+    };
+    const cancelled: SelectionCommandAck = {
+      protocolVersion: DESKTOP_IPC_PROTOCOL_VERSION,
+      requestId: "req_00000000000000000000000000000001" as RequestId,
+      accepted: true,
+      outcome: "cancelled",
+      selection: null,
+    };
+    expect(applySelectionCommand(previous, cancelled)).toEqual(previous);
+  });
+
+  it("rejects an uncorrelated or path-bearing selection response", () => {
+    const response = {
+      protocolVersion: DESKTOP_IPC_PROTOCOL_VERSION,
+      requestId: "req_00000000000000000000000000000001",
+      accepted: true,
+      outcome: "registered",
+      selection: {
+        selectionId: "sel_00000000000000000000000000000001",
+        annualSourceCount: 1,
+        verificationSourceCount: 0,
+      },
+    };
+    expect(() => parseSelectionCommandAck(response, "req_00000000000000000000000000000002" as RequestId)).toThrow("INVALID_STATE");
+    expect(() => parseSelectionCommandAck({ ...response, path: "synthetic" })).toThrow("INVALID_REQUEST");
   });
 
   it("keeps production export requests host-owned and chart allow-listed", async () => {

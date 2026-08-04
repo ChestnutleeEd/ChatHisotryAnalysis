@@ -253,6 +253,17 @@ export interface DesktopCommandAck {
   readonly accepted: true;
 }
 
+export interface SelectionSnapshot {
+  readonly selectionId: SelectionId;
+  readonly annualSourceCount: number;
+  readonly verificationSourceCount: number;
+}
+
+export interface SelectionCommandAck extends DesktopCommandAck {
+  readonly outcome: "registered" | "cancelled";
+  readonly selection: SelectionSnapshot | null;
+}
+
 export interface ResultCommitAck extends DesktopCommandAck {
   readonly resultId: ResultId;
 }
@@ -472,6 +483,56 @@ export function parseDesktopCommand(value: unknown): DesktopCommand {
     default:
       throw new DesktopIpcValidationError("COMMAND_NOT_ALLOWED");
   }
+}
+
+export function parseSelectionCommandAck(
+  value: unknown,
+  expectedRequestId?: RequestId,
+): SelectionCommandAck {
+  if (!isRecord(value)) {
+    throw new DesktopIpcValidationError("INVALID_REQUEST");
+  }
+  requireProtocol(value);
+  if (
+    !hasExactKeys(value, [
+      "accepted",
+      "outcome",
+      "protocolVersion",
+      "requestId",
+      "selection",
+    ]) ||
+    value.accepted !== true ||
+    !isRequestId(value.requestId) ||
+    (expectedRequestId !== undefined && value.requestId !== expectedRequestId) ||
+    (value.outcome !== "registered" && value.outcome !== "cancelled")
+  ) {
+    throw new DesktopIpcValidationError(
+      expectedRequestId !== undefined && value.requestId !== expectedRequestId
+        ? "INVALID_STATE"
+        : "INVALID_REQUEST",
+    );
+  }
+  if (value.selection === null) {
+    if (value.outcome !== "cancelled") {
+      throw new DesktopIpcValidationError("INVALID_REQUEST");
+    }
+    return value as unknown as SelectionCommandAck;
+  }
+  if (
+    !isRecord(value.selection) ||
+    !hasExactKeys(value.selection, [
+      "annualSourceCount",
+      "selectionId",
+      "verificationSourceCount",
+    ]) ||
+    !isSelectionId(value.selection.selectionId) ||
+    !isNonNegativeSafeInteger(value.selection.annualSourceCount) ||
+    !isNonNegativeSafeInteger(value.selection.verificationSourceCount) ||
+    value.outcome !== "registered"
+  ) {
+    throw new DesktopIpcValidationError("INVALID_REQUEST");
+  }
+  return value as unknown as SelectionCommandAck;
 }
 
 export function isReportFormat(value: unknown): value is ReportFormat {

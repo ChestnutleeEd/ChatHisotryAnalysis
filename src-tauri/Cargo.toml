@@ -10,6 +10,7 @@ default-run = "chat-history-analysis"
 [features]
 default = ["synthetic-test-helpers"]
 synthetic-test-helpers = []
+synthetic-dialog-adapter = []
 
 [[bin]]
 name = "chat-history-analysis"

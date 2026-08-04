@@ -17,7 +17,7 @@ pub mod webview_permissions;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .manage(ipc::IpcCoreState::default())
         .manage(dataset_transport::DatasetTransportState::default())
         .setup(|app| {
@@ -95,26 +95,77 @@ pub fn run() {
                     .state::<ipc::IpcCoreState>()
                     .renderer_disconnected(webview.label());
             }
-        })
-        .invoke_handler(tauri::generate_handler![
-            ipc::select_annual_sources,
-            ipc::select_verification_sources,
-            ipc::start_analysis,
-            ipc::cancel_analysis,
-            ipc::retry_analysis,
-            ipc::discard_session,
-            ipc::prepare_aggregate_result,
-            ipc::cancel_aggregate_result,
-            ipc::commit_worker_result,
-            ipc::acknowledge_worker_stop,
-            ipc::export_aggregate,
-            ipc::request_application_close,
-            dataset_transport::open_dataset_stream,
-            dataset_transport::receive_dataset_chunk,
-            dataset_transport::complete_dataset_stream,
-            dataset_transport::cancel_dataset_stream,
-            dataset_transport::close_dataset_stream,
-        ])
+            #[cfg(feature = "synthetic-dialog-adapter")]
+            if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) {
+                let _ = webview.eval(
+                    r#"(() => {
+                      const button = (label) => Array.from(document.querySelectorAll("button")).find((candidate) => candidate.textContent?.includes(label));
+                      const waitFor = (predicate, deadline = Date.now() + 15000) => new Promise((resolve, reject) => {
+                        const tick = () => {
+                          if (predicate()) { resolve(true); return; }
+                          if (Date.now() > deadline) { reject(new Error("selection smoke timeout")); return; }
+                          window.setTimeout(tick, 50);
+                        };
+                        tick();
+                      });
+                      (async () => {
+                        const onboarding = button("继续到文件选择");
+                        if (onboarding !== undefined) onboarding.click();
+                        await waitFor(() => button("选择年度源") !== undefined);
+                        button("选择年度源")?.click();
+                        await waitFor(() => {
+                          const count = document.body.textContent?.includes("年度源：1 个") === true;
+                          const start = button("开始分析");
+                          return count && start !== undefined && !start.disabled;
+                        });
+                        await window.__TAURI_INTERNALS__.invoke("record_selection_smoke");
+                      })().catch(() => undefined);
+                    })()"#,
+                );
+            }
+        });
+    #[cfg(feature = "synthetic-dialog-adapter")]
+    let builder = builder.invoke_handler(tauri::generate_handler![
+        ipc::select_annual_sources,
+        ipc::select_verification_sources,
+        ipc::record_selection_smoke,
+        ipc::start_analysis,
+        ipc::cancel_analysis,
+        ipc::retry_analysis,
+        ipc::discard_session,
+        ipc::prepare_aggregate_result,
+        ipc::cancel_aggregate_result,
+        ipc::commit_worker_result,
+        ipc::acknowledge_worker_stop,
+        ipc::export_aggregate,
+        ipc::request_application_close,
+        dataset_transport::open_dataset_stream,
+        dataset_transport::receive_dataset_chunk,
+        dataset_transport::complete_dataset_stream,
+        dataset_transport::cancel_dataset_stream,
+        dataset_transport::close_dataset_stream,
+    ]);
+    #[cfg(not(feature = "synthetic-dialog-adapter"))]
+    let builder = builder.invoke_handler(tauri::generate_handler![
+        ipc::select_annual_sources,
+        ipc::select_verification_sources,
+        ipc::start_analysis,
+        ipc::cancel_analysis,
+        ipc::retry_analysis,
+        ipc::discard_session,
+        ipc::prepare_aggregate_result,
+        ipc::cancel_aggregate_result,
+        ipc::commit_worker_result,
+        ipc::acknowledge_worker_stop,
+        ipc::export_aggregate,
+        ipc::request_application_close,
+        dataset_transport::open_dataset_stream,
+        dataset_transport::receive_dataset_chunk,
+        dataset_transport::complete_dataset_stream,
+        dataset_transport::cancel_dataset_stream,
+        dataset_transport::close_dataset_stream,
+    ]);
+    builder
         .build(tauri::generate_context!())
         .expect("error while building Chat History Analysis")
         .run(|app_handle, event| match event {

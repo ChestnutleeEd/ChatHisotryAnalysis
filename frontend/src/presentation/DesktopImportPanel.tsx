@@ -12,6 +12,7 @@ import {
   type ReportFormat,
   type ApprovedChartKey,
   type SessionId,
+  type SelectionCommandAck,
 } from "../desktop/ipc-contract";
 import {
   desktopApi,
@@ -19,6 +20,7 @@ import {
   listenForDesktopWorkerControl,
 } from "../desktop/runtime";
 import { isWorkerPreparationAck } from "../desktop/ipc";
+import { applySelectionCommand } from "../desktop/selection-state";
 import {
   AnalysisWorkerClient,
   WorkerClientCancelledError,
@@ -169,6 +171,7 @@ export function DesktopImportPanel() {
   const replacementPendingRef = useRef(false);
   const analyticsClientRef = useRef<AnalysisWorkerClient | undefined>(undefined);
   const analyticsAttemptRef = useRef(0);
+  const latestSelectionIdRef = useRef<string | undefined>(undefined);
   const exportAttemptRef = useRef<{ readonly format: ReportFormat; readonly chartKey: ApprovedChartKey }>(undefined);
   const exportOutcomeRef = useRef<string>("unknown");
   const [onboardingSeen, setOnboardingSeen] = useState(readOnboardingPreference);
@@ -558,8 +561,15 @@ export function DesktopImportPanel() {
       if (!accepted.accepted) {
         return;
       }
-      cursorRef.current = accepted.cursor;
       const event = accepted.event;
+      if (
+        event.type === "selection-ready" &&
+        latestSelectionIdRef.current !== undefined &&
+        event.payload.selectionId !== latestSelectionIdRef.current
+      ) {
+        return;
+      }
+      cursorRef.current = accepted.cursor;
       const nextStatus = eventStatus(event);
       if (nextStatus !== undefined) {
         setStatus(nextStatus);
@@ -569,6 +579,7 @@ export function DesktopImportPanel() {
       }
       switch (event.type) {
         case "selection-ready":
+          latestSelectionIdRef.current = event.payload.selectionId;
           void resetAnalytics(true);
           setSelectionId(event.payload.selectionId);
           setAnnualCount(event.payload.annualSourceCount);
@@ -697,15 +708,17 @@ export function DesktopImportPanel() {
     };
   }, []);
 
-  async function runCommand(
-    command: () => Promise<unknown>,
-    preserveResult = false,
-  ): Promise<boolean> {
+  async function runCommand<T>(
+    command: () => Promise<T>,
+    options: { readonly preserveResult?: boolean; readonly clearFailure?: boolean } = {},
+  ): Promise<T | undefined> {
+    const preserveResult = options.preserveResult ?? false;
     setPendingCommand(true);
-    setFailure(undefined);
+    if (options.clearFailure ?? true) {
+      setFailure(undefined);
+    }
     try {
-      await command();
-      return true;
+      return await command();
     } catch (error) {
       const code =
         error instanceof WorkerClientError
@@ -717,31 +730,80 @@ export function DesktopImportPanel() {
       if (!preserveResult) {
         setDesktopState("failed");
       }
-      return false;
+      return undefined;
     } finally {
       setPendingCommand(false);
     }
   }
 
   async function selectSources(kind: "annual" | "verification"): Promise<void> {
-    await resetAnalytics(true);
+    const previous = {
+      cursor: cursorRef.current,
+      selectionId,
+      annualCount,
+      verificationCount,
+      desktopState,
+      status,
+      failure,
+    };
     cursorRef.current = resetCursorForSelection(cursorRef.current);
     cursorRef.current = { ...cursorRef.current, state: "selecting" };
     setDesktopState("selecting");
     setStatus("正在打开本地文件选择器");
-    const completed = await runCommand(
+    const completed = await runCommand<SelectionCommandAck>(
       kind === "annual"
         ? () => desktopApi.selectAnnualSources(requestId() as never)
         : () => desktopApi.selectVerificationSources(requestId() as never),
+      { preserveResult: true, clearFailure: false },
     );
-    if (completed) {
-      window.setTimeout(() => {
-        if (cursorRef.current.state === "selecting") {
-          setDesktopState("idle");
-          setStatus("等待本地源选择");
-        }
-      }, 0);
+    if (completed === undefined) {
+      cursorRef.current = previous.cursor;
+      if (previous.selectionId !== undefined) {
+        setDesktopState(previous.desktopState);
+        setStatus("选择失败，保留上一次有效选择");
+      } else {
+        setDesktopState("failed");
+        setStatus("选择失败，请根据错误码重试");
+      }
+      return;
     }
+    if (completed.outcome === "cancelled" || completed.selection === null) {
+      cursorRef.current = previous.cursor;
+      setSelectionId(previous.selectionId);
+      setAnnualCount(previous.annualCount);
+      setVerificationCount(previous.verificationCount);
+      setDesktopState(previous.desktopState);
+      setStatus(previous.status);
+      setFailure(previous.failure);
+      return;
+    }
+    await resetAnalytics(true);
+    const next = applySelectionCommand(
+      {
+        selectionId: previous.selectionId as never,
+        annualCount: previous.annualCount,
+        verificationCount: previous.verificationCount,
+        desktopState: "selecting",
+        status: "正在打开本地文件选择器",
+      },
+      completed,
+    );
+    latestSelectionIdRef.current = next.selectionId;
+    cursorRef.current = {
+      ...resetCursorForSelection(cursorRef.current),
+      state: "ready",
+      sequence: 1,
+    };
+    setSelectionId(next.selectionId as string);
+    setAnnualCount(next.annualCount);
+    setVerificationCount(next.verificationCount);
+    setSession(undefined);
+    setDataset(undefined);
+    setFailure(undefined);
+    setExportMessage(undefined);
+    setProgress(undefined);
+    setDesktopState(next.desktopState);
+    setStatus(next.status);
   }
 
   async function start(): Promise<void> {
@@ -840,7 +902,7 @@ export function DesktopImportPanel() {
         dataset.resultId as never,
         chartKey,
       ),
-      true,
+      { preserveResult: true },
     );
     if (completed) {
       setExportMessage(
