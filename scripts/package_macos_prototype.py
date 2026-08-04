@@ -593,7 +593,7 @@ def _run_clean_user_smoke(
             stderr=subprocess.DEVNULL,
         )
         selection_marker = selection_root / "isolated-temp" / "selection-smoke-passed"
-        selection_deadline = time.monotonic() + 30
+        selection_deadline = time.monotonic() + 180
         while not selection_marker.is_file() and time.monotonic() < selection_deadline:
             if selection_host.poll() is not None:
                 raise RuntimeError("PACKAGED_SELECTION_SMOKE_FAILED")
@@ -629,6 +629,7 @@ def _run_clean_user_smoke(
         "finderEquivalentHostLaunch": "passed",
         "sidecarHandshake": "passed",
         "syntheticPreprocessing": "passed",
+        "packagedVerticalSmoke": "passed",
         "networkBlocked": "passed",
         "selectionCommandResponse": "passed",
         "annualCount": 1,

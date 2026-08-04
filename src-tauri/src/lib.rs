@@ -100,7 +100,7 @@ pub fn run() {
                 let _ = webview.eval(
                     r#"(() => {
                       const button = (label) => Array.from(document.querySelectorAll("button")).find((candidate) => candidate.textContent?.includes(label));
-                      const waitFor = (predicate, deadline = Date.now() + 15000) => new Promise((resolve, reject) => {
+                      const waitFor = (predicate, deadline = Date.now() + 120000) => new Promise((resolve, reject) => {
                         const tick = () => {
                           if (predicate()) { resolve(true); return; }
                           if (Date.now() > deadline) { reject(new Error("selection smoke timeout")); return; }
@@ -118,6 +118,11 @@ pub fn run() {
                           const start = button("开始分析");
                           return count && start !== undefined && !start.disabled;
                         });
+                        button("开始分析")?.click();
+                        await waitFor(() => document.querySelector(".dashboard-shell") !== null);
+                        button("退出应用")?.click();
+                        await waitFor(() => button("退出并清理") !== undefined);
+                        button("退出并清理")?.click();
                         await window.__TAURI_INTERNALS__.invoke("record_selection_smoke");
                       })().catch(() => undefined);
                     })()"#,
