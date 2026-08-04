@@ -2,6 +2,17 @@
 
 本项目用于开发和验证本地聊天历史分析能力。当前阶段包含可复现的合成数据基线、本地 Python 预处理器的可信启动边界、CipherTalk `detailed-json` 三遍流式验证、消息规范化、私有 SQLite 暂存、跨文件去重/合并、确定性 NDJSON/manifest、原子发布、content-free 生产进度和安全 SIGINT 取消，以及浏览器端 normalized dataset 导入、Worker 内严格复验、Jieba WASM 分词、compact cache、多条件词频分析和本地 PNG 导出。它不包含后端 API、数据库解密或微信/CipherTalk 连接功能，浏览器也不接受原始 CipherTalk 导出。
 
+## macOS Alpha 交付
+
+当前产品化目标是本地 macOS arm64 Alpha：用户可从 prototype DMG 安装应用，选择一个或多个 CipherTalk `detailed-json`，在本机完成预处理、canonical v2 分析、Dashboard 筛选和 aggregate JSON/CSV/PNG 导出。应用不上传聊天数据、不需要用户安装 Python/Node/Conda，也不提供账号、云同步或遥测。
+
+- [macOS Alpha 用户手动测试指南](docs/MACOS_ALPHA_USER_TEST_GUIDE_ZH.md)
+- [macOS Alpha 构建与验收](docs/MACOS_ALPHA_BUILD.md)
+- [Alpha release notes](docs/ALPHA_RELEASE_NOTES.md)
+- [Stage 12 Alpha 合成验收记录](docs/STAGE_12_MACOS_ALPHA_EVIDENCE.md)
+
+这是 ad-hoc、未 notarized 的本地 Alpha 原型，不是正式公开发布；Windows、Developer ID、notarization、自动更新和 Release 级性能/安全认证均在后续边界内。
+
 ## 当前阶段：合成数据基线
 
 `scripts/generate_mock_chat.py` 使用 Python 标准库生成接近 CipherTalk `detailed-json` 结构的虚构私聊记录。相同的参数会得到内容和顺序完全一致的 JSON，包括确定性的 `exportedAt`。

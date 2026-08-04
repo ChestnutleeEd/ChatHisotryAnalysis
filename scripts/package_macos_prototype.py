@@ -590,6 +590,7 @@ def _write_manifest(
         },
         "app": {
             "relativePath": app.name,
+            "repositoryRelativePath": app.relative_to(ROOT).as_posix(),
             "mainExecutable": f"Contents/MacOS/{APP_EXECUTABLE}",
             "bundleIdentifier": BUNDLE_IDENTIFIER,
             "metadata": metadata,

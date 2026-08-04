@@ -1465,6 +1465,15 @@ footer a {
   color: var(--desktop-danger);
 }
 
+.desktop-error-code {
+  overflow-wrap: anywhere;
+  color: var(--desktop-danger);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
 .desktop-alert .dashboard-button {
   margin-top: 18px;
 }

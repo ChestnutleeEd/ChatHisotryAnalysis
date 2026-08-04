@@ -69,6 +69,7 @@ describe("Stage 9 dashboard presentation contracts", () => {
     expect(desktopFailureMessage("SIDECAR_PROTOCOL_INVALID")).not.toContain("stderr");
     expect(desktopFailureMessage("SIDECAR_PROTOCOL_INVALID")).not.toContain("/");
     expect(desktopFailureMessage("SIDECAR_PROTOCOL_INVALID")).not.toContain("traceback");
+    expect(("SIDECAR_PROTOCOL_INVALID" as const)).toMatch(/^[A-Z][A-Z0-9_]*$/u);
     expect(durationBucket(5_000)).toContain("正在处理");
     expect(durationBucket(120_000)).toContain("可以取消");
     const copy = [...methodologyCopy(), comparativeScopeNotice()].join(" ");
