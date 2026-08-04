@@ -600,7 +600,7 @@ def _run_clean_user_smoke(
             time.sleep(0.1)
         if not selection_marker.is_file():
             raise RuntimeError("PACKAGED_SELECTION_SMOKE_FAILED")
-        selection_host.wait(timeout=10)
+        selection_host.wait(timeout=20)
     except subprocess.TimeoutExpired:
         pass
     finally:

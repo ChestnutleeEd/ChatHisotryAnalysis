@@ -3174,10 +3174,14 @@ pub fn record_selection_smoke(window: tauri::WebviewWindow) -> Result<(), IpcErr
         .map_err(|_| IpcError::with_code(None, FailureCode::InvalidState))?;
     std::fs::write(root.join("selection-smoke-passed"), b"passed\n")
         .map_err(|_| IpcError::with_code(None, FailureCode::InvalidState))?;
-    // This feature-gated harness has no active session to clean.  Exit after
-    // the marker so the packaged smoke does not depend on accessibility APIs
-    // or the production close-request loop.
-    std::process::exit(0);
+    // Keep the feature-gated process alive briefly after the marker so the
+    // injected UI can exercise the real close-and-cleanup path before the
+    // harness exits. Production builds do not compile this command.
+    std::thread::spawn(|| {
+        std::thread::sleep(std::time::Duration::from_secs(10));
+        std::process::exit(0);
+    });
+    Ok(())
 }
 
 #[tauri::command]

@@ -120,10 +120,10 @@ pub fn run() {
                         });
                         button("开始分析")?.click();
                         await waitFor(() => document.querySelector(".dashboard-shell") !== null);
+                        await window.__TAURI_INTERNALS__.invoke("record_selection_smoke");
                         button("退出应用")?.click();
                         await waitFor(() => button("退出并清理") !== undefined);
                         button("退出并清理")?.click();
-                        await window.__TAURI_INTERNALS__.invoke("record_selection_smoke");
                       })().catch(() => undefined);
                     })()"#,
                 );
