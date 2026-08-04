@@ -887,6 +887,80 @@ fn watched_discard_waits_for_cancellation_before_removing_session() {
 }
 
 #[test]
+fn live_progress_and_watchdog_close_silent_and_stalled_sidecars() {
+    let fixture = Fixture::new();
+    let supervisor = SessionSupervisor::with_watchdog_timeouts(
+        Duration::from_millis(150),
+        Duration::from_millis(250),
+    );
+    let silent = supervisor
+        .start("main", fixture.resolution("silent"), fixture.input())
+        .expect("start silent sidecar");
+    let (silent_result_sender, silent_result_receiver) = std::sync::mpsc::channel();
+    supervisor
+        .watch_with_progress(
+            "main",
+            &silent.session_id,
+            silent.generation,
+            |_| {},
+            move |result| {
+                silent_result_sender.send(result).expect("silent result");
+            },
+        )
+        .expect("watch silent sidecar");
+    let silent_result = silent_result_receiver
+        .recv_timeout(Duration::from_secs(2))
+        .expect("silent watchdog result")
+        .expect("silent snapshot");
+    assert_eq!(
+        silent_result.terminal,
+        Some(SessionTerminal::Failed(
+            "SIDECAR_HANDSHAKE_TIMEOUT".to_string()
+        ))
+    );
+    supervisor
+        .discard("main", &silent.session_id, silent.generation)
+        .expect("discard silent session");
+
+    let stalled = supervisor
+        .start("main", fixture.resolution("no-terminal"), fixture.input())
+        .expect("start stalled sidecar");
+    let (progress_sender, progress_receiver) = std::sync::mpsc::channel();
+    let (stalled_result_sender, stalled_result_receiver) = std::sync::mpsc::channel();
+    supervisor
+        .watch_with_progress(
+            "main",
+            &stalled.session_id,
+            stalled.generation,
+            move |progress| {
+                progress_sender.send(progress).expect("progress");
+            },
+            move |result| {
+                stalled_result_sender.send(result).expect("stalled result");
+            },
+        )
+        .expect("watch stalled sidecar");
+    assert_eq!(
+        progress_receiver
+            .recv_timeout(Duration::from_secs(1))
+            .expect("initial heartbeat")
+            .phase,
+        "startup"
+    );
+    let stalled_result = stalled_result_receiver
+        .recv_timeout(Duration::from_secs(2))
+        .expect("stalled watchdog result")
+        .expect("stalled snapshot");
+    assert_eq!(
+        stalled_result.terminal,
+        Some(SessionTerminal::Failed("PREPROCESSING_STALLED".to_string()))
+    );
+    supervisor
+        .discard("main", &stalled.session_id, stalled.generation)
+        .expect("discard stalled session");
+}
+
+#[test]
 fn stale_window_and_generation_requests_cannot_mutate_terminal_session() {
     let fixture = Fixture::new();
     let supervisor = SessionSupervisor::default();

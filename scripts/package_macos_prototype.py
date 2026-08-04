@@ -175,13 +175,9 @@ def _build_app(
     if target_dir is not None:
         target_dir.mkdir(parents=True)
         environment["CARGO_TARGET_DIR"] = os.fspath(target_dir)
-    cargo_arguments = [
-        "--no-default-features",
-        "--bin",
-        APP_EXECUTABLE,
-    ]
+    cargo_feature_arguments: list[str] = []
     if features:
-        cargo_arguments.extend(["--features", ",".join(features)])
+        cargo_feature_arguments.extend(["--features", ",".join(features)])
     _run(
         [
             npm,
@@ -200,7 +196,10 @@ def _build_app(
             "--config",
             package_config,
             "--",
-            *cargo_arguments,
+            "--no-default-features",
+            "--bin",
+            APP_EXECUTABLE,
+            *cargo_feature_arguments,
         ],
         env=environment,
         timeout=1_200,

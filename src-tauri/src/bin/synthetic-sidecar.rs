@@ -187,6 +187,10 @@ fn main() {
     if selected_mode == "early-exit" {
         process::exit(17);
     }
+    if selected_mode == "silent" {
+        sleep_through_signals(Duration::from_secs(60));
+        return;
+    }
     if selected_mode == "crash" {
         process::abort();
     }

@@ -3,12 +3,17 @@ import {
   isRequestId,
   type DesktopCommand,
   type DesktopCommandAck,
+  parseAnalysisCommandAck,
+  parseAnalysisStatusAck,
+  type AnalysisCommandAck,
+  type AnalysisStatusAck,
   parseSelectionCommandAck,
   type SelectionCommandAck,
   type RequestId,
   type ResultId,
   type SelectionId,
   type SessionId,
+  type OperationId,
   type Generation,
   type ReportFormat,
   type ApprovedChartKey,
@@ -25,6 +30,7 @@ export const DESKTOP_COMMAND_ALLOWLIST = [
   "start-analysis",
   "cancel-analysis",
   "retry-analysis",
+  "get-analysis-status",
   "discard-session",
   "prepare-aggregate-result",
   "cancel-aggregate-result",
@@ -41,6 +47,7 @@ export const TAURI_COMMAND_BY_TYPE = {
   "start-analysis": "start_analysis",
   "cancel-analysis": "cancel_analysis",
   "retry-analysis": "retry_analysis",
+  "get-analysis-status": "get_analysis_status",
   "discard-session": "discard_session",
   "prepare-aggregate-result": "prepare_aggregate_result",
   "cancel-aggregate-result": "cancel_aggregate_result",
@@ -55,6 +62,7 @@ export const TAURI_COMMAND_ALLOWLIST = [
   "start_analysis",
   "cancel_analysis",
   "retry_analysis",
+  "get_analysis_status",
   "discard_session",
   "prepare_aggregate_result",
   "cancel_aggregate_result",
@@ -94,9 +102,14 @@ export function isWorkerPreparationAck(value: unknown): value is WorkerPreparati
 export interface DesktopApi {
   selectAnnualSources(requestId: RequestId): Promise<SelectionCommandAck>;
   selectVerificationSources(requestId: RequestId): Promise<SelectionCommandAck>;
-  startAnalysis(requestId: RequestId, selectionId: SelectionId): Promise<DesktopCommandAck>;
-  cancelAnalysis(requestId: RequestId, sessionId: SessionId, generation: Generation): Promise<DesktopCommandAck>;
-  retryAnalysis(requestId: RequestId, sessionId: SessionId, generation: Generation): Promise<DesktopCommandAck>;
+  startAnalysis(requestId: RequestId, selectionId: SelectionId): Promise<AnalysisCommandAck>;
+  cancelAnalysis(requestId: RequestId, operationId: OperationId): Promise<DesktopCommandAck>;
+  retryAnalysis(requestId: RequestId, sessionId: SessionId, generation: Generation): Promise<AnalysisCommandAck>;
+  getAnalysisStatus(
+    requestId: RequestId,
+    operationId: OperationId,
+    afterSequence: number,
+  ): Promise<AnalysisStatusAck>;
   discardSession(requestId: RequestId, sessionId: SessionId, generation: Generation): Promise<DesktopCommandAck>;
   prepareAggregateResult(
     requestId: RequestId,
@@ -131,6 +144,34 @@ function invokeCommand(
   return invoker.invoke<DesktopCommandAck>(TAURI_COMMAND_BY_TYPE[parsed.type as DesktopCommandType], {
     request: parsed,
   });
+}
+
+async function invokeAnalysisCommand(
+  invoker: DesktopInvoker,
+  command: Extract<DesktopCommand, { type: "start-analysis" | "retry-analysis" }>,
+): Promise<AnalysisCommandAck> {
+  const parsed = parseDesktopCommand(command);
+  if (parsed.type !== "start-analysis" && parsed.type !== "retry-analysis") {
+    return Promise.reject(new Error("INVALID_ANALYSIS_COMMAND"));
+  }
+  const value = await invoker.invoke<unknown>(TAURI_COMMAND_BY_TYPE[parsed.type], {
+    request: parsed,
+  });
+  return parseAnalysisCommandAck(value, parsed.requestId);
+}
+
+async function invokeAnalysisStatus(
+  invoker: DesktopInvoker,
+  command: Extract<DesktopCommand, { type: "get-analysis-status" }>,
+): Promise<AnalysisStatusAck> {
+  const parsed = parseDesktopCommand(command);
+  if (parsed.type !== "get-analysis-status") {
+    return Promise.reject(new Error("INVALID_ANALYSIS_STATUS_COMMAND"));
+  }
+  const value = await invoker.invoke<unknown>(TAURI_COMMAND_BY_TYPE[parsed.type], {
+    request: parsed,
+  });
+  return parseAnalysisStatusAck(value, parsed.requestId);
 }
 
 async function invokeSelectionCommand(
@@ -178,29 +219,37 @@ export function createDesktopApi(invoker: DesktopInvoker): DesktopApi {
       });
     },
     startAnalysis(requestId, selectionId) {
-      return invokeCommand(invoker, {
+      return invokeAnalysisCommand(invoker, {
         protocolVersion: "chat-history-analysis.desktop-ipc.v1",
         type: "start-analysis",
         requestId,
         selectionId,
       });
     },
-    cancelAnalysis(requestId, sessionId, generation) {
+    cancelAnalysis(requestId, operationId) {
       return invokeCommand(invoker, {
         protocolVersion: "chat-history-analysis.desktop-ipc.v1",
         type: "cancel-analysis",
         requestId,
-        sessionId,
-        generation,
+        operationId,
       });
     },
     retryAnalysis(requestId, sessionId, generation) {
-      return invokeCommand(invoker, {
+      return invokeAnalysisCommand(invoker, {
         protocolVersion: "chat-history-analysis.desktop-ipc.v1",
         type: "retry-analysis",
         requestId,
         sessionId,
         generation,
+      });
+    },
+    getAnalysisStatus(requestId, operationId, afterSequence) {
+      return invokeAnalysisStatus(invoker, {
+        protocolVersion: "chat-history-analysis.desktop-ipc.v1",
+        type: "get-analysis-status",
+        requestId,
+        operationId,
+        afterSequence,
       });
     },
     discardSession(requestId, sessionId, generation) {

@@ -7,6 +7,8 @@ import {
   isApprovedChartKey,
   isGeneration,
   parseSelectionCommandAck,
+  parseAnalysisCommandAck,
+  parseAnalysisStatusAck,
   parseDesktopCommand,
   parseDesktopEvent,
   type EventCursor,
@@ -14,6 +16,7 @@ import {
   type RequestId,
   type SessionId,
   type SelectionId,
+  type OperationId,
 } from "../src/desktop/ipc-contract";
 import {
   createDesktopApi,
@@ -332,6 +335,62 @@ describe("versioned desktop IPC contract", () => {
       },
     });
     expect(JSON.stringify(received)).not.toMatch(/path|body|token|keyword|participant|source/iu);
+  });
+
+  it("validates operation registration ACKs and status polling responses", () => {
+    const operation = "op_00000000000000000000000000000001" as OperationId;
+    const requestId = "req_00000000000000000000000000000001" as RequestId;
+    const ack = parseAnalysisCommandAck(
+      {
+        protocolVersion: DESKTOP_IPC_PROTOCOL_VERSION,
+        requestId,
+        accepted: true,
+        outcome: "registered",
+        operationId: operation,
+        sessionId: SESSION,
+        generation: GENERATION,
+        initialPhase: "preprocessing",
+        cancelAvailable: true,
+      },
+      requestId,
+    );
+    expect(ack.operationId).toBe(operation);
+
+    const progress = vectors.events.find((candidate) => candidate.value.type === "progress")!.value;
+    const status = parseAnalysisStatusAck(
+      {
+        protocolVersion: DESKTOP_IPC_PROTOCOL_VERSION,
+        requestId,
+        accepted: true,
+        registered: true,
+        operationId: operation,
+        sessionId: SESSION,
+        generation: GENERATION,
+        state: "preprocessing",
+        phase: "preprocessing",
+        progress: {
+          phase: "preprocessing",
+          completed: 1,
+          total: 2,
+          percentage: 50,
+        },
+        heartbeat: "active",
+        elapsedBucket: "1-5s",
+        cancelAvailable: true,
+        terminal: null,
+        cleanupStatus: null,
+        events: [progress],
+      },
+      requestId,
+    );
+    expect(status.events).toHaveLength(1);
+    expect(status.events[0].type).toBe("progress");
+    expect(() =>
+      parseAnalysisStatusAck({
+        ...status,
+        events: [{ ...progress, path: "synthetic" }],
+      }),
+    ).toThrow("INVALID_REQUEST");
   });
 
   it("validates the synthetic aggregate commit boundary before IPC", () => {

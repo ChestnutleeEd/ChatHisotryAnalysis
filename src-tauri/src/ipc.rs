@@ -15,6 +15,7 @@ pub const WORKER_CAPABILITY_PROTOCOL_VERSION: &str = "chat-history-analysis.work
 pub const WORKER_QUERY_REQUEST_VERSION: &str = "chat-history-analysis.aggregate-query.v1";
 pub const ANALYTICS_RESULT_CONTRACT_VERSION: &str = "chat-history-analysis.analytics-result.v3";
 const WORKER_CAPABILITY_TTL_MILLIS: u64 = 5 * 60 * 1_000;
+const MAX_STATUS_EVENTS: usize = 4_096;
 const WORKER_QUERY_TIMEZONE: &str = crate::export_schema::TIMEZONE;
 const WORKER_QUERY_METRIC_DEFINITIONS: [&str; 5] = [
     "chat-history-analysis.metric.population.v1",
@@ -41,10 +42,14 @@ pub enum FailureCode {
     SessionStale,
     SidecarUnavailable,
     SidecarVerificationFailed,
+    SidecarSpawnFailed,
     SidecarStartFailed,
     SidecarHandshakeTimeout,
+    PreprocessingStalled,
     SidecarProtocolMismatch,
+    SidecarProtocolFailed,
     SidecarExited,
+    SidecarExitedUnexpectedly,
     SessionCancelled,
     SessionCleanupFailed,
     ProcessIdentityMismatch,
@@ -115,6 +120,58 @@ pub struct CommandAck {
     pub accepted: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnalysisCommandAck {
+    pub protocol_version: &'static str,
+    pub request_id: String,
+    pub accepted: bool,
+    pub outcome: &'static str,
+    pub operation_id: String,
+    pub session_id: String,
+    pub generation: u64,
+    pub initial_phase: &'static str,
+    pub cancel_available: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AnalysisHeartbeat {
+    Inactive,
+    Starting,
+    Active,
+    Terminal,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AnalysisTerminal {
+    Complete,
+    Failure,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnalysisStatusAck {
+    pub protocol_version: &'static str,
+    pub request_id: String,
+    pub accepted: bool,
+    pub registered: bool,
+    pub operation_id: Option<String>,
+    pub session_id: Option<String>,
+    pub generation: u64,
+    pub state: String,
+    pub phase: String,
+    pub progress: Option<ProgressPayload>,
+    pub heartbeat: AnalysisHeartbeat,
+    pub elapsed_bucket: String,
+    pub cancel_available: bool,
+    pub terminal: Option<AnalysisTerminal>,
+    pub cleanup_status: Option<String>,
+    pub events: Vec<Value>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SelectionOutcome {
@@ -160,6 +217,32 @@ struct SessionCommand {
     request_id: String,
     session_id: String,
     generation: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct CancelCommand {
+    protocol_version: String,
+    #[serde(rename = "type")]
+    command_type: String,
+    request_id: String,
+    #[serde(default)]
+    operation_id: Option<String>,
+    #[serde(default)]
+    session_id: Option<String>,
+    #[serde(default)]
+    generation: Option<u64>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StatusCommand {
+    protocol_version: String,
+    #[serde(rename = "type")]
+    command_type: String,
+    request_id: String,
+    operation_id: String,
+    after_sequence: u64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -395,6 +478,89 @@ fn validate_session(value: &Value, expected_type: &str) -> Result<SessionCommand
     Ok(command)
 }
 
+fn validate_cancel(value: &Value) -> Result<CancelCommand, IpcError> {
+    let legacy_keys = [
+        "generation",
+        "protocolVersion",
+        "requestId",
+        "sessionId",
+        "type",
+    ];
+    let operation_keys = ["operationId", "protocolVersion", "requestId", "type"];
+    let combined_keys = [
+        "generation",
+        "operationId",
+        "protocolVersion",
+        "requestId",
+        "sessionId",
+        "type",
+    ];
+    if !(exact_keys(value, &legacy_keys)
+        || exact_keys(value, &operation_keys)
+        || exact_keys(value, &combined_keys))
+        || !all_json_integers_are_safe(value)
+    {
+        return Err(IpcError::invalid(string_field(value, "requestId")));
+    }
+    let command: CancelCommand = parse(value)?;
+    valid_protocol(&command.protocol_version)
+        .map_err(|code| IpcError::with_code(Some(command.request_id.clone()), code))?;
+    if command.command_type != "cancel-analysis"
+        || !valid_id(&command.request_id, "req_")
+        || command.operation_id.is_none() && command.session_id.is_none()
+    {
+        return Err(IpcError::invalid(Some(command.request_id)));
+    }
+    if let Some(operation_id) = command.operation_id.as_deref() {
+        if !valid_id(operation_id, "op_") {
+            return Err(IpcError::invalid(Some(command.request_id)));
+        }
+    }
+    if let Some(session_id) = command.session_id.as_deref() {
+        if !valid_id(session_id, "ses_") {
+            return Err(IpcError::invalid(Some(command.request_id)));
+        }
+    }
+    if let Some(generation) = command.generation {
+        if generation == 0 || generation > MAX_SAFE_INTEGER {
+            return Err(IpcError::invalid(Some(command.request_id)));
+        }
+    }
+    if command.operation_id.is_none()
+        && (command.session_id.is_none() || command.generation.is_none())
+    {
+        return Err(IpcError::invalid(Some(command.request_id)));
+    }
+    Ok(command)
+}
+
+fn validate_status(value: &Value) -> Result<StatusCommand, IpcError> {
+    if !exact_keys(
+        value,
+        &[
+            "afterSequence",
+            "operationId",
+            "protocolVersion",
+            "requestId",
+            "type",
+        ],
+    ) || !all_json_integers_are_safe(value)
+    {
+        return Err(IpcError::invalid(string_field(value, "requestId")));
+    }
+    let command: StatusCommand = parse(value)?;
+    valid_protocol(&command.protocol_version)
+        .map_err(|code| IpcError::with_code(Some(command.request_id.clone()), code))?;
+    if command.command_type != "get-analysis-status"
+        || !valid_id(&command.request_id, "req_")
+        || !valid_id(&command.operation_id, "op_")
+        || command.after_sequence > MAX_SAFE_INTEGER
+    {
+        return Err(IpcError::invalid(Some(command.request_id)));
+    }
+    Ok(command)
+}
+
 fn validate_worker_prepare(value: &Value) -> Result<WorkerPrepareCommand, IpcError> {
     if !exact_keys(
         value,
@@ -587,9 +753,11 @@ pub fn validate_command(value: &Value) -> Result<String, IpcError> {
         "start-analysis" => {
             validate_selection(value, &command_type).map(|command| command.request_id)
         }
-        "cancel-analysis" | "retry-analysis" | "discard-session" | "acknowledge-worker-stop" => {
+        "cancel-analysis" => validate_cancel(value).map(|command| command.request_id),
+        "retry-analysis" | "discard-session" | "acknowledge-worker-stop" => {
             validate_session(value, &command_type).map(|command| command.request_id)
         }
+        "get-analysis-status" => validate_status(value).map(|command| command.request_id),
         "export-aggregate" => validate_export(value).map(|command| command.request_id),
         "commit-aggregate-result" => {
             validate_aggregate_result(value).map(|(command, _)| command.request_id)
@@ -636,7 +804,7 @@ pub struct StatePayload {
     pub state: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProgressPayload {
     pub phase: String,
@@ -760,10 +928,14 @@ fn valid_failure_code(value: &str) -> bool {
             | "SESSION_STALE"
             | "SIDECAR_UNAVAILABLE"
             | "SIDECAR_VERIFICATION_FAILED"
+            | "SIDECAR_SPAWN_FAILED"
             | "SIDECAR_START_FAILED"
             | "SIDECAR_HANDSHAKE_TIMEOUT"
+            | "PREPROCESSING_STALLED"
             | "SIDECAR_PROTOCOL_MISMATCH"
+            | "SIDECAR_PROTOCOL_FAILED"
             | "SIDECAR_EXITED"
+            | "SIDECAR_EXITED_UNEXPECTEDLY"
             | "SESSION_CANCELLED"
             | "SESSION_CLEANUP_FAILED"
             | "PROCESS_IDENTITY_MISMATCH"
@@ -973,9 +1145,10 @@ pub enum TerminalOutcome {
     Cancelled,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SessionRecord {
     pub window_label: String,
+    pub operation_id: String,
     pub session_id: String,
     pub generation: u64,
     pub expected_sequence: u64,
@@ -983,12 +1156,22 @@ pub struct SessionRecord {
     pub terminal_outcome: Option<TerminalOutcome>,
     pub cleanup_status: Option<String>,
     pub closed: bool,
+    pub started_at_millis: u64,
+    pub last_progress: Option<ProgressPayload>,
+    pub heartbeat_seen: bool,
+    pub events: Vec<Value>,
 }
 
 impl SessionRecord {
-    fn new(window_label: &str, session_id: &str, generation: u64) -> Self {
+    fn new_with_operation(
+        window_label: &str,
+        operation_id: &str,
+        session_id: &str,
+        generation: u64,
+    ) -> Self {
         Self {
             window_label: window_label.to_string(),
+            operation_id: operation_id.to_string(),
             session_id: session_id.to_string(),
             generation,
             expected_sequence: 1,
@@ -996,6 +1179,10 @@ impl SessionRecord {
             terminal_outcome: None,
             cleanup_status: None,
             closed: false,
+            started_at_millis: now_unix_millis(),
+            last_progress: None,
+            heartbeat_seen: false,
+            events: Vec::with_capacity(8),
         }
     }
 }
@@ -1003,6 +1190,7 @@ impl SessionRecord {
 #[derive(Debug, Default)]
 struct SessionRegistry {
     active: Option<SessionRecord>,
+    retained: Option<SessionRecord>,
 }
 
 struct RendererWorkerLease {
@@ -1488,7 +1676,28 @@ impl IpcCoreState {
         session_id: &str,
         generation: u64,
     ) -> Result<(), FailureCode> {
+        let operation_id = if valid_id(session_id, "ses_") {
+            format!("op_{}", &session_id[4..])
+        } else {
+            String::new()
+        };
+        self.replace_registered_session_with_operation(
+            trusted_window_label,
+            &operation_id,
+            session_id,
+            generation,
+        )
+    }
+
+    pub fn replace_registered_session_with_operation(
+        &self,
+        trusted_window_label: &str,
+        operation_id: &str,
+        session_id: &str,
+        generation: u64,
+    ) -> Result<(), FailureCode> {
         if !trusted_main_window_label(trusted_window_label)
+            || !valid_id(operation_id, "op_")
             || !valid_id(session_id, "ses_")
             || generation == 0
             || generation > MAX_SAFE_INTEGER
@@ -1501,11 +1710,13 @@ impl IpcCoreState {
             .registry
             .lock()
             .map_err(|_| FailureCode::InvalidState)?;
-        let previous = registry.active.replace(SessionRecord::new(
+        let previous = registry.active.replace(SessionRecord::new_with_operation(
             trusted_window_label,
+            operation_id,
             session_id,
             generation,
         ));
+        registry.retained = previous.clone().or_else(|| registry.retained.take());
         drop(registry);
         if let Some(previous) = previous {
             self.clear_result(
@@ -1763,7 +1974,28 @@ impl IpcCoreState {
         session_id: &str,
         generation: u64,
     ) -> Result<(), FailureCode> {
+        let operation_id = if valid_id(session_id, "ses_") {
+            format!("op_{}", &session_id[4..])
+        } else {
+            String::new()
+        };
+        self.register_session_with_operation(
+            trusted_window_label,
+            &operation_id,
+            session_id,
+            generation,
+        )
+    }
+
+    pub fn register_session_with_operation(
+        &self,
+        trusted_window_label: &str,
+        operation_id: &str,
+        session_id: &str,
+        generation: u64,
+    ) -> Result<(), FailureCode> {
         if !trusted_main_window_label(trusted_window_label)
+            || !valid_id(operation_id, "op_")
             || !valid_id(session_id, "ses_")
             || generation == 0
             || generation > MAX_SAFE_INTEGER
@@ -1779,8 +2011,9 @@ impl IpcCoreState {
         if registry.active.is_some() {
             return Err(FailureCode::InvalidState);
         }
-        registry.active = Some(SessionRecord::new(
+        registry.active = Some(SessionRecord::new_with_operation(
             trusted_window_label,
+            operation_id,
             session_id,
             generation,
         ));
@@ -1815,6 +2048,162 @@ impl IpcCoreState {
         }
         if active.closed {
             return Err(FailureCode::InvalidSession);
+        }
+        Ok(())
+    }
+
+    pub fn resolve_owned_operation(
+        &self,
+        trusted_window_label: &str,
+        operation_id: &str,
+    ) -> Result<(String, u64), FailureCode> {
+        if !trusted_main_window_label(trusted_window_label) {
+            return Err(FailureCode::WindowNotAuthorized);
+        }
+        if !valid_id(operation_id, "op_") {
+            return Err(FailureCode::InvalidRequest);
+        }
+        let registry = self
+            .registry
+            .lock()
+            .map_err(|_| FailureCode::InvalidState)?;
+        let Some(active) = registry.active.as_ref() else {
+            return Err(FailureCode::InvalidSession);
+        };
+        if active.window_label != trusted_window_label || active.operation_id != operation_id {
+            return Err(FailureCode::InvalidSession);
+        }
+        if active.closed {
+            return Err(FailureCode::InvalidSession);
+        }
+        Ok((active.session_id.clone(), active.generation))
+    }
+
+    pub fn analysis_status(
+        &self,
+        trusted_window_label: &str,
+        request_id: String,
+        operation_id: &str,
+        after_sequence: u64,
+    ) -> Result<AnalysisStatusAck, FailureCode> {
+        if !trusted_main_window_label(trusted_window_label) {
+            return Err(FailureCode::WindowNotAuthorized);
+        }
+        if !valid_id(operation_id, "op_") || after_sequence > MAX_SAFE_INTEGER {
+            return Err(FailureCode::InvalidRequest);
+        }
+        let registry = self
+            .registry
+            .lock()
+            .map_err(|_| FailureCode::InvalidState)?;
+        let record = registry
+            .active
+            .as_ref()
+            .filter(|record| {
+                record.window_label == trusted_window_label && record.operation_id == operation_id
+            })
+            .or_else(|| {
+                registry.retained.as_ref().filter(|record| {
+                    record.window_label == trusted_window_label
+                        && record.operation_id == operation_id
+                })
+            });
+        let Some(record) = record else {
+            return Ok(AnalysisStatusAck {
+                protocol_version: PROTOCOL_VERSION,
+                request_id,
+                accepted: true,
+                registered: false,
+                operation_id: None,
+                session_id: None,
+                generation: 0,
+                state: "idle".to_string(),
+                phase: "selection".to_string(),
+                progress: None,
+                heartbeat: AnalysisHeartbeat::Inactive,
+                elapsed_bucket: "<1s".to_string(),
+                cancel_available: false,
+                terminal: None,
+                cleanup_status: None,
+                events: Vec::new(),
+            });
+        };
+        let elapsed = now_unix_millis().saturating_sub(record.started_at_millis);
+        let phase = record
+            .last_progress
+            .as_ref()
+            .map(|progress| progress.phase.clone())
+            .unwrap_or_else(|| phase_for_state_name(&record.state).to_string());
+        let heartbeat = if record.terminal_outcome.is_some() {
+            AnalysisHeartbeat::Terminal
+        } else if record.heartbeat_seen {
+            AnalysisHeartbeat::Active
+        } else {
+            AnalysisHeartbeat::Starting
+        };
+        let events = record
+            .events
+            .iter()
+            .filter(|event| {
+                event
+                    .get("sequence")
+                    .and_then(Value::as_u64)
+                    .is_some_and(|sequence| sequence > after_sequence)
+            })
+            .cloned()
+            .collect();
+        Ok(AnalysisStatusAck {
+            protocol_version: PROTOCOL_VERSION,
+            request_id,
+            accepted: true,
+            registered: true,
+            operation_id: Some(record.operation_id.clone()),
+            session_id: Some(record.session_id.clone()),
+            generation: record.generation,
+            state: record.state.clone(),
+            phase,
+            progress: record.last_progress.clone(),
+            heartbeat,
+            elapsed_bucket: elapsed_bucket_from_millis(elapsed),
+            cancel_available: record.terminal_outcome.is_none()
+                && matches!(
+                    record.state.as_str(),
+                    "preprocessing" | "handoff" | "analyzing"
+                ),
+            terminal: record.terminal_outcome.map(|outcome| match outcome {
+                TerminalOutcome::Complete => AnalysisTerminal::Complete,
+                TerminalOutcome::Failure => AnalysisTerminal::Failure,
+                TerminalOutcome::Cancelled => AnalysisTerminal::Cancelled,
+            }),
+            cleanup_status: record.cleanup_status.clone(),
+            events,
+        })
+    }
+
+    pub fn release_terminal_session(
+        &self,
+        trusted_window_label: &str,
+        operation_id: &str,
+        session_id: &str,
+        generation: u64,
+    ) -> Result<(), FailureCode> {
+        if !trusted_main_window_label(trusted_window_label) {
+            return Err(FailureCode::WindowNotAuthorized);
+        }
+        let mut registry = self
+            .registry
+            .lock()
+            .map_err(|_| FailureCode::InvalidState)?;
+        let should_release = registry.active.as_ref().is_some_and(|active| {
+            active.window_label == trusted_window_label
+                && active.operation_id == operation_id
+                && active.session_id == session_id
+                && active.generation == generation
+                && active.terminal_outcome.is_some()
+                && active.cleanup_status.as_deref() == Some("complete")
+        });
+        if should_release {
+            registry.retained = registry.active.take();
         }
         Ok(())
     }
@@ -1917,13 +2306,21 @@ impl IpcCoreState {
             }
             _ => return Err(FailureCode::InvalidRequest),
         }
+        if let EventPayload::Progress(payload) = &event.payload {
+            active.last_progress = Some(payload.clone());
+            active.heartbeat_seen = true;
+        }
+        if active.events.len() >= MAX_STATUS_EVENTS {
+            active.events.remove(0);
+        }
+        active.events.push(value.clone());
         active.expected_sequence = active
             .expected_sequence
             .checked_add(1)
             .ok_or(FailureCode::InvalidState)?;
         let closed = active.closed;
         if closed {
-            registry.active = None;
+            registry.retained = registry.active.take();
         }
         drop(registry);
         if closed {
@@ -1951,6 +2348,23 @@ fn command_ack(request_id: String) -> CommandAck {
     }
 }
 
+fn analysis_command_ack(
+    request_id: String,
+    snapshot: &crate::session_supervisor::SessionSnapshot,
+) -> AnalysisCommandAck {
+    AnalysisCommandAck {
+        protocol_version: PROTOCOL_VERSION,
+        request_id,
+        accepted: true,
+        outcome: "registered",
+        operation_id: snapshot.operation_id.clone(),
+        session_id: snapshot.session_id.clone(),
+        generation: snapshot.generation,
+        initial_phase: "preprocessing",
+        cancel_available: snapshot.cancel_available,
+    }
+}
+
 fn selection_command_ack(
     request_id: String,
     outcome: SelectionOutcome,
@@ -1970,6 +2384,29 @@ fn now_unix_millis() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)
         .unwrap_or(0)
+}
+
+fn elapsed_bucket_from_millis(elapsed: u64) -> String {
+    match elapsed {
+        value if value < 1_000 => "<1s",
+        value if value < 5_000 => "1-5s",
+        value if value < 30_000 => "5-30s",
+        value if value < 60_000 => "30-60s",
+        _ => "60s+",
+    }
+    .to_string()
+}
+
+fn phase_for_state_name(state: &str) -> &'static str {
+    match state {
+        "ready" => "selection",
+        "preprocessing" => "preprocessing",
+        "handoff" => "handoff",
+        "analyzing" => "aggregation",
+        "cancelling" | "discarding" | "closing" => "cleanup",
+        "failed" => "cleanup",
+        _ => "selection",
+    }
 }
 
 fn canonical_worker_query_key(
@@ -2174,11 +2611,15 @@ fn map_supervisor_code(code: crate::session_supervisor::SupervisorErrorCode) -> 
         SupervisorErrorCode::SessionStale => FailureCode::SessionStale,
         SupervisorErrorCode::SidecarUnavailable => FailureCode::SidecarUnavailable,
         SupervisorErrorCode::SidecarVerificationFailed => FailureCode::SidecarVerificationFailed,
+        SupervisorErrorCode::SidecarSpawnFailed => FailureCode::SidecarSpawnFailed,
         SupervisorErrorCode::SidecarStartFailed => FailureCode::SidecarStartFailed,
         SupervisorErrorCode::SidecarHandshakeTimeout => FailureCode::SidecarHandshakeTimeout,
+        SupervisorErrorCode::PreprocessingStalled => FailureCode::PreprocessingStalled,
         SupervisorErrorCode::SidecarProtocolMismatch => FailureCode::SidecarProtocolMismatch,
+        SupervisorErrorCode::SidecarProtocolFailed => FailureCode::SidecarProtocolFailed,
         SupervisorErrorCode::SidecarProtocolInvalid => FailureCode::SidecarProtocolInvalid,
         SupervisorErrorCode::SidecarCrashed => FailureCode::SidecarCrashed,
+        SupervisorErrorCode::SidecarExitedUnexpectedly => FailureCode::SidecarExitedUnexpectedly,
         SupervisorErrorCode::SidecarExited => FailureCode::SidecarExited,
         SupervisorErrorCode::SessionCancelled => FailureCode::SessionCancelled,
         SupervisorErrorCode::SessionCleanupFailed => FailureCode::SessionCleanupFailed,
@@ -2213,6 +2654,11 @@ fn map_sidecar_reason(reason: &str) -> FailureCode {
         | "NO_ELIGIBLE_TEXT_RECORDS" => FailureCode::SourceSetInvalid,
         "USER_CANCELLED" => FailureCode::SessionCancelled,
         "SIDECAR_CRASHED" => FailureCode::SidecarCrashed,
+        "SIDECAR_SPAWN_FAILED" => FailureCode::SidecarSpawnFailed,
+        "SIDECAR_HANDSHAKE_TIMEOUT" => FailureCode::SidecarHandshakeTimeout,
+        "PREPROCESSING_STALLED" => FailureCode::PreprocessingStalled,
+        "SIDECAR_PROTOCOL_FAILED" => FailureCode::SidecarProtocolFailed,
+        "SIDECAR_EXITED_UNEXPECTEDLY" => FailureCode::SidecarExitedUnexpectedly,
         _ => FailureCode::SidecarProtocolInvalid,
     }
 }
@@ -2232,10 +2678,14 @@ fn retryable_failure(code: &FailureCode) -> bool {
             | FailureCode::CleanupRequired
             | FailureCode::SidecarUnavailable
             | FailureCode::SidecarVerificationFailed
+            | FailureCode::SidecarSpawnFailed
             | FailureCode::SidecarStartFailed
             | FailureCode::SidecarHandshakeTimeout
+            | FailureCode::PreprocessingStalled
             | FailureCode::SidecarProtocolMismatch
+            | FailureCode::SidecarProtocolFailed
             | FailureCode::SidecarExited
+            | FailureCode::SidecarExitedUnexpectedly
             | FailureCode::SidecarProtocolInvalid
             | FailureCode::SidecarCrashed
             | FailureCode::DatasetHandoffInvalid
@@ -2373,19 +2823,6 @@ fn handle_watched_session(
     };
     match snapshot.terminal.clone() {
         Some(crate::session_supervisor::SessionTerminal::Complete(_)) => {
-            for event in &snapshot.events {
-                if let crate::session_supervisor::SessionEvent::Progress(progress) = event {
-                    let total = progress.capacity_value.max(1);
-                    let completed = progress.aggregate_count.min(total);
-                    let _ = core.publish_progress(
-                        &window,
-                        phase_for_sidecar(&progress.phase),
-                        completed,
-                        total,
-                        f64::from(progress.percentage),
-                    );
-                }
-            }
             let _ = core.publish_state(&window, "handoff");
             let session_root = cache_root
                 .join(crate::session_supervisor::ANALYSIS_SESSIONS_DIRECTORY)
@@ -2501,6 +2938,19 @@ fn handle_watched_session(
             };
             let _ = core.publish_cancelled(&window, reason);
             publish_snapshot_cleanup(&core, &window, &snapshot);
+            if reason == "user"
+                && matches!(
+                    snapshot.cleanup,
+                    Some(crate::session_supervisor::CleanupStatus::Complete { .. })
+                )
+            {
+                let _ = core.release_terminal_session(
+                    window.label(),
+                    &snapshot.operation_id,
+                    &snapshot.session_id,
+                    snapshot.generation,
+                );
+            }
             if reason != "user" {
                 let _ = core.publish_closed(
                     &window,
@@ -2529,11 +2979,27 @@ fn handle_watched_session(
     }
 }
 
+fn publish_sidecar_progress(
+    core: &IpcCoreState,
+    window: &tauri::WebviewWindow,
+    progress: crate::session_supervisor::SidecarProgress,
+) {
+    let total = progress.capacity_value.max(1);
+    let completed = progress.aggregate_count.min(total);
+    let _ = core.publish_progress(
+        window,
+        phase_for_sidecar(&progress.phase),
+        completed,
+        total,
+        f64::from(progress.percentage),
+    );
+}
+
 fn start_session(
     window: &tauri::WebviewWindow,
     state: &IpcCoreState,
     selection_id: &str,
-) -> Result<(String, u64), IpcError> {
+) -> Result<crate::session_supervisor::SessionSnapshot, IpcError> {
     retry_startup_recovery(window, state)?;
     let selection = state
         .current_selection(selection_id)
@@ -2553,9 +3019,12 @@ fn start_session(
         .supervisor
         .start(window.label(), resolution, input)
         .map_err(|error| IpcError::with_code(None, map_supervisor_code(error.code)))?;
-    if let Err(code) =
-        state.register_session(window.label(), &snapshot.session_id, snapshot.generation)
-    {
+    if let Err(code) = state.register_session_with_operation(
+        window.label(),
+        &snapshot.operation_id,
+        &snapshot.session_id,
+        snapshot.generation,
+    ) {
         let _ = state
             .supervisor
             .discard(window.label(), &snapshot.session_id, snapshot.generation);
@@ -2571,7 +3040,9 @@ fn start_session(
         return Err(IpcError::with_code(None, code));
     }
     let core = state.clone();
+    let progress_core = state.clone();
     let watcher_window = window.clone();
+    let progress_window = window.clone();
     let transport = window
         .app_handle()
         .state::<crate::dataset_transport::DatasetTransportState>()
@@ -2581,28 +3052,29 @@ fn start_session(
     let session_id = snapshot.session_id.clone();
     let generation = snapshot.generation;
     let watch_session = session_id.clone();
-    if let Err(error) =
-        state
-            .supervisor
-            .watch(window.label(), &session_id, generation, move |result| {
-                handle_watched_session(
-                    core,
-                    watcher_window,
-                    transport,
-                    cache_for_watcher,
-                    watch_session,
-                    generation,
-                    result,
-                );
-            })
-    {
+    if let Err(error) = state.supervisor.watch_with_progress(
+        window.label(),
+        &session_id,
+        generation,
+        move |progress| publish_sidecar_progress(&progress_core, &progress_window, progress),
+        move |result| {
+            handle_watched_session(
+                core,
+                watcher_window,
+                transport,
+                cache_for_watcher,
+                watch_session,
+                generation,
+                result,
+            );
+        },
+    ) {
         let _ = state
             .supervisor
             .discard(window.label(), &session_id, generation);
         return Err(IpcError::with_code(None, map_supervisor_code(error.code)));
     }
-    state.clear_selection();
-    Ok((session_id, generation))
+    Ok(snapshot)
 }
 
 #[tauri::command]
@@ -2713,19 +3185,19 @@ pub fn start_analysis(
     window: tauri::WebviewWindow,
     state: tauri::State<'_, IpcCoreState>,
     request: Value,
-) -> Result<CommandAck, IpcError> {
+) -> Result<AnalysisCommandAck, IpcError> {
     let request_id = validate_command(&request)?;
     let selection_id = request
         .get("selectionId")
         .and_then(Value::as_str)
         .ok_or_else(|| IpcError::invalid(Some(request_id.clone())))?;
-    start_session(&window, state.inner(), selection_id).map_err(|mut error| {
+    let snapshot = start_session(&window, state.inner(), selection_id).map_err(|mut error| {
         if error.request_id.is_none() {
             error.request_id = Some(request_id.clone());
         }
         error
     })?;
-    Ok(command_ack(request_id))
+    Ok(analysis_command_ack(request_id, &snapshot))
 }
 
 #[tauri::command]
@@ -2734,23 +3206,30 @@ pub fn cancel_analysis(
     state: tauri::State<'_, IpcCoreState>,
     request: Value,
 ) -> Result<CommandAck, IpcError> {
-    let request_id = validate_command(&request)?;
-    let session_id = request
-        .get("sessionId")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    let generation = request
-        .get("generation")
-        .and_then(Value::as_u64)
-        .unwrap_or(0);
+    let command = validate_cancel(&request)?;
+    let request_id = command.request_id.clone();
+    let (session_id, generation) = if let Some(operation_id) = command.operation_id.as_deref() {
+        state
+            .resolve_owned_operation(window.label(), operation_id)
+            .map_err(|code| IpcError::with_code(Some(request_id.clone()), code))?
+    } else {
+        (
+            command
+                .session_id
+                .as_deref()
+                .unwrap_or_default()
+                .to_string(),
+            command.generation.unwrap_or_default(),
+        )
+    };
     state
-        .validate_owned_session(window.label(), session_id, generation)
+        .validate_owned_session(window.label(), &session_id, generation)
         .map_err(|code| IpcError::with_code(Some(request_id.clone()), code))?;
     let cancelled = state
         .supervisor
         .cancel(
             window.label(),
-            session_id,
+            &session_id,
             generation,
             crate::session_supervisor::CancelReason::User,
         )
@@ -2764,11 +3243,28 @@ pub fn cancel_analysis(
 }
 
 #[tauri::command]
+pub fn get_analysis_status(
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, IpcCoreState>,
+    request: Value,
+) -> Result<AnalysisStatusAck, IpcError> {
+    let command = validate_status(&request)?;
+    state
+        .analysis_status(
+            window.label(),
+            command.request_id.clone(),
+            &command.operation_id,
+            command.after_sequence,
+        )
+        .map_err(|code| IpcError::with_code(Some(command.request_id), code))
+}
+
+#[tauri::command]
 pub fn retry_analysis(
     window: tauri::WebviewWindow,
     state: tauri::State<'_, IpcCoreState>,
     request: Value,
-) -> Result<CommandAck, IpcError> {
+) -> Result<AnalysisCommandAck, IpcError> {
     let request_id = validate_command(&request)?;
     let session_id = request
         .get("sessionId")
@@ -2788,9 +3284,12 @@ pub fn retry_analysis(
         .map_err(|error| {
             IpcError::with_code(Some(request_id.clone()), map_supervisor_code(error.code))
         })?;
-    if let Err(code) =
-        state.replace_registered_session(window.label(), &snapshot.session_id, snapshot.generation)
-    {
+    if let Err(code) = state.replace_registered_session_with_operation(
+        window.label(),
+        &snapshot.operation_id,
+        &snapshot.session_id,
+        snapshot.generation,
+    ) {
         let _ = state
             .supervisor
             .discard(window.label(), &snapshot.session_id, snapshot.generation);
@@ -2817,10 +3316,13 @@ pub fn retry_analysis(
     let new_generation = snapshot.generation;
     let watch_session_arg = new_session_id.clone();
     let watched_session_id = new_session_id.clone();
-    if let Err(error) = state.supervisor.watch(
+    let progress_core = state.inner().clone();
+    let progress_window = window.clone();
+    if let Err(error) = state.supervisor.watch_with_progress(
         window.label(),
         &watch_session_arg,
         new_generation,
+        move |progress| publish_sidecar_progress(&progress_core, &progress_window, progress),
         move |result| {
             handle_watched_session(
                 core,
@@ -2841,7 +3343,7 @@ pub fn retry_analysis(
             map_supervisor_code(error.code),
         ));
     }
-    Ok(command_ack(request_id))
+    Ok(analysis_command_ack(request_id, &snapshot))
 }
 
 #[tauri::command]
@@ -3489,6 +3991,106 @@ mod tests {
             )
             .unwrap();
         assert!(state.snapshot().is_none());
+    }
+
+    #[test]
+    fn operation_status_replays_progress_and_retains_terminal_without_sensitive_fields() {
+        let state = IpcCoreState::default();
+        let operation = "op_00000000000000000000000000000011";
+        let session = "ses_00000000000000000000000000000011";
+        state
+            .register_session_with_operation("main", operation, session, 1)
+            .unwrap();
+
+        let event = |sequence: u64, event_type: &str, payload: Value| {
+            serde_json::json!({
+                "protocolVersion": PROTOCOL_VERSION,
+                "sessionId": session,
+                "generation": 1,
+                "sequence": sequence,
+                "type": event_type,
+                "payload": payload,
+            })
+        };
+        state
+            .accept_event(
+                "main",
+                &event(1, "state", serde_json::json!({"state":"preprocessing"})),
+            )
+            .unwrap();
+        state
+            .accept_event(
+                "main",
+                &event(
+                    2,
+                    "progress",
+                    serde_json::json!({
+                        "phase":"preprocessing",
+                        "completed":1,
+                        "total":2,
+                        "percentage":50
+                    }),
+                ),
+            )
+            .unwrap();
+
+        let status = state
+            .analysis_status(
+                "main",
+                "req_00000000000000000000000000000011".to_string(),
+                operation,
+                1,
+            )
+            .unwrap();
+        assert!(status.registered);
+        assert_eq!(status.operation_id.as_deref(), Some(operation));
+        assert_eq!(status.session_id.as_deref(), Some(session));
+        assert_eq!(status.generation, 1);
+        assert_eq!(status.state, "preprocessing");
+        assert_eq!(status.phase, "preprocessing");
+        assert_eq!(status.heartbeat, AnalysisHeartbeat::Active);
+        assert_eq!(status.events.len(), 1);
+        assert!(status.events[0].get("path").is_none());
+        assert!(status.events[0].get("body").is_none());
+
+        state
+            .accept_event(
+                "main",
+                &event(
+                    3,
+                    "failure",
+                    serde_json::json!({
+                        "code":"PREPROCESSING_STALLED",
+                        "retryable":true
+                    }),
+                ),
+            )
+            .unwrap();
+        state
+            .accept_event(
+                "main",
+                &event(
+                    4,
+                    "cleanup",
+                    serde_json::json!({"status":"complete","removedEntryCount":1}),
+                ),
+            )
+            .unwrap();
+        state
+            .release_terminal_session("main", operation, session, 1)
+            .unwrap();
+        let terminal = state
+            .analysis_status(
+                "main",
+                "req_00000000000000000000000000000012".to_string(),
+                operation,
+                3,
+            )
+            .unwrap();
+        assert!(!terminal.cancel_available);
+        assert_eq!(terminal.terminal, Some(AnalysisTerminal::Failure));
+        assert_eq!(terminal.cleanup_status.as_deref(), Some("complete"));
+        assert_eq!(terminal.events.len(), 1);
     }
 
     #[test]

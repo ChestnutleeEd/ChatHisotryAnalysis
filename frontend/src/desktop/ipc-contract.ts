@@ -7,6 +7,7 @@ export const DESKTOP_IPC_PROTOCOL_VERSION =
 export type RequestId = string & { readonly __requestId: unique symbol };
 export type SelectionId = string & { readonly __selectionId: unique symbol };
 export type SessionId = string & { readonly __sessionId: unique symbol };
+export type OperationId = string & { readonly __operationId: unique symbol };
 export type ResultId = string & { readonly __resultId: unique symbol };
 export type DatasetId = string & { readonly __datasetId: unique symbol };
 export type Generation = number & { readonly __generation: unique symbol };
@@ -14,6 +15,7 @@ export type Generation = number & { readonly __generation: unique symbol };
 const REQUEST_ID_PATTERN = /^req_[0-9a-f]{32}$/u;
 const SELECTION_ID_PATTERN = /^sel_[0-9a-f]{32}$/u;
 const SESSION_ID_PATTERN = /^ses_[0-9a-f]{32}$/u;
+const OPERATION_ID_PATTERN = /^op_[0-9a-f]{32}$/u;
 const RESULT_ID_PATTERN = /^res_[0-9a-f]{32}$/u;
 const DATASET_ID_PATTERN = /^dat_[0-9a-f]{32}$/u;
 
@@ -58,10 +60,14 @@ export type DesktopFailureCode =
   | "SESSION_STALE"
   | "SIDECAR_UNAVAILABLE"
   | "SIDECAR_VERIFICATION_FAILED"
+  | "SIDECAR_SPAWN_FAILED"
   | "SIDECAR_START_FAILED"
   | "SIDECAR_HANDSHAKE_TIMEOUT"
+  | "PREPROCESSING_STALLED"
   | "SIDECAR_PROTOCOL_MISMATCH"
+  | "SIDECAR_PROTOCOL_FAILED"
   | "SIDECAR_EXITED"
+  | "SIDECAR_EXITED_UNEXPECTEDLY"
   | "SESSION_CANCELLED"
   | "SESSION_CLEANUP_FAILED"
   | "PROCESS_IDENTITY_MISMATCH"
@@ -128,8 +134,7 @@ export type DesktopCommand =
       readonly protocolVersion: typeof DESKTOP_IPC_PROTOCOL_VERSION;
       readonly type: "cancel-analysis";
       readonly requestId: RequestId;
-      readonly sessionId: SessionId;
-      readonly generation: Generation;
+      readonly operationId: OperationId;
     }
   | {
       readonly protocolVersion: typeof DESKTOP_IPC_PROTOCOL_VERSION;
@@ -137,6 +142,13 @@ export type DesktopCommand =
       readonly requestId: RequestId;
       readonly sessionId: SessionId;
       readonly generation: Generation;
+    }
+  | {
+      readonly protocolVersion: typeof DESKTOP_IPC_PROTOCOL_VERSION;
+      readonly type: "get-analysis-status";
+      readonly requestId: RequestId;
+      readonly operationId: OperationId;
+      readonly afterSequence: number;
     }
   | {
       readonly protocolVersion: typeof DESKTOP_IPC_PROTOCOL_VERSION;
@@ -253,6 +265,42 @@ export interface DesktopCommandAck {
   readonly accepted: true;
 }
 
+export interface AnalysisCommandAck extends DesktopCommandAck {
+  readonly outcome: "registered";
+  readonly operationId: OperationId;
+  readonly sessionId: SessionId;
+  readonly generation: Generation;
+  readonly initialPhase: "preprocessing";
+  readonly cancelAvailable: boolean;
+}
+
+export type AnalysisHeartbeat = "inactive" | "starting" | "active" | "terminal";
+export type AnalysisTerminal = "complete" | "failure" | "cancelled";
+
+export interface AnalysisStatusAck {
+  readonly protocolVersion: typeof DESKTOP_IPC_PROTOCOL_VERSION;
+  readonly requestId: RequestId;
+  readonly accepted: true;
+  readonly registered: boolean;
+  readonly operationId: OperationId | null;
+  readonly sessionId: SessionId | null;
+  readonly generation: Generation;
+  readonly state: DesktopState;
+  readonly phase: DesktopPhase;
+  readonly progress: {
+    readonly phase: DesktopPhase;
+    readonly completed: number;
+    readonly total: number;
+    readonly percentage: number;
+  } | null;
+  readonly heartbeat: AnalysisHeartbeat;
+  readonly elapsedBucket: "<1s" | "1-5s" | "5-30s" | "30-60s" | "60s+";
+  readonly cancelAvailable: boolean;
+  readonly terminal: AnalysisTerminal | null;
+  readonly cleanupStatus: "complete" | "required" | null;
+  readonly events: readonly DesktopEvent[];
+}
+
 export interface SelectionSnapshot {
   readonly selectionId: SelectionId;
   readonly annualSourceCount: number;
@@ -294,6 +342,10 @@ export function isSelectionId(value: unknown): value is SelectionId {
 
 export function isSessionId(value: unknown): value is SessionId {
   return typeof value === "string" && SESSION_ID_PATTERN.test(value);
+}
+
+export function isOperationId(value: unknown): value is OperationId {
+  return typeof value === "string" && OPERATION_ID_PATTERN.test(value);
 }
 
 export function isResultId(value: unknown): value is ResultId {
@@ -381,7 +433,48 @@ export function parseDesktopCommand(value: unknown): DesktopCommand {
       }
       requireOpaqueId(value.selectionId, isSelectionId);
       return value as DesktopCommand;
-    case "cancel-analysis":
+    case "cancel-analysis": {
+      const legacyKeys = [
+        "generation",
+        "protocolVersion",
+        "requestId",
+        "sessionId",
+        "type",
+      ] as const;
+      const operationKeys = [
+        "operationId",
+        "protocolVersion",
+        "requestId",
+        "type",
+      ] as const;
+      const combinedKeys = [
+        "generation",
+        "operationId",
+        "protocolVersion",
+        "requestId",
+        "sessionId",
+        "type",
+      ] as const;
+      if (
+        !(
+          hasExactKeys(value, legacyKeys) ||
+          hasExactKeys(value, operationKeys) ||
+          hasExactKeys(value, combinedKeys)
+        )
+      ) {
+        throw new DesktopIpcValidationError("INVALID_REQUEST");
+      }
+      if ("operationId" in value) {
+        requireOpaqueId(value.operationId, isOperationId);
+      }
+      if ("sessionId" in value) {
+        requireOpaqueId(value.sessionId, isSessionId);
+      }
+      if ("generation" in value) {
+        requireGeneration(value.generation);
+      }
+      return value as unknown as DesktopCommand;
+    }
     case "retry-analysis":
     case "discard-session":
     case "cancel-aggregate-result":
@@ -399,6 +492,21 @@ export function parseDesktopCommand(value: unknown): DesktopCommand {
       }
       requireOpaqueId(value.sessionId, isSessionId);
       requireGeneration(value.generation);
+      return value as DesktopCommand;
+    case "get-analysis-status":
+      if (
+        !hasExactKeys(value, [
+          "afterSequence",
+          "operationId",
+          "protocolVersion",
+          "requestId",
+          "type",
+        ]) ||
+        !isNonNegativeSafeInteger(value.afterSequence)
+      ) {
+        throw new DesktopIpcValidationError("INVALID_REQUEST");
+      }
+      requireOpaqueId(value.operationId, isOperationId);
       return value as DesktopCommand;
     case "prepare-aggregate-result":
       if (
@@ -533,6 +641,145 @@ export function parseSelectionCommandAck(
     throw new DesktopIpcValidationError("INVALID_REQUEST");
   }
   return value as unknown as SelectionCommandAck;
+}
+
+export function parseAnalysisCommandAck(
+  value: unknown,
+  expectedRequestId?: RequestId,
+): AnalysisCommandAck {
+  if (!isRecord(value)) {
+    throw new DesktopIpcValidationError("INVALID_REQUEST");
+  }
+  requireProtocol(value);
+  if (
+    !hasExactKeys(value, [
+      "accepted",
+      "cancelAvailable",
+      "generation",
+      "initialPhase",
+      "operationId",
+      "outcome",
+      "protocolVersion",
+      "requestId",
+      "sessionId",
+    ]) ||
+    value.accepted !== true ||
+    value.outcome !== "registered" ||
+    !isRequestId(value.requestId) ||
+    (expectedRequestId !== undefined && value.requestId !== expectedRequestId) ||
+    !isOperationId(value.operationId) ||
+    !isSessionId(value.sessionId) ||
+    !isGeneration(value.generation) ||
+    value.generation === 0 ||
+    value.initialPhase !== "preprocessing" ||
+    typeof value.cancelAvailable !== "boolean"
+  ) {
+    throw new DesktopIpcValidationError(
+      expectedRequestId !== undefined && value.requestId !== expectedRequestId
+        ? "INVALID_STATE"
+        : "INVALID_REQUEST",
+    );
+  }
+  return value as unknown as AnalysisCommandAck;
+}
+
+function isElapsedBucket(value: unknown): value is AnalysisStatusAck["elapsedBucket"] {
+  return (
+    value === "<1s" ||
+    value === "1-5s" ||
+    value === "5-30s" ||
+    value === "30-60s" ||
+    value === "60s+"
+  );
+}
+
+function isAnalysisHeartbeat(value: unknown): value is AnalysisHeartbeat {
+  return value === "inactive" || value === "starting" || value === "active" || value === "terminal";
+}
+
+function isAnalysisTerminal(value: unknown): value is AnalysisTerminal | null {
+  return value === null || value === "complete" || value === "failure" || value === "cancelled";
+}
+
+export function parseAnalysisStatusAck(
+  value: unknown,
+  expectedRequestId?: RequestId,
+): AnalysisStatusAck {
+  if (!isRecord(value)) {
+    throw new DesktopIpcValidationError("INVALID_REQUEST");
+  }
+  requireProtocol(value);
+  if (
+    !hasExactKeys(value, [
+      "accepted",
+      "cancelAvailable",
+      "cleanupStatus",
+      "elapsedBucket",
+      "events",
+      "generation",
+      "heartbeat",
+      "operationId",
+      "phase",
+      "progress",
+      "protocolVersion",
+      "registered",
+      "requestId",
+      "sessionId",
+      "state",
+      "terminal",
+    ]) ||
+    value.accepted !== true ||
+    !isRequestId(value.requestId) ||
+    (expectedRequestId !== undefined && value.requestId !== expectedRequestId) ||
+    typeof value.registered !== "boolean" ||
+    !isGeneration(value.generation) ||
+    !isDesktopState(value.state) ||
+    !isDesktopPhase(value.phase) ||
+    !isAnalysisHeartbeat(value.heartbeat) ||
+    !isElapsedBucket(value.elapsedBucket) ||
+    typeof value.cancelAvailable !== "boolean" ||
+    !isAnalysisTerminal(value.terminal) ||
+    (value.cleanupStatus !== null &&
+      value.cleanupStatus !== "complete" &&
+      value.cleanupStatus !== "required") ||
+    !Array.isArray(value.events)
+  ) {
+    throw new DesktopIpcValidationError(
+      expectedRequestId !== undefined && value.requestId !== expectedRequestId
+        ? "INVALID_STATE"
+        : "INVALID_REQUEST",
+    );
+  }
+  if (value.registered) {
+    if (
+      !isOperationId(value.operationId) ||
+      !isSessionId(value.sessionId) ||
+      value.generation === 0
+    ) {
+      throw new DesktopIpcValidationError("INVALID_REQUEST");
+    }
+  } else if (value.operationId !== null || value.sessionId !== null || value.generation !== 0) {
+    throw new DesktopIpcValidationError("INVALID_REQUEST");
+  }
+  if (value.progress !== null) {
+    const progress = value.progress;
+    if (
+      !isRecord(progress) ||
+      !hasExactKeys(progress, ["completed", "percentage", "phase", "total"]) ||
+      !isDesktopPhase(progress.phase) ||
+      !isNonNegativeSafeInteger(progress.completed) ||
+      !isPositiveSafeInteger(progress.total) ||
+      progress.completed > progress.total ||
+      typeof progress.percentage !== "number" ||
+      !Number.isFinite(progress.percentage) ||
+      progress.percentage < 0 ||
+      progress.percentage > 100
+    ) {
+      throw new DesktopIpcValidationError("INVALID_REQUEST");
+    }
+  }
+  const events = value.events.map((event) => parseDesktopEvent(event));
+  return { ...value, events } as unknown as AnalysisStatusAck;
 }
 
 export function isReportFormat(value: unknown): value is ReportFormat {
@@ -767,10 +1014,14 @@ function isDesktopFailureCode(value: unknown): value is DesktopFailureCode {
       "SESSION_STALE",
       "SIDECAR_UNAVAILABLE",
       "SIDECAR_VERIFICATION_FAILED",
+      "SIDECAR_SPAWN_FAILED",
       "SIDECAR_START_FAILED",
       "SIDECAR_HANDSHAKE_TIMEOUT",
+      "PREPROCESSING_STALLED",
       "SIDECAR_PROTOCOL_MISMATCH",
+      "SIDECAR_PROTOCOL_FAILED",
       "SIDECAR_EXITED",
+      "SIDECAR_EXITED_UNEXPECTEDLY",
       "SESSION_CANCELLED",
       "SESSION_CLEANUP_FAILED",
       "PROCESS_IDENTITY_MISMATCH",

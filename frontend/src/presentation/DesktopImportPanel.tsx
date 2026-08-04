@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 
 import {
   acceptDesktopEvent,
+  type AnalysisCommandAck,
+  type AnalysisStatusAck,
   type DesktopEvent,
   type DesktopFailureCode,
   type DesktopPhase,
@@ -9,6 +11,7 @@ import {
   type DatasetId,
   type EventCursor,
   type Generation,
+  type OperationId,
   type ReportFormat,
   type ApprovedChartKey,
   type SessionId,
@@ -58,6 +61,13 @@ const INITIAL_CURSOR: EventCursor = {
 interface FailureState {
   readonly code: DesktopFailureCode;
   readonly retryable: boolean;
+}
+
+interface ActiveOperation {
+  readonly operationId: OperationId;
+  readonly sessionId: SessionId;
+  readonly generation: Generation;
+  readonly cancelAvailable: boolean;
 }
 
 interface ProgressView {
@@ -172,6 +182,7 @@ export function DesktopImportPanel() {
   const analyticsClientRef = useRef<AnalysisWorkerClient | undefined>(undefined);
   const analyticsAttemptRef = useRef(0);
   const latestSelectionIdRef = useRef<string | undefined>(undefined);
+  const operationRef = useRef<ActiveOperation | undefined>(undefined);
   const exportAttemptRef = useRef<{ readonly format: ReportFormat; readonly chartKey: ApprovedChartKey }>(undefined);
   const exportOutcomeRef = useRef<string>("unknown");
   const [onboardingSeen, setOnboardingSeen] = useState(readOnboardingPreference);
@@ -185,12 +196,18 @@ export function DesktopImportPanel() {
   const [failure, setFailure] = useState<FailureState>();
   const [dataset, setDataset] = useState<DatasetState>();
   const [session, setSession] = useState<{ readonly sessionId: SessionId; readonly generation: Generation }>();
+  const [operation, setOperation] = useState<ActiveOperation>();
   const [analyticsResult, setAnalyticsResult] = useState<CanonicalAnalysisResult>();
   const [analyticsPending, setAnalyticsPending] = useState(false);
   const [analyticsError, setAnalyticsError] = useState<string>();
   const [pendingCommand, setPendingCommand] = useState(false);
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
   const [exportMessage, setExportMessage] = useState<string>();
+
+  function updateOperation(next: ActiveOperation | undefined): void {
+    operationRef.current = next;
+    setOperation(next);
+  }
 
   useEffect(() => {
     if (!onboardingOpen && !closeDialogOpen) {
@@ -549,6 +566,101 @@ export function DesktopImportPanel() {
     }
   }
 
+  function applyDesktopEvent(event: DesktopEvent): void {
+    const nextStatus = eventStatus(event);
+    if (nextStatus !== undefined) {
+      setStatus(nextStatus);
+    }
+    if (event.sessionId !== null) {
+      setSession({ sessionId: event.sessionId, generation: event.generation });
+    }
+    switch (event.type) {
+      case "selection-ready":
+        latestSelectionIdRef.current = event.payload.selectionId;
+        void resetAnalytics(true);
+        setSelectionId(event.payload.selectionId);
+        setAnnualCount(event.payload.annualSourceCount);
+        setVerificationCount(event.payload.verificationSourceCount);
+        setSession(undefined);
+        updateOperation(undefined);
+        setDataset(undefined);
+        setFailure(undefined);
+        setExportMessage(undefined);
+        setProgress(undefined);
+        setDesktopState("ready");
+        break;
+      case "state":
+        setDesktopState(event.payload.state);
+        if (event.payload.state === "complete") {
+          setProgress(undefined);
+        }
+        break;
+      case "progress": {
+        const startedAt = progressStartedAtRef.current ?? Date.now();
+        progressStartedAtRef.current = startedAt;
+        setProgress({
+          source: "desktop",
+          phase: event.payload.phase,
+          completed: event.payload.completed,
+          total: event.payload.total,
+          percentage: event.payload.percentage,
+          startedAt,
+        });
+        break;
+      }
+      case "dataset-ready":
+        if (event.sessionId !== null) {
+          setDataset({
+            ...event.payload,
+            sessionId: event.sessionId,
+            generation: event.generation,
+          });
+          setFailure(undefined);
+          void startDesktopAnalytics(
+            event.sessionId,
+            event.generation,
+            event.payload.datasetId,
+            event.payload.minimumCalendarDate,
+            event.payload.maximumCalendarDate,
+            true,
+          );
+        }
+        break;
+      case "failure":
+        setFailure(event.payload);
+        setDesktopState("failed");
+        setProgress(undefined);
+        break;
+      case "cancelled":
+        setFailure(undefined);
+        setDesktopState("ready");
+        setStatus("本地分析已取消，可重新开始");
+        setSession(undefined);
+        updateOperation(undefined);
+        setProgress(undefined);
+        break;
+      case "cleanup":
+        if (event.payload.status === "complete" && replacementPendingRef.current) {
+          replacementPendingRef.current = false;
+          cursorRef.current = resetCursorForSelection(cursorRef.current);
+          setTimeout(() => {
+            void selectSources("annual");
+          }, 0);
+        }
+        break;
+      case "exported":
+        exportOutcomeRef.current = "saved";
+        setExportMessage("聚合结果已通过本地保存流程写入。");
+        break;
+      case "closed":
+        setDesktopState("closing");
+        setSession(undefined);
+        updateOperation(undefined);
+        setProgress(undefined);
+        break;
+    }
+  }
+
   useEffect(() => {
     let mounted = true;
     let unlisten: (() => void) | undefined;
@@ -570,92 +682,7 @@ export function DesktopImportPanel() {
         return;
       }
       cursorRef.current = accepted.cursor;
-      const nextStatus = eventStatus(event);
-      if (nextStatus !== undefined) {
-        setStatus(nextStatus);
-      }
-      if (event.sessionId !== null) {
-        setSession({ sessionId: event.sessionId, generation: event.generation });
-      }
-      switch (event.type) {
-        case "selection-ready":
-          latestSelectionIdRef.current = event.payload.selectionId;
-          void resetAnalytics(true);
-          setSelectionId(event.payload.selectionId);
-          setAnnualCount(event.payload.annualSourceCount);
-          setVerificationCount(event.payload.verificationSourceCount);
-          setSession(undefined);
-          setDataset(undefined);
-          setFailure(undefined);
-          setExportMessage(undefined);
-          setProgress(undefined);
-          setDesktopState("ready");
-          break;
-        case "state":
-          setDesktopState(event.payload.state);
-          if (event.payload.state === "complete") {
-            setProgress(undefined);
-          }
-          break;
-        case "progress": {
-          const startedAt = progressStartedAtRef.current ?? Date.now();
-          progressStartedAtRef.current = startedAt;
-          setProgress({
-            source: "desktop",
-            phase: event.payload.phase,
-            completed: event.payload.completed,
-            total: event.payload.total,
-            percentage: event.payload.percentage,
-            startedAt,
-          });
-          break;
-        }
-        case "dataset-ready":
-          if (event.sessionId !== null) {
-            setDataset({
-              ...event.payload,
-              sessionId: event.sessionId,
-              generation: event.generation,
-            });
-            setFailure(undefined);
-            void startDesktopAnalytics(
-              event.sessionId,
-              event.generation,
-              event.payload.datasetId,
-              event.payload.minimumCalendarDate,
-              event.payload.maximumCalendarDate,
-              true,
-            );
-          }
-          break;
-        case "failure":
-          setFailure(event.payload);
-          setDesktopState("failed");
-          setProgress(undefined);
-          break;
-        case "cancelled":
-          setFailure({ code: "SESSION_CANCELLED", retryable: false });
-          setDesktopState("cancelling");
-          setProgress(undefined);
-          break;
-        case "cleanup":
-          if (event.payload.status === "complete" && replacementPendingRef.current) {
-            replacementPendingRef.current = false;
-            cursorRef.current = resetCursorForSelection(cursorRef.current);
-            setTimeout(() => {
-              void selectSources("annual");
-            }, 0);
-          }
-          break;
-        case "exported":
-          exportOutcomeRef.current = "saved";
-          setExportMessage("聚合结果已通过本地保存流程写入。");
-          break;
-        case "closed":
-          setDesktopState("closing");
-          setProgress(undefined);
-          break;
-      }
+      applyDesktopEvent(event);
     }).then((remove) => {
       if (mounted) {
         unlisten = remove;
@@ -707,6 +734,109 @@ export function DesktopImportPanel() {
       unlistenWorker?.();
     };
   }, []);
+
+  useEffect(() => {
+    if (operation === undefined) {
+      return;
+    }
+    const current = operation;
+    let stopped = false;
+    const poll = async (): Promise<void> => {
+      if (stopped) {
+        return;
+      }
+      let authoritative: AnalysisStatusAck;
+      try {
+        authoritative = await desktopApi.getAnalysisStatus(
+          requestId() as never,
+          current.operationId,
+          cursorRef.current.sequence,
+        );
+      } catch {
+        return;
+      }
+      if (
+        stopped ||
+        !authoritative.registered ||
+        authoritative.operationId !== current.operationId ||
+        authoritative.sessionId === null ||
+        authoritative.sessionId !== current.sessionId ||
+        authoritative.generation !== current.generation
+      ) {
+        return;
+      }
+      for (const event of authoritative.events) {
+        const accepted = acceptDesktopEvent(cursorRef.current, event, WINDOW_ID);
+        if (accepted.accepted) {
+          cursorRef.current = accepted.cursor;
+          applyDesktopEvent(accepted.event);
+        }
+      }
+      if (
+        stopped ||
+        operationRef.current?.operationId !== current.operationId
+      ) {
+        return;
+      }
+      setSession({
+        sessionId: authoritative.sessionId,
+        generation: authoritative.generation,
+      });
+      if (operationRef.current?.operationId === current.operationId) {
+        updateOperation({
+          ...operationRef.current,
+          cancelAvailable: authoritative.cancelAvailable,
+        });
+      }
+      setDesktopState(authoritative.state);
+      if (
+        authoritative.state !== "complete" &&
+        authoritative.state !== "failed" &&
+        authoritative.terminal !== "cancelled" &&
+        authoritative.progress !== null
+      ) {
+        const startedAt = progressStartedAtRef.current ?? Date.now();
+        progressStartedAtRef.current = startedAt;
+        setProgress({
+          source: "desktop",
+          phase: authoritative.progress.phase,
+          completed: authoritative.progress.completed,
+          total: authoritative.progress.total,
+          percentage: authoritative.progress.percentage,
+          startedAt,
+        });
+      } else if (
+        authoritative.state === "complete" ||
+        authoritative.state === "failed" ||
+        authoritative.terminal === "cancelled"
+      ) {
+        setProgress(undefined);
+      }
+      if (
+        authoritative.state === "preprocessing" &&
+        authoritative.progress === null
+      ) {
+        setStatus(
+          authoritative.heartbeat === "starting"
+            ? "正在等待本地预处理响应"
+            : "正在验证并整理源文件",
+        );
+      }
+      if (
+        authoritative.state === "complete" ||
+        authoritative.state === "failed" ||
+        authoritative.terminal === "cancelled"
+      ) {
+        stopped = true;
+      }
+    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), 1_000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [operation?.operationId]);
 
   async function runCommand<T>(
     command: () => Promise<T>,
@@ -798,6 +928,7 @@ export function DesktopImportPanel() {
     setAnnualCount(next.annualCount);
     setVerificationCount(next.verificationCount);
     setSession(undefined);
+    updateOperation(undefined);
     setDataset(undefined);
     setFailure(undefined);
     setExportMessage(undefined);
@@ -816,17 +947,43 @@ export function DesktopImportPanel() {
     progressStartedAtRef.current = Date.now();
     setDesktopState("preprocessing");
     setStatus("正在验证、合并、排序和去重");
-    await runCommand(() => desktopApi.startAnalysis(requestId() as never, selectionId as never));
+    const acknowledged = await runCommand<AnalysisCommandAck>(
+      () => desktopApi.startAnalysis(requestId() as never, selectionId as never),
+    );
+    if (acknowledged !== undefined) {
+      const nextOperation: ActiveOperation = {
+        operationId: acknowledged.operationId,
+        sessionId: acknowledged.sessionId,
+        generation: acknowledged.generation,
+        cancelAvailable: acknowledged.cancelAvailable,
+      };
+      updateOperation(nextOperation);
+      setSession({
+        sessionId: acknowledged.sessionId,
+        generation: acknowledged.generation,
+      });
+      if (
+        cursorRef.current.sessionId !== acknowledged.sessionId ||
+        cursorRef.current.generation !== acknowledged.generation
+      ) {
+        cursorRef.current = {
+          ...resetCursorForNewSession(cursorRef.current),
+          sessionId: acknowledged.sessionId,
+          generation: acknowledged.generation,
+          state: "ready",
+        };
+      }
+    }
   }
 
   async function cancel(): Promise<void> {
-    if (session === undefined) {
+    if (session === undefined || operation === undefined) {
       return;
     }
     setDesktopState("cancelling");
     setStatus("正在取消本地分析");
     setProgress(undefined);
-    await runCommand(() => desktopApi.cancelAnalysis(requestId() as never, session.sessionId, session.generation));
+    await runCommand(() => desktopApi.cancelAnalysis(requestId() as never, operation.operationId));
   }
 
   async function retry(): Promise<void> {
@@ -838,7 +995,27 @@ export function DesktopImportPanel() {
     cursorRef.current = resetCursorForNewSession(cursorRef.current);
     setDesktopState("preprocessing");
     setStatus("正在用新的本地分析代次重试");
-    await runCommand(() => desktopApi.retryAnalysis(requestId() as never, session.sessionId, session.generation));
+    const acknowledged = await runCommand<AnalysisCommandAck>(
+      () => desktopApi.retryAnalysis(requestId() as never, session.sessionId, session.generation),
+    );
+    if (acknowledged !== undefined) {
+      updateOperation({
+        operationId: acknowledged.operationId,
+        sessionId: acknowledged.sessionId,
+        generation: acknowledged.generation,
+        cancelAvailable: acknowledged.cancelAvailable,
+      });
+      setSession({
+        sessionId: acknowledged.sessionId,
+        generation: acknowledged.generation,
+      });
+      cursorRef.current = {
+        ...resetCursorForNewSession(cursorRef.current),
+        sessionId: acknowledged.sessionId,
+        generation: acknowledged.generation,
+        state: "ready",
+      };
+    }
   }
 
   async function discard(): Promise<void> {
@@ -934,7 +1111,7 @@ export function DesktopImportPanel() {
 
   const failureText = desktopFailureMessage(failure?.code);
   const isBusy = pendingCommand || analyticsPending || isDesktopCancellableState(desktopState) || desktopState === "cancelling" || desktopState === "closing";
-  const canCancel = session !== undefined && isDesktopCancellableState(desktopState) && !pendingCommand;
+  const canCancel = operation !== undefined && session !== undefined && operation.cancelAvailable && isDesktopCancellableState(desktopState) && !pendingCommand;
   const canStart = selectionId !== undefined && annualCount > 0 && !pendingCommand && !isBusy;
   const progressDuration = progress === undefined ? undefined : durationBucket(Date.now() - progress.startedAt);
 

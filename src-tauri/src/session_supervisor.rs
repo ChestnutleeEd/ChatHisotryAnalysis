@@ -38,6 +38,9 @@ pub const GRACEFUL_CANCEL_GRACE: Duration = Duration::from_millis(500);
 pub const TERM_CANCEL_GRACE: Duration = Duration::from_millis(500);
 pub const FINAL_KILL_WAIT: Duration = Duration::from_millis(750);
 pub const WATCHER_TERMINAL_WAIT: Duration = Duration::from_millis(3_000);
+pub const SIDECAR_SPAWN_TIMEOUT: Duration = Duration::from_secs(15);
+pub const SIDECAR_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(15);
+pub const PREPROCESSING_INACTIVITY_TIMEOUT: Duration = Duration::from_secs(45);
 pub const SESSION_MARKER_CONTENT: &[u8] = b"chat-history-analysis-session-v1\n";
 
 const SIDECAR_PROTOCOL_VERSION_FIELD: &str = "protocolVersion";
@@ -52,11 +55,15 @@ pub enum SupervisorErrorCode {
     SessionStale,
     SidecarUnavailable,
     SidecarVerificationFailed,
+    SidecarSpawnFailed,
     SidecarStartFailed,
     SidecarHandshakeTimeout,
+    PreprocessingStalled,
     SidecarProtocolMismatch,
+    SidecarProtocolFailed,
     SidecarProtocolInvalid,
     SidecarCrashed,
+    SidecarExitedUnexpectedly,
     SidecarExited,
     SessionCancelled,
     SessionCleanupFailed,
@@ -75,11 +82,15 @@ impl SupervisorErrorCode {
             Self::SessionStale => "SESSION_STALE",
             Self::SidecarUnavailable => "SIDECAR_UNAVAILABLE",
             Self::SidecarVerificationFailed => "SIDECAR_VERIFICATION_FAILED",
+            Self::SidecarSpawnFailed => "SIDECAR_SPAWN_FAILED",
             Self::SidecarStartFailed => "SIDECAR_START_FAILED",
             Self::SidecarHandshakeTimeout => "SIDECAR_HANDSHAKE_TIMEOUT",
+            Self::PreprocessingStalled => "PREPROCESSING_STALLED",
             Self::SidecarProtocolMismatch => "SIDECAR_PROTOCOL_MISMATCH",
+            Self::SidecarProtocolFailed => "SIDECAR_PROTOCOL_FAILED",
             Self::SidecarProtocolInvalid => "SIDECAR_PROTOCOL_INVALID",
             Self::SidecarCrashed => "SIDECAR_CRASHED",
+            Self::SidecarExitedUnexpectedly => "SIDECAR_EXITED_UNEXPECTEDLY",
             Self::SidecarExited => "SIDECAR_EXITED",
             Self::SessionCancelled => "SESSION_CANCELLED",
             Self::SessionCleanupFailed => "SESSION_CLEANUP_FAILED",
@@ -191,13 +202,43 @@ pub enum SessionEvent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionSnapshot {
+    pub operation_id: String,
     pub session_id: String,
     pub generation: u64,
     pub state: SessionState,
     pub terminal: Option<SessionTerminal>,
     pub cleanup: Option<CleanupStatus>,
     pub cancel_reason: Option<CancelReason>,
+    pub phase: String,
+    pub progress: Option<SidecarProgress>,
+    pub heartbeat_status: HeartbeatStatus,
+    pub elapsed_bucket: String,
+    pub cancel_available: bool,
     pub events: Vec<SessionEvent>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HeartbeatStatus {
+    Starting,
+    Active,
+    Terminal,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WatchdogTimeouts {
+    pub spawn: Duration,
+    pub handshake: Duration,
+    pub inactivity: Duration,
+}
+
+impl Default for WatchdogTimeouts {
+    fn default() -> Self {
+        Self {
+            spawn: SIDECAR_SPAWN_TIMEOUT,
+            handshake: SIDECAR_HANDSHAKE_TIMEOUT,
+            inactivity: PREPROCESSING_INACTIVITY_TIMEOUT,
+        }
+    }
 }
 
 /// Host-owned paths and fixed working directory.  Its Debug implementation
@@ -505,6 +546,7 @@ struct ActiveSession {
     storage: Option<crate::secure_storage::SecureStorage>,
     output_directory: PathBuf,
     window_label: String,
+    operation_id: String,
     session_id: String,
     generation: u64,
     state: SessionState,
@@ -512,9 +554,12 @@ struct ActiveSession {
     cleanup: Option<CleanupStatus>,
     events: Vec<SessionEvent>,
     process: Arc<ProcessControl>,
+    progress_receiver: Option<Receiver<SidecarProgress>>,
     outcome_receiver: Option<Receiver<RunOutcome>>,
     watcher_active: bool,
     cancel_reason: Option<CancelReason>,
+    started_at: Instant,
+    last_heartbeat_at: Option<Instant>,
     worker: Option<Arc<dyn WorkerTermination>>,
 }
 
@@ -552,6 +597,7 @@ struct SupervisorInner {
 pub struct SessionSupervisor {
     inner: Arc<Mutex<SupervisorInner>>,
     cleanup_coordinator: CleanupCoordinator,
+    watchdog_timeouts: WatchdogTimeouts,
 }
 
 impl fmt::Debug for SessionSupervisor {
@@ -568,11 +614,30 @@ impl Default for SessionSupervisor {
                 active: None,
             })),
             cleanup_coordinator: CleanupCoordinator::default(),
+            watchdog_timeouts: WatchdogTimeouts::default(),
         }
     }
 }
 
 impl SessionSupervisor {
+    /// Construct a supervisor with explicit watchdog deadlines.  Production
+    /// uses [`Default`]; the shorter deadlines are a deterministic synthetic
+    /// seam for lifecycle tests and never receive renderer input.
+    pub fn with_watchdog_timeouts(handshake: Duration, inactivity: Duration) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(SupervisorInner {
+                next_generation: 0,
+                active: None,
+            })),
+            cleanup_coordinator: CleanupCoordinator::default(),
+            watchdog_timeouts: WatchdogTimeouts {
+                spawn: SIDECAR_SPAWN_TIMEOUT,
+                handshake,
+                inactivity,
+            },
+        }
+    }
+
     pub fn active_snapshot(&self) -> Option<SessionSnapshot> {
         self.inner
             .lock()
@@ -612,6 +677,7 @@ impl SessionSupervisor {
             .checked_add(1)
             .ok_or_else(|| SupervisorError::new(SupervisorErrorCode::InvalidState))?;
         let session_id = opaque_id("ses_")?;
+        let operation_id = opaque_id("op_")?;
         let generation = inner.next_generation;
         let output_directory = input
             .application_cache_root
@@ -644,13 +710,15 @@ impl SessionSupervisor {
             configuration,
             nonce,
         };
-        let (process, receiver) = match spawn_sidecar(launch, &session_id, generation) {
-            Ok(value) => value,
-            Err(error) => {
-                let _ = cleanup_session_directory(Some(&storage), &output_directory, &session_id);
-                return Err(error);
-            }
-        };
+        let (process, progress_receiver, receiver) =
+            match spawn_sidecar(launch, &session_id, generation, self.watchdog_timeouts) {
+                Ok(value) => value,
+                Err(error) => {
+                    let _ =
+                        cleanup_session_directory(Some(&storage), &output_directory, &session_id);
+                    return Err(error);
+                }
+            };
 
         if write_owner_record(&storage, &session_id, generation, &process.identity).is_err() {
             let _ = process.force_kill(&session_id, generation);
@@ -669,6 +737,7 @@ impl SessionSupervisor {
             storage: Some(storage),
             output_directory,
             window_label: window_label.to_string(),
+            operation_id,
             session_id,
             generation,
             state: SessionState::Preprocessing,
@@ -676,9 +745,12 @@ impl SessionSupervisor {
             cleanup: None,
             events,
             process,
+            progress_receiver: Some(progress_receiver),
             outcome_receiver: Some(receiver),
             watcher_active: false,
             cancel_reason: None,
+            started_at: Instant::now(),
+            last_heartbeat_at: None,
             worker: None,
         });
         Ok(inner
@@ -695,36 +767,56 @@ impl SessionSupervisor {
         generation: u64,
         timeout: Duration,
     ) -> Result<SessionSnapshot, SupervisorError> {
-        let receiver = {
+        let (receiver, progress_receiver) = {
             let mut inner = self.lock_inner()?;
             validate_active(&inner, window_label, session_id, generation)?;
             let active = inner.active.as_mut().expect("validated active session");
             if active.terminal.is_some() {
                 return Ok(snapshot(active));
             }
-            active
+            let receiver = active
                 .outcome_receiver
                 .take()
-                .ok_or_else(|| SupervisorError::new(SupervisorErrorCode::InvalidState))?
+                .ok_or_else(|| SupervisorError::new(SupervisorErrorCode::InvalidState))?;
+            (receiver, active.progress_receiver.take())
         };
 
-        match receiver.recv_timeout(timeout) {
-            Ok(outcome) => self.apply_outcome(outcome),
-            Err(RecvTimeoutError::Timeout) => {
-                self.put_back_receiver(session_id, generation, receiver)?;
+        let deadline = Instant::now() + timeout;
+        loop {
+            if let Some(progress_receiver) = progress_receiver.as_ref() {
+                while let Ok(progress) = progress_receiver.try_recv() {
+                    let _ = self.record_progress(progress);
+                }
+            }
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                self.put_back_receivers(session_id, generation, receiver, progress_receiver)?;
                 let _ = self.cancel(
                     window_label,
                     session_id,
                     generation,
                     CancelReason::ApplicationClose,
                 );
-                Err(SupervisorError::new(
+                return Err(SupervisorError::new(
                     SupervisorErrorCode::SidecarHandshakeTimeout,
-                ))
+                ));
             }
-            Err(RecvTimeoutError::Disconnected) => self.apply_outcome(RunOutcome {
-                terminal: Err(SupervisorErrorCode::SidecarCrashed),
-            }),
+            match receiver.recv_timeout(remaining.min(Duration::from_millis(25))) {
+                Ok(outcome) => {
+                    if let Some(progress_receiver) = progress_receiver.as_ref() {
+                        while let Ok(progress) = progress_receiver.try_recv() {
+                            let _ = self.record_progress(progress);
+                        }
+                    }
+                    return self.apply_outcome(outcome);
+                }
+                Err(RecvTimeoutError::Timeout) => continue,
+                Err(RecvTimeoutError::Disconnected) => {
+                    return self.apply_outcome(RunOutcome {
+                        terminal: Err(SupervisorErrorCode::SidecarCrashed),
+                    });
+                }
+            }
         }
     }
 
@@ -741,7 +833,22 @@ impl SessionSupervisor {
     where
         F: FnOnce(Result<SessionSnapshot, SupervisorError>) + Send + 'static,
     {
-        let receiver = {
+        self.watch_with_progress(window_label, session_id, generation, |_| {}, callback)
+    }
+
+    pub fn watch_with_progress<P, F>(
+        &self,
+        window_label: &str,
+        session_id: &str,
+        generation: u64,
+        on_progress: P,
+        callback: F,
+    ) -> Result<(), SupervisorError>
+    where
+        P: Fn(SidecarProgress) + Send + 'static,
+        F: FnOnce(Result<SessionSnapshot, SupervisorError>) + Send + 'static,
+    {
+        let (receiver, progress_receiver) = {
             let mut inner = self.lock_inner()?;
             validate_active(&inner, window_label, session_id, generation)?;
             let active = inner.active.as_mut().expect("validated active session");
@@ -749,10 +856,15 @@ impl SessionSupervisor {
                 return Err(SupervisorError::new(SupervisorErrorCode::InvalidState));
             }
             active.watcher_active = true;
-            active
+            let receiver = active
                 .outcome_receiver
                 .take()
-                .ok_or_else(|| SupervisorError::new(SupervisorErrorCode::InvalidState))?
+                .ok_or_else(|| SupervisorError::new(SupervisorErrorCode::InvalidState))?;
+            let progress_receiver = active
+                .progress_receiver
+                .take()
+                .ok_or_else(|| SupervisorError::new(SupervisorErrorCode::InvalidState))?;
+            (receiver, progress_receiver)
         };
         let supervisor = self.clone();
         let window_label = window_label.to_string();
@@ -760,11 +872,26 @@ impl SessionSupervisor {
         thread::Builder::new()
             .name("sidecar-outcome-watcher".to_string())
             .spawn(move || {
-                let result = match receiver.recv() {
-                    Ok(outcome) => supervisor.apply_outcome(outcome),
-                    Err(_) => supervisor.apply_outcome(RunOutcome {
-                        terminal: Err(SupervisorErrorCode::SidecarCrashed),
-                    }),
+                let result = loop {
+                    while let Ok(progress) = progress_receiver.try_recv() {
+                        let _ = supervisor.record_progress(progress.clone());
+                        on_progress(progress);
+                    }
+                    match receiver.recv_timeout(Duration::from_millis(25)) {
+                        Ok(outcome) => {
+                            while let Ok(progress) = progress_receiver.try_recv() {
+                                let _ = supervisor.record_progress(progress.clone());
+                                on_progress(progress);
+                            }
+                            break supervisor.apply_outcome(outcome);
+                        }
+                        Err(RecvTimeoutError::Timeout) => continue,
+                        Err(RecvTimeoutError::Disconnected) => {
+                            break supervisor.apply_outcome(RunOutcome {
+                                terminal: Err(SupervisorErrorCode::SidecarCrashed),
+                            });
+                        }
+                    }
                 };
                 callback(result);
                 let _ = (window_label, session_id, generation);
@@ -855,7 +982,7 @@ impl SessionSupervisor {
                 .active_snapshot()
                 .ok_or_else(|| SupervisorError::new(SupervisorErrorCode::SessionStale));
         }
-        let (process, receiver) = {
+        let (process, receiver, progress_receiver) = {
             let mut inner = self.lock_inner()?;
             validate_active(&inner, window_label, session_id, generation)?;
             let active = inner.active.as_mut().expect("validated active session");
@@ -873,7 +1000,8 @@ impl SessionSupervisor {
                 .outcome_receiver
                 .take()
                 .ok_or_else(|| SupervisorError::new(SupervisorErrorCode::InvalidState))?;
-            (Arc::clone(&active.process), receiver)
+            let progress_receiver = active.progress_receiver.take();
+            (Arc::clone(&active.process), receiver, progress_receiver)
         };
 
         self.request_worker_cancellation(session_id, generation);
@@ -882,7 +1010,7 @@ impl SessionSupervisor {
             if error.code == SupervisorErrorCode::ProcessIdentityMismatch {
                 self.mark_cleanup_required(session_id, generation);
             }
-            self.put_back_receiver(session_id, generation, receiver)?;
+            self.put_back_receivers(session_id, generation, receiver, progress_receiver)?;
             return Err(error);
         }
         let result = receiver.recv_timeout(GRACEFUL_CANCEL_GRACE);
@@ -900,7 +1028,7 @@ impl SessionSupervisor {
                     if error.code == SupervisorErrorCode::ProcessIdentityMismatch {
                         self.mark_cleanup_required(session_id, generation);
                     }
-                    self.put_back_receiver(session_id, generation, receiver)?;
+                    self.put_back_receivers(session_id, generation, receiver, progress_receiver)?;
                     return Err(error);
                 }
                 match receiver.recv_timeout(TERM_CANCEL_GRACE) {
@@ -916,7 +1044,12 @@ impl SessionSupervisor {
                             if error.code == SupervisorErrorCode::ProcessIdentityMismatch {
                                 self.mark_cleanup_required(session_id, generation);
                             }
-                            self.put_back_receiver(session_id, generation, receiver)?;
+                            self.put_back_receivers(
+                                session_id,
+                                generation,
+                                receiver,
+                                progress_receiver,
+                            )?;
                             return Err(error);
                         }
                         match receiver.recv_timeout(FINAL_KILL_WAIT) {
@@ -927,7 +1060,12 @@ impl SessionSupervisor {
                                 });
                             }
                             Err(RecvTimeoutError::Timeout) => {
-                                self.put_back_receiver(session_id, generation, receiver)?;
+                                self.put_back_receivers(
+                                    session_id,
+                                    generation,
+                                    receiver,
+                                    progress_receiver,
+                                )?;
                                 return Err(SupervisorError::new(
                                     SupervisorErrorCode::SessionCleanupFailed,
                                 ));
@@ -1220,6 +1358,29 @@ impl SessionSupervisor {
         }
     }
 
+    fn record_progress(
+        &self,
+        progress: SidecarProgress,
+    ) -> Result<SessionSnapshot, SupervisorError> {
+        let mut inner = self.lock_inner()?;
+        let active = inner
+            .active
+            .as_mut()
+            .ok_or_else(|| SupervisorError::new(SupervisorErrorCode::SessionStale))?;
+        if active.terminal.is_some() {
+            return Ok(snapshot(active));
+        }
+        if !active
+            .events
+            .iter()
+            .any(|event| matches!(event, SessionEvent::Progress(existing) if existing == &progress))
+        {
+            active.events.push(SessionEvent::Progress(progress));
+        }
+        active.last_heartbeat_at = Some(Instant::now());
+        Ok(snapshot(active))
+    }
+
     fn apply_outcome(&self, outcome: RunOutcome) -> Result<SessionSnapshot, SupervisorError> {
         let mut inner = self.lock_inner()?;
         let active = inner
@@ -1234,7 +1395,11 @@ impl SessionSupervisor {
             Ok(terminal) => match terminal {
                 SidecarTerminalResult::Success(result, progress) => {
                     for item in progress {
-                        active.events.push(SessionEvent::Progress(item));
+                        if !active.events.iter().any(|event| {
+                            matches!(event, SessionEvent::Progress(existing) if existing == &item)
+                        }) {
+                            active.events.push(SessionEvent::Progress(item));
+                        }
                     }
                     transition(active, SessionState::Handoff)?;
                     active
@@ -1355,11 +1520,12 @@ impl SessionSupervisor {
         }
     }
 
-    fn put_back_receiver(
+    fn put_back_receivers(
         &self,
         session_id: &str,
         generation: u64,
         receiver: Receiver<RunOutcome>,
+        progress_receiver: Option<Receiver<SidecarProgress>>,
     ) -> Result<(), SupervisorError> {
         let mut inner = self.lock_inner()?;
         let active = inner
@@ -1371,6 +1537,10 @@ impl SessionSupervisor {
             return Err(SupervisorError::new(SupervisorErrorCode::InvalidState));
         }
         active.outcome_receiver = Some(receiver);
+        if active.progress_receiver.is_some() {
+            return Err(SupervisorError::new(SupervisorErrorCode::InvalidState));
+        }
+        active.progress_receiver = progress_receiver;
         Ok(())
     }
 
@@ -1518,15 +1688,65 @@ struct SidecarLaunch {
 }
 
 fn snapshot(active: &ActiveSession) -> SessionSnapshot {
+    let progress = active.events.iter().rev().find_map(|event| match event {
+        SessionEvent::Progress(progress) => Some(progress.clone()),
+        _ => None,
+    });
+    let phase = progress
+        .as_ref()
+        .map(|progress| progress.phase.clone())
+        .unwrap_or_else(|| match active.state {
+            SessionState::Ready => "selection".to_string(),
+            SessionState::Preprocessing => "startup".to_string(),
+            SessionState::Handoff => "output-verification".to_string(),
+            SessionState::Analyzing => "analysis".to_string(),
+            SessionState::Cancelling => "cancellation".to_string(),
+            SessionState::Failed => "failure".to_string(),
+            SessionState::Discarding | SessionState::Closing => "cleanup".to_string(),
+            SessionState::Idle | SessionState::Selecting | SessionState::Complete => {
+                active.state.as_str().to_string()
+            }
+        });
+    let heartbeat_status = if active.terminal.is_some() {
+        HeartbeatStatus::Terminal
+    } else if active.last_heartbeat_at.is_some() {
+        HeartbeatStatus::Active
+    } else {
+        HeartbeatStatus::Starting
+    };
     SessionSnapshot {
+        operation_id: active.operation_id.clone(),
         session_id: active.session_id.clone(),
         generation: active.generation,
         state: active.state,
         terminal: active.terminal.clone(),
         cleanup: active.cleanup.clone(),
         cancel_reason: active.cancel_reason,
+        phase,
+        progress,
+        heartbeat_status,
+        elapsed_bucket: elapsed_bucket(active.started_at.elapsed()),
+        cancel_available: active.terminal.is_none()
+            && matches!(
+                active.state,
+                SessionState::Preprocessing
+                    | SessionState::Handoff
+                    | SessionState::Analyzing
+                    | SessionState::Cancelling
+            ),
         events: active.events.clone(),
     }
+}
+
+fn elapsed_bucket(elapsed: Duration) -> String {
+    match elapsed {
+        elapsed if elapsed < Duration::from_secs(1) => "<1s",
+        elapsed if elapsed < Duration::from_secs(5) => "1-5s",
+        elapsed if elapsed < Duration::from_secs(30) => "5-30s",
+        elapsed if elapsed < Duration::from_secs(60) => "30-60s",
+        _ => "60s+",
+    }
+    .to_string()
 }
 
 fn validate_active(
@@ -1636,7 +1856,15 @@ fn spawn_sidecar(
     launch: SidecarLaunch,
     session_id: &str,
     generation: u64,
-) -> Result<(Arc<ProcessControl>, Receiver<RunOutcome>), SupervisorError> {
+    watchdog_timeouts: WatchdogTimeouts,
+) -> Result<
+    (
+        Arc<ProcessControl>,
+        Receiver<SidecarProgress>,
+        Receiver<RunOutcome>,
+    ),
+    SupervisorError,
+> {
     validate_executable(&launch.resolution.executable)?;
     if !secure_directory(&launch.cwd) || launch.configuration.len() > MAX_CONFIGURATION_BYTES {
         return Err(SupervisorError::new(
@@ -1669,9 +1897,7 @@ fn spawn_sidecar(
             }
         });
     }
-    let mut child = command
-        .spawn()
-        .map_err(|_| SupervisorError::new(SupervisorErrorCode::SidecarStartFailed))?;
+    let mut child = spawn_command_with_timeout(command, watchdog_timeouts.spawn)?;
     let pid = child.id();
     let executable = match launch.resolution.executable.canonicalize() {
         Ok(path) => path,
@@ -1776,17 +2002,70 @@ fn spawn_sidecar(
         }
     }
 
+    let (progress_sender, progress_receiver) = mpsc::channel();
+    let heartbeat = Arc::new(Mutex::new(None::<Instant>));
     let (sender, receiver) = mpsc::channel();
     let process = Arc::clone(&control);
     let session = session_id.to_string();
+    let monitor_heartbeat = Arc::clone(&heartbeat);
+    let parser_heartbeat = Arc::clone(&heartbeat);
     thread::Builder::new()
         .name("sidecar-process-monitor".to_string())
         .spawn(move || {
-            let terminal = monitor_child(child, process, stdout, stderr, &session, generation);
+            let terminal = monitor_child(
+                child,
+                process,
+                stdout,
+                stderr,
+                &session,
+                generation,
+                progress_sender,
+                parser_heartbeat,
+                monitor_heartbeat,
+                watchdog_timeouts,
+            );
             let _ = sender.send(RunOutcome { terminal });
         })
         .map_err(|_| SupervisorError::new(SupervisorErrorCode::SidecarStartFailed))?;
-    Ok((control, receiver))
+    Ok((control, progress_receiver, receiver))
+}
+
+fn spawn_command_with_timeout(
+    mut command: Command,
+    timeout: Duration,
+) -> Result<Child, SupervisorError> {
+    let abandoned = Arc::new(AtomicBool::new(false));
+    let (sender, receiver) = mpsc::sync_channel(1);
+    let thread_abandoned = Arc::clone(&abandoned);
+    thread::Builder::new()
+        .name("sidecar-spawn".to_string())
+        .spawn(move || {
+            let result = command.spawn();
+            match result {
+                Ok(mut child) if thread_abandoned.load(Ordering::Acquire) => {
+                    terminate_spawn_failure(&mut child);
+                }
+                Ok(child) => {
+                    let _ = sender.send(Ok(child));
+                }
+                Err(_) => {
+                    let _ = sender.send(Err(()));
+                }
+            }
+        })
+        .map_err(|_| SupervisorError::new(SupervisorErrorCode::SidecarSpawnFailed))?;
+    match receiver.recv_timeout(timeout) {
+        Ok(Ok(child)) => Ok(child),
+        Ok(Err(())) | Err(RecvTimeoutError::Disconnected) => Err(SupervisorError::new(
+            SupervisorErrorCode::SidecarSpawnFailed,
+        )),
+        Err(RecvTimeoutError::Timeout) => {
+            abandoned.store(true, Ordering::Release);
+            Err(SupervisorError::new(
+                SupervisorErrorCode::SidecarSpawnFailed,
+            ))
+        }
+    }
 }
 
 fn terminate_spawn_failure(child: &mut Child) {
@@ -1801,12 +2080,22 @@ fn monitor_child(
     stderr: impl Read + Send + 'static,
     session_id: &str,
     generation: u64,
+    progress_sender: mpsc::Sender<SidecarProgress>,
+    parser_heartbeat: Arc<Mutex<Option<Instant>>>,
+    monitor_heartbeat: Arc<Mutex<Option<Instant>>>,
+    watchdog_timeouts: WatchdogTimeouts,
 ) -> Result<SidecarTerminalResult, SupervisorErrorCode> {
     let session_id = session_id.to_string();
     let (stdout_sender, stdout_receiver) = mpsc::channel();
     let stdout_session_id = session_id.clone();
     let stdout_thread = thread::spawn(move || {
-        let result = parse_stdout(stdout, &stdout_session_id, generation);
+        let result = parse_stdout_with_progress(
+            stdout,
+            &stdout_session_id,
+            generation,
+            Some(progress_sender),
+            Some(parser_heartbeat),
+        );
         let _ = stdout_sender.send(result);
     });
     let (stderr_sender, stderr_receiver) = mpsc::channel();
@@ -1817,6 +2106,10 @@ fn monitor_child(
 
     let mut stdout_result = None;
     let mut stderr_result = None;
+    let monitor_started = Instant::now();
+    let mut first_progress_seen = false;
+    let mut last_progress_at = monitor_started;
+    let mut watchdog_failure = None;
     let status = loop {
         if stdout_result.is_none() {
             stdout_result = stdout_receiver.try_recv().ok();
@@ -1828,6 +2121,31 @@ fn monitor_child(
             || stderr_result.as_ref().is_some_and(Result::is_err)
         {
             let _ = process.force_kill(&session_id, generation);
+        }
+        if let Ok(last_progress) = monitor_heartbeat.lock().map(|value| *value) {
+            if let Some(last_progress) = last_progress {
+                first_progress_seen = true;
+                last_progress_at = last_progress;
+            }
+        }
+        if !first_progress_seen {
+            if monitor_started.elapsed() >= watchdog_timeouts.handshake {
+                let _ = process.force_kill(&session_id, generation);
+                watchdog_failure = Some(SupervisorErrorCode::SidecarHandshakeTimeout);
+            }
+        } else if last_progress_at.elapsed() >= watchdog_timeouts.inactivity {
+            let _ = process.force_kill(&session_id, generation);
+            watchdog_failure = Some(SupervisorErrorCode::PreprocessingStalled);
+        }
+        if watchdog_failure.is_some() {
+            match child.try_wait() {
+                Ok(Some(status)) => break status,
+                Ok(None) => {
+                    thread::sleep(Duration::from_millis(10));
+                    continue;
+                }
+                Err(_) => return Err(SupervisorErrorCode::SidecarExitedUnexpectedly),
+            }
         }
         match child.try_wait() {
             Ok(Some(status)) => break status,
@@ -1844,6 +2162,10 @@ fn monitor_child(
         stderr_result = stderr_receiver.recv().ok();
     }
     process.close_stdin();
+
+    if let Some(error) = watchdog_failure {
+        return Err(error);
+    }
 
     let stdout_result = stdout_result.ok_or(SupervisorErrorCode::SidecarProtocolInvalid)?;
     let stderr_result = stderr_result
@@ -1866,14 +2188,16 @@ fn monitor_child(
                 Ok(result) => result,
                 Err(error) if !status.success() => {
                     return Err(match error {
-                        ParserError::MissingTerminal => SupervisorErrorCode::SidecarCrashed,
+                        ParserError::MissingTerminal => {
+                            SupervisorErrorCode::SidecarExitedUnexpectedly
+                        }
                         other => map_parser_error(other),
                     });
                 }
                 Err(error) => return Err(map_parser_error(error)),
             };
             if !status.success() {
-                return Err(SupervisorErrorCode::SidecarExited);
+                return Err(SupervisorErrorCode::SidecarExitedUnexpectedly);
             }
             Ok(SidecarTerminalResult::Success(
                 stdout_result.result,
@@ -1956,9 +2280,19 @@ fn map_parser_error(error: ParserError) -> SupervisorErrorCode {
 }
 
 fn parse_stdout(
+    reader: impl Read,
+    session_id: &str,
+    generation: u64,
+) -> Result<ParsedStdout, ParserError> {
+    parse_stdout_with_progress(reader, session_id, generation, None, None)
+}
+
+fn parse_stdout_with_progress(
     mut reader: impl Read,
     session_id: &str,
     generation: u64,
+    progress_sender: Option<mpsc::Sender<SidecarProgress>>,
+    heartbeat: Option<Arc<Mutex<Option<Instant>>>>,
 ) -> Result<ParsedStdout, ParserError> {
     let mut progress = Vec::new();
     let mut previous_percentage = 0u8;
@@ -2049,7 +2383,7 @@ fn parse_stdout(
                     (None, None)
                 };
                 previous_percentage = percentage;
-                progress.push(SidecarProgress {
+                let progress_item = SidecarProgress {
                     phase: phase.to_string(),
                     percentage,
                     status: status.to_string(),
@@ -2057,7 +2391,16 @@ fn parse_stdout(
                     capacity_value,
                     role,
                     source_ordinal,
-                });
+                };
+                if let Some(heartbeat) = heartbeat.as_ref() {
+                    if let Ok(mut last) = heartbeat.lock() {
+                        *last = Some(Instant::now());
+                    }
+                }
+                if let Some(sender) = progress_sender.as_ref() {
+                    let _ = sender.send(progress_item.clone());
+                }
+                progress.push(progress_item);
             }
             "result" => {
                 let allowed = [
@@ -2879,6 +3222,7 @@ mod tests {
             storage: None,
             output_directory: PathBuf::new(),
             window_label: "main".to_string(),
+            operation_id: "op_00000000000000000000000000000001".to_string(),
             session_id: "ses_00000000000000000000000000000001".to_string(),
             generation: 1,
             state: SessionState::Ready,
@@ -2900,9 +3244,12 @@ mod tests {
                 forced: AtomicBool::new(false),
                 signal_stage: AtomicU8::new(0),
             }),
+            progress_receiver: None,
             outcome_receiver: None,
             watcher_active: false,
             cancel_reason: None,
+            started_at: Instant::now(),
+            last_heartbeat_at: None,
             worker: None,
         };
         assert!(transition(&mut active, SessionState::Preprocessing).is_ok());
