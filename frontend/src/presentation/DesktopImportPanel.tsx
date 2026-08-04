@@ -102,6 +102,27 @@ function requestId(): string {
   return `req_${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 }
 
+type SyntheticSmokeWindow = Window & {
+  readonly __CHAT_HISTORY_ANALYSIS_SYNTHETIC_SMOKE__?: boolean;
+  readonly __TAURI_INTERNALS__?: {
+    invoke(command: string, args?: unknown): Promise<unknown>;
+  };
+};
+
+function recordSyntheticSmokeCheckpoint(checkpoint: string): void {
+  const smokeWindow = window as SyntheticSmokeWindow;
+  if (
+    smokeWindow.__CHAT_HISTORY_ANALYSIS_SYNTHETIC_SMOKE__ !== true ||
+    smokeWindow.__TAURI_INTERNALS__ === undefined
+  ) {
+    return;
+  }
+  void smokeWindow.__TAURI_INTERNALS__.invoke(
+    "record_selection_smoke_checkpoint",
+    { checkpoint },
+  ).catch(() => undefined);
+}
+
 function readOnboardingPreference(): boolean {
   try {
     return window.localStorage.getItem(ONBOARDING_STORAGE_KEY) === "acknowledged";
@@ -360,6 +381,7 @@ export function DesktopImportPanel() {
     setAnalyticsPending(true);
     setAnalyticsError(undefined);
     setStatus("正在由本地 analytics Worker 构建统计");
+    recordSyntheticSmokeCheckpoint("worker-started");
     try {
       const initialFilters: CanonicalAnalysisFilters = {
         startDate: minimumCalendarDate,
@@ -382,7 +404,9 @@ export function DesktopImportPanel() {
       ) {
         throw new WorkerClientError("WORKER_COMMIT_REJECTED");
       }
-      const accepted = await analyticsClient().loadDesktopDataset(
+      recordSyntheticSmokeCheckpoint("worker-prepared");
+      const client = analyticsClient();
+      const accepted = await client.loadDesktopDataset(
         {
           sessionId,
           generation,
@@ -391,6 +415,7 @@ export function DesktopImportPanel() {
         },
         (next) => setProgressFromWorker(next, sessionId, generation),
       );
+      recordSyntheticSmokeCheckpoint("worker-load-accepted");
       if (
         !mountedRef.current ||
         attempt !== analyticsAttemptRef.current ||
@@ -402,9 +427,24 @@ export function DesktopImportPanel() {
       if (!("activity" in accepted.result)) {
         throw new WorkerClientError("MANIFEST_VERSION_UNSUPPORTED");
       }
-      const nextResult = accepted.result as CanonicalAnalysisResult;
+      const nextResult = await client.analyzeCanonical(
+        { kind: "canonical-v2", ...initialFilters },
+        (next) => setProgressFromWorker(next, sessionId, generation),
+        preparation.capability,
+      );
+      if (
+        !mountedRef.current ||
+        attempt !== analyticsAttemptRef.current ||
+        cursorRef.current.sessionId !== sessionId ||
+        cursorRef.current.generation !== generation ||
+        nextResult.sessionId !== sessionId ||
+        nextResult.generation !== generation
+      ) {
+        return;
+      }
       createDashboardViewModel(nextResult);
-      const committedResultId = analyticsClient().committedResultId;
+      recordSyntheticSmokeCheckpoint("worker-dashboard-model");
+      const committedResultId = client.committedResultId;
       if (committedResultId === undefined) {
         throw new WorkerClientError("WORKER_COMMIT_REJECTED");
       }
@@ -417,6 +457,7 @@ export function DesktopImportPanel() {
           : current,
       );
       setAnalyticsResult(nextResult);
+      recordSyntheticSmokeCheckpoint("worker-result-ready");
       setAnalyticsError(undefined);
       setStatus("本地统计已就绪");
       setProgress(undefined);
@@ -632,6 +673,7 @@ export function DesktopImportPanel() {
         setProgress(undefined);
         break;
       case "cancelled":
+        recordSyntheticSmokeCheckpoint("cancelled-event");
         setFailure(undefined);
         setDesktopState("ready");
         setStatus("本地分析已取消，可重新开始");
@@ -983,7 +1025,10 @@ export function DesktopImportPanel() {
     setDesktopState("cancelling");
     setStatus("正在取消本地分析");
     setProgress(undefined);
-    await runCommand(() => desktopApi.cancelAnalysis(requestId() as never, operation.operationId));
+    const completed = await runCommand(() => desktopApi.cancelAnalysis(requestId() as never, operation.operationId));
+    if (completed !== undefined) {
+      void (window as SyntheticSmokeWindow).__TAURI_INTERNALS__?.invoke("record_selection_smoke_host_state").catch(() => undefined);
+    }
   }
 
   async function retry(): Promise<void> {

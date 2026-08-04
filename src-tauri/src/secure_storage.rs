@@ -327,10 +327,12 @@ impl SecureStorage {
         validate_directory_fd(&sessions).map_err(StorageError::new)
     }
 
-    /// Create one host-owned session and its normalized child through the
-    /// pinned sessions descriptor.  The returned path is only an opaque,
-    /// host-owned sidecar configuration value; no mutation below it uses the
-    /// path again.
+    /// Create one host-owned session through the pinned sessions descriptor.
+    /// The normalized child is intentionally left absent: the sidecar's
+    /// canonical pipeline preflights that destination as absent and publishes
+    /// it with an exclusive staging-to-final rename.  The returned path is
+    /// only an opaque, host-owned sidecar configuration value; no mutation
+    /// below it uses the path again.
     pub fn create_session(
         &self,
         session_id: &str,
@@ -366,17 +368,11 @@ impl SecureStorage {
                 format!("sessionId={session_id}\ngeneration={generation}\n").as_bytes(),
             )
         })
-        .and_then(|_| mkdir_at(directory_fd(&session), NORMALIZED_DIRECTORY_NAME))
-        .and_then(|_| {
-            let normalized = open_directory_at(directory_fd(&session), NORMALIZED_DIRECTORY_NAME)?;
-            validate_directory_fd(&normalized).map_err(StorageError::new)
-        })
         .and_then(|_| sync_directory(&session))
         .and_then(|_| sync_directory(sessions))
         {
             // This is a bounded rollback of names created by this call.  It
             // does not inspect or recursively remove arbitrary content.
-            let _ = unlink_at(directory_fd(&session), NORMALIZED_DIRECTORY_NAME, true);
             let _ = unlink_at(directory_fd(&session), SESSION_STATE_NAME, false);
             let _ = unlink_at(directory_fd(&session), ".session-marker", false);
             let _ = unlink_at(sessions_fd(sessions), session_name, true);
@@ -2057,16 +2053,17 @@ mod tests {
 
         let id = "ses_00000000000000000000000000000008";
         storage.create_session(id, 1).unwrap();
-        assert!(moved
+        assert!(moved.join(ANALYSIS_SESSIONS_DIRECTORY).join(id).is_dir());
+        assert!(!moved
             .join(ANALYSIS_SESSIONS_DIRECTORY)
             .join(id)
             .join(NORMALIZED_DIRECTORY_NAME)
-            .is_dir());
+            .exists());
         assert!(!sessions.join(id).exists());
         assert_eq!(
             storage.cleanup_session(id),
             CleanupOutcome::Complete {
-                removed_entry_count: 4
+                removed_entry_count: 3
             }
         );
 

@@ -600,6 +600,28 @@ def _run_clean_user_smoke(
             time.sleep(0.1)
         if not selection_marker.is_file():
             raise RuntimeError("PACKAGED_SELECTION_SMOKE_FAILED")
+        required_selection_markers = (
+            "selection-smoke-cancel-available",
+            "selection-smoke-cancel-clicked",
+            "selection-smoke-cancelled-event",
+            "selection-smoke-cancelled-ready",
+            "selection-smoke-host-cancelling",
+            "selection-smoke-retry-start-clicked",
+            "selection-smoke-worker-started",
+            "selection-smoke-worker-prepared",
+            "selection-smoke-worker-load-accepted",
+            "selection-smoke-worker-dashboard-model",
+            "selection-smoke-worker-result-ready",
+            "selection-smoke-dashboard-ready",
+        )
+        marker_root = selection_root / "isolated-temp"
+        missing_markers = [
+            marker
+            for marker in required_selection_markers
+            if not (marker_root / marker).is_file()
+        ]
+        if missing_markers:
+            raise RuntimeError("PACKAGED_SELECTION_SMOKE_FAILED")
         selection_host.wait(timeout=20)
     except subprocess.TimeoutExpired:
         pass
@@ -630,6 +652,8 @@ def _run_clean_user_smoke(
         "sidecarHandshake": "passed",
         "syntheticPreprocessing": "passed",
         "packagedVerticalSmoke": "passed",
+        "packagedCancellationSmoke": "passed",
+        "packagedWorkerTransportSmoke": "passed",
         "networkBlocked": "passed",
         "selectionCommandResponse": "passed",
         "annualCount": 1,

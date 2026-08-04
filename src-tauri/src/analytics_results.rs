@@ -173,6 +173,12 @@ impl ResultRegistry {
         let Some(entry) = inner.entries.get_mut(key) else {
             return Ok(());
         };
+        // A dataset context is registered before the renderer prepares its
+        // first Worker operation.  Cancellation is intentionally idempotent
+        // in that interval and must not erase the context that prepare uses.
+        if !entry.pending {
+            return Ok(());
+        }
         revoke_export_locked_mut(entry);
         entry.pending = false;
         if entry.ready.is_none() && entry.active_export.is_none() {
@@ -691,6 +697,18 @@ mod tests {
             },
             initiator_counts: [0, 0, 0],
         }
+    }
+
+    #[test]
+    fn cancelling_before_worker_prepare_preserves_dataset_context() {
+        let registry = ResultRegistry::default();
+        let key = key();
+        registry.register_context(key.clone(), context()).unwrap();
+        registry.cancel_pending(&key).unwrap();
+        assert_eq!(registry.dataset_id_for(&key), Some(context().dataset_id));
+        registry.begin_pending(key.clone()).unwrap();
+        registry.cancel_pending(&key).unwrap();
+        assert_eq!(registry.entry_count(), 0);
     }
 
     fn empty_reply() -> crate::export_schema::ReplyStatsInput {

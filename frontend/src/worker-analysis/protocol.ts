@@ -73,6 +73,31 @@ export type WorkerFailureCode =
   | "NO_ACCEPTED_DATASET"
   | "STALE_OPERATION";
 
+export type DesktopTransportCommand =
+  | "open_dataset_stream"
+  | "receive_dataset_chunk"
+  | "complete_dataset_stream"
+  | "cancel_dataset_stream"
+  | "close_dataset_stream"
+  | "commit_worker_result";
+
+/** Internal Worker-to-host bridge messages. They carry opaque capabilities or
+ * host-owned aggregate values only; paths and raw source bytes are not part
+ * of this protocol. */
+export interface DesktopTransportRequest {
+  readonly type: "desktop-transport-request";
+  readonly requestId: number;
+  readonly command: DesktopTransportCommand;
+  readonly args: { readonly request: unknown };
+}
+
+export interface DesktopTransportResponse {
+  readonly type: "desktop-transport-response";
+  readonly requestId: number;
+  readonly accepted: boolean;
+  readonly value?: unknown;
+}
+
 export interface TokenizerSettings {
   readonly minimumTokenLength: number;
   readonly additionalStopWords: readonly string[];

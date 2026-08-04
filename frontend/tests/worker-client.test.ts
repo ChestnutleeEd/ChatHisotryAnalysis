@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import { invoke } from "@tauri-apps/api/core";
+
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import {
   AnalysisWorkerClient,
@@ -79,6 +82,46 @@ class FakeWorker implements WorkerPort {
 }
 
 describe("analysis Worker client lifecycle", () => {
+  it("bridges only an allow-listed opaque desktop request through Tauri", async () => {
+    const tauriInvoke = vi.mocked(invoke);
+    tauriInvoke.mockReset();
+    tauriInvoke.mockResolvedValueOnce({ accepted: true });
+    const worker = new FakeWorker();
+    const client = new AnalysisWorkerClient(() => worker);
+    const pending = client.loadDataset([]);
+
+    worker.onmessage?.({
+      data: {
+        type: "desktop-transport-request",
+        requestId: 1,
+        command: "open_dataset_stream",
+        args: {
+          request: {
+            protocolVersion: "chat-history-analysis.desktop-ipc.v1",
+            sessionId: "ses_00000000000000000000000000000001",
+            generation: 41,
+            datasetId: "dat_00000000000000000000000000000001",
+          },
+        },
+      },
+    } as unknown as MessageEvent<WorkerResponse>);
+
+    await vi.waitFor(() => {
+      expect(worker.messages.at(-1)).toMatchObject({
+        type: "desktop-transport-response",
+        requestId: 1,
+        accepted: true,
+        value: { accepted: true },
+      });
+    });
+    expect(tauriInvoke).toHaveBeenCalledWith(
+      "open_dataset_stream",
+      expect.objectContaining({ request: expect.any(Object) }),
+    );
+    client.dispose();
+    await expect(pending).rejects.toBeInstanceOf(WorkerClientError);
+  });
+
   it("reports Worker creation failure without a main-thread fallback", async () => {
     const factory = vi.fn(() => {
       throw new Error("sensitive detail");

@@ -857,7 +857,7 @@ impl DatasetTransportState {
         let memory = Arc::new(Semaphore::new(MAX_IN_FLIGHT_BYTES));
         let manifest_for_producer = Arc::clone(&manifest);
         let chunks_for_producer = Arc::clone(&chunks);
-        let producer = tokio::spawn(async move {
+        let producer_task = async move {
             let manifest_size = manifest_for_producer.len();
             if !send_frame(
                 &sender,
@@ -903,8 +903,16 @@ impl DatasetTransportState {
                 Vec::new,
             )
             .await;
-        });
-        let abort_handle = producer.abort_handle();
+        };
+        // Tauri command handlers are synchronous on the macOS main thread;
+        // use the global Tauri runtime there, while retaining the caller's
+        // current runtime in async tests and async host callers.
+        let abort_handle = match tokio::runtime::Handle::try_current() {
+            Ok(handle) => handle.spawn(producer_task).abort_handle(),
+            Err(_) => tauri::async_runtime::spawn(producer_task)
+                .inner()
+                .abort_handle(),
+        };
         registry.insert(
             key.clone(),
             Arc::new(ActiveStream {

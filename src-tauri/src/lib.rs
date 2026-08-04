@@ -99,7 +99,10 @@ pub fn run() {
             if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) {
                 let _ = webview.eval(
                     r#"(() => {
+                      window.__CHAT_HISTORY_ANALYSIS_SYNTHETIC_SMOKE__ = true;
                       const button = (label) => Array.from(document.querySelectorAll("button")).find((candidate) => candidate.textContent?.includes(label));
+                      const failureCodes = ["SIDECAR_UNAVAILABLE", "SIDECAR_VERIFICATION_FAILED", "SIDECAR_SPAWN_FAILED", "SIDECAR_START_FAILED", "SIDECAR_HANDSHAKE_TIMEOUT", "PREPROCESSING_STALLED", "SIDECAR_PROTOCOL_FAILED", "SIDECAR_EXITED_UNEXPECTEDLY", "SIDECAR_PROTOCOL_INVALID", "SIDECAR_CRASHED", "DATASET_HANDOFF_INVALID", "DATASET_TRANSPORT_INVALID", "WORKER_RUNTIME_FAILED", "WORKER_TIMEOUT", "INVALID_REQUEST", "INVALID_STATE"];
+                      const visibleFailureCode = () => failureCodes.find((code) => document.body.textContent?.includes(code));
                       const waitFor = (predicate, deadline = Date.now() + 120000) => new Promise((resolve, reject) => {
                         const tick = () => {
                           if (predicate()) { resolve(true); return; }
@@ -109,22 +112,50 @@ pub fn run() {
                         tick();
                       });
                       (async () => {
+                        await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "page-loaded" });
                         const onboarding = button("继续到文件选择");
                         if (onboarding !== undefined) onboarding.click();
                         await waitFor(() => button("选择年度源") !== undefined);
+                        await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "onboarding-ready" });
                         button("选择年度源")?.click();
                         await waitFor(() => {
                           const count = document.body.textContent?.includes("年度源：1 个") === true;
                           const start = button("开始分析");
                           return count && start !== undefined && !start.disabled;
                         });
+                        await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "selection-ready" });
+                        await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "resolution" });
                         button("开始分析")?.click();
-                        await waitFor(() => document.querySelector(".dashboard-shell") !== null);
+                        await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "start-clicked" });
+                        await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: document.body.textContent?.includes("正在验证、合并、排序和去重") === true || document.body.textContent?.includes("正在验证并整理源文件") === true || document.body.textContent?.includes("正在等待本地预处理响应") === true ? "start-status-visible" : "start-status-missing" });
+                        await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_host_state");
+                        await waitFor(() => {
+                          const cancel = button("取消");
+                          return cancel !== undefined && !cancel.disabled;
+                        });
+                        await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "cancel-available" });
+                        button("取消")?.click();
+                        await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "cancel-clicked" });
+                        await waitFor(() => {
+                          const start = button("开始分析");
+                          return start !== undefined && !start.disabled;
+                        });
+                        await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "cancelled-ready" });
+                        button("开始分析")?.click();
+                        await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "retry-start-clicked" });
+                        await waitFor(() => document.querySelector(".dashboard-shell") !== null || visibleFailureCode() !== undefined || document.body.textContent?.includes("本地统计未完成") === true);
+                        const failureCode = visibleFailureCode();
+                        if (document.querySelector(".dashboard-shell") === null) {
+                          const checkpoint = failureCode ?? (document.body.textContent?.includes("本地统计未完成") === true ? "worker-error-visible" : "error");
+                          await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint });
+                          throw new Error("selection smoke workflow failed");
+                        }
+                        await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "dashboard-ready" });
                         await window.__TAURI_INTERNALS__.invoke("record_selection_smoke");
                         button("退出应用")?.click();
                         await waitFor(() => button("退出并清理") !== undefined);
                         button("退出并清理")?.click();
-                      })().catch(() => undefined);
+                      })().catch(() => window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "error" }).catch(() => undefined));
                     })()"#,
                 );
             }
@@ -134,6 +165,8 @@ pub fn run() {
         ipc::select_annual_sources,
         ipc::select_verification_sources,
         ipc::record_selection_smoke,
+        ipc::record_selection_smoke_checkpoint,
+        ipc::record_selection_smoke_host_state,
         ipc::start_analysis,
         ipc::cancel_analysis,
         ipc::get_analysis_status,

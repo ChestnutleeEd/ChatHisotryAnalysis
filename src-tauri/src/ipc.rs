@@ -2950,6 +2950,12 @@ fn handle_watched_session(
                     &snapshot.session_id,
                     snapshot.generation,
                 );
+                // The IPC registry retains the terminal snapshot for status
+                // recovery, while the supervisor must release its live slot
+                // before a second analysis can start.
+                let _ = core
+                    .supervisor
+                    .discard(window.label(), &session_id, generation);
             }
             if reason != "user" {
                 let _ = core.publish_closed(
@@ -3181,6 +3187,144 @@ pub fn record_selection_smoke(window: tauri::WebviewWindow) -> Result<(), IpcErr
         std::thread::sleep(std::time::Duration::from_secs(10));
         std::process::exit(0);
     });
+    Ok(())
+}
+
+/// Test-only checkpoint sink for the packaged synthetic vertical smoke.  The
+/// accepted values are a fixed allowlist so this command cannot be used to
+/// write renderer-controlled paths or content. Production builds do not
+/// compile this command.
+#[cfg(feature = "synthetic-dialog-adapter")]
+#[tauri::command]
+pub fn record_selection_smoke_checkpoint(
+    window: tauri::WebviewWindow,
+    checkpoint: String,
+) -> Result<(), IpcError> {
+    if !crate::security::trusted_main_window_label(window.label()) {
+        return Err(IpcError::with_code(None, FailureCode::WindowNotAuthorized));
+    }
+    let filename = if checkpoint == "resolution" {
+        match window.app_handle().path().resource_dir() {
+            Err(_) => "selection-smoke-resolution-resource-dir-failed",
+            Ok(resource_directory) => {
+                match crate::session_supervisor::SidecarResolution::packaged(&resource_directory) {
+                    Ok(_) => "selection-smoke-resolution-passed",
+                    Err(error) => match error.code {
+                        crate::session_supervisor::SupervisorErrorCode::SidecarUnavailable => {
+                            "selection-smoke-resolution-SIDECAR_UNAVAILABLE"
+                        }
+                        crate::session_supervisor::SupervisorErrorCode::SidecarVerificationFailed => {
+                            "selection-smoke-resolution-SIDECAR_VERIFICATION_FAILED"
+                        }
+                        crate::session_supervisor::SupervisorErrorCode::SidecarStartFailed => {
+                            "selection-smoke-resolution-SIDECAR_START_FAILED"
+                        }
+                        _ => "selection-smoke-resolution-other-failed",
+                    },
+                }
+            }
+        }
+    } else {
+        match checkpoint.as_str() {
+            "page-loaded" => "selection-smoke-page-loaded",
+            "onboarding-ready" => "selection-smoke-onboarding-ready",
+            "selection-ready" => "selection-smoke-selection-ready",
+            "start-clicked" => "selection-smoke-start-clicked",
+            "start-status-visible" => "selection-smoke-start-status-visible",
+            "start-status-missing" => "selection-smoke-start-status-missing",
+            "cancel-available" => "selection-smoke-cancel-available",
+            "cancel-clicked" => "selection-smoke-cancel-clicked",
+            "cancelled-event" => "selection-smoke-cancelled-event",
+            "cancelled-ready" => "selection-smoke-cancelled-ready",
+            "retry-start-clicked" => "selection-smoke-retry-start-clicked",
+            "worker-error-visible" => "selection-smoke-worker-error-visible",
+            "worker-started" => "selection-smoke-worker-started",
+            "worker-prepared" => "selection-smoke-worker-prepared",
+            "worker-load-accepted" => "selection-smoke-worker-load-accepted",
+            "worker-dashboard-model" => "selection-smoke-worker-dashboard-model",
+            "worker-result-ready" => "selection-smoke-worker-result-ready",
+            "dashboard-ready" => "selection-smoke-dashboard-ready",
+            "error" => "selection-smoke-error",
+            "SIDECAR_UNAVAILABLE" => "selection-smoke-failure-SIDECAR_UNAVAILABLE",
+            "SIDECAR_VERIFICATION_FAILED" => "selection-smoke-failure-SIDECAR_VERIFICATION_FAILED",
+            "SIDECAR_SPAWN_FAILED" => "selection-smoke-failure-SIDECAR_SPAWN_FAILED",
+            "SIDECAR_START_FAILED" => "selection-smoke-failure-SIDECAR_START_FAILED",
+            "SIDECAR_HANDSHAKE_TIMEOUT" => "selection-smoke-failure-SIDECAR_HANDSHAKE_TIMEOUT",
+            "PREPROCESSING_STALLED" => "selection-smoke-failure-PREPROCESSING_STALLED",
+            "SIDECAR_PROTOCOL_FAILED" => "selection-smoke-failure-SIDECAR_PROTOCOL_FAILED",
+            "SIDECAR_EXITED_UNEXPECTEDLY" => "selection-smoke-failure-SIDECAR_EXITED_UNEXPECTEDLY",
+            "SIDECAR_PROTOCOL_INVALID" => "selection-smoke-failure-SIDECAR_PROTOCOL_INVALID",
+            "SIDECAR_CRASHED" => "selection-smoke-failure-SIDECAR_CRASHED",
+            "DATASET_HANDOFF_INVALID" => "selection-smoke-failure-DATASET_HANDOFF_INVALID",
+            "DATASET_TRANSPORT_INVALID" => "selection-smoke-failure-DATASET_TRANSPORT_INVALID",
+            "WORKER_RUNTIME_FAILED" => "selection-smoke-failure-WORKER_RUNTIME_FAILED",
+            "WORKER_TIMEOUT" => "selection-smoke-failure-WORKER_TIMEOUT",
+            "INVALID_REQUEST" => "selection-smoke-failure-INVALID_REQUEST",
+            "INVALID_STATE" => "selection-smoke-failure-INVALID_STATE",
+            _ => return Err(IpcError::with_code(None, FailureCode::InvalidState)),
+        }
+    };
+    let root = std::env::var_os("CHAT_HISTORY_ANALYSIS_SYNTHETIC_ROOT")
+        .map(std::path::PathBuf::from)
+        .ok_or_else(|| IpcError::with_code(None, FailureCode::InvalidState))?;
+    std::fs::create_dir_all(&root)
+        .map_err(|_| IpcError::with_code(None, FailureCode::InvalidState))?;
+    std::fs::write(root.join(filename), b"passed\n")
+        .map_err(|_| IpcError::with_code(None, FailureCode::InvalidState))?;
+    Ok(())
+}
+
+/// Test-only content-free snapshot sink for the packaged synthetic smoke.
+/// It records only the host lifecycle state, never identifiers or private
+/// filesystem data. Production builds do not compile this command.
+#[cfg(feature = "synthetic-dialog-adapter")]
+#[tauri::command]
+pub fn record_selection_smoke_host_state(
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, IpcCoreState>,
+) -> Result<(), IpcError> {
+    if !crate::security::trusted_main_window_label(window.label()) {
+        return Err(IpcError::with_code(None, FailureCode::WindowNotAuthorized));
+    }
+    let filename = match state.session_supervisor().active_snapshot() {
+        None => "selection-smoke-host-none".to_string(),
+        Some(snapshot) => match snapshot.terminal {
+            Some(crate::session_supervisor::SessionTerminal::Failed(reason)) => {
+                if reason.len() <= 64
+                    && reason.bytes().all(|byte| {
+                        byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_'
+                    })
+                {
+                    format!("selection-smoke-host-failure-{reason}")
+                } else {
+                    "selection-smoke-host-failure-other".to_string()
+                }
+            }
+            Some(crate::session_supervisor::SessionTerminal::Complete(_)) => {
+                "selection-smoke-host-complete".to_string()
+            }
+            Some(crate::session_supervisor::SessionTerminal::Cancelled) => {
+                "selection-smoke-host-cancelled".to_string()
+            }
+            None => match snapshot.state.as_str() {
+                "preprocessing" => "selection-smoke-host-preprocessing".to_string(),
+                "handoff" => "selection-smoke-host-handoff".to_string(),
+                "analyzing" => "selection-smoke-host-analyzing".to_string(),
+                "complete" => "selection-smoke-host-complete".to_string(),
+                "failed" => "selection-smoke-host-failed".to_string(),
+                "cancelling" => "selection-smoke-host-cancelling".to_string(),
+                "closing" => "selection-smoke-host-closing".to_string(),
+                _ => "selection-smoke-host-other".to_string(),
+            },
+        },
+    };
+    let root = std::env::var_os("CHAT_HISTORY_ANALYSIS_SYNTHETIC_ROOT")
+        .map(std::path::PathBuf::from)
+        .ok_or_else(|| IpcError::with_code(None, FailureCode::InvalidState))?;
+    std::fs::create_dir_all(&root)
+        .map_err(|_| IpcError::with_code(None, FailureCode::InvalidState))?;
+    std::fs::write(root.join(filename), b"passed\n")
+        .map_err(|_| IpcError::with_code(None, FailureCode::InvalidState))?;
     Ok(())
 }
 

@@ -2,6 +2,8 @@ import initJieba, { cut } from "jieba-wasm/web";
 
 import stopWordAsset from "./assets/stopwords-zh-en-v1.txt?raw";
 import type {
+  DesktopTransportRequest,
+  DesktopTransportResponse,
   WorkerRequest,
   WorkerResponse,
   WorkerOperationCapability,
@@ -21,8 +23,8 @@ import { buildRendererAggregateInput } from "../desktop/export-contract";
 import { isResultId } from "../desktop/ipc-contract";
 
 interface WorkerScope {
-  onmessage: ((event: MessageEvent<WorkerRequest>) => void) | null;
-  postMessage(message: WorkerResponse): void;
+  onmessage: ((event: MessageEvent<WorkerRequest | DesktopTransportResponse>) => void) | null;
+  postMessage(message: WorkerResponse | DesktopTransportRequest): void;
   close(): void;
 }
 
@@ -42,38 +44,39 @@ const runtime = new AnalysisWorkerRuntime(
   },
 );
 
-interface TauriWorkerInternals {
-  invoke<T>(command: string, args: unknown): Promise<T>;
-}
+let nextDesktopTransportRequestId = 1;
+const pendingDesktopTransport = new Map<
+  number,
+  { readonly resolve: (value: unknown) => void; readonly reject: () => void }
+>();
 
-function tauriWorkerInternals(): TauriWorkerInternals {
-  const internals = (globalThis as typeof globalThis & {
-    readonly __TAURI_INTERNALS__?: TauriWorkerInternals;
-  }).__TAURI_INTERNALS__;
-  if (internals === undefined) {
-    throw new Error("WORKER_CAPABILITY_UNAVAILABLE");
-  }
-  return internals;
+function desktopTransportInvoke<T>(
+  command: DesktopTransportRequest["command"],
+  args: { readonly request: unknown },
+): Promise<T> {
+  const requestId = nextDesktopTransportRequestId;
+  nextDesktopTransportRequestId += 1;
+  return new Promise<T>((resolve, reject) => {
+    pendingDesktopTransport.set(requestId, {
+      resolve: resolve as (value: unknown) => void,
+      reject: () => reject(new Error("DESKTOP_TRANSPORT_UNAVAILABLE")),
+    });
+    workerScope.postMessage({
+      type: "desktop-transport-request",
+      requestId,
+      command,
+      args,
+    });
+  });
 }
 
 function tauriDatasetInvoker(): DatasetTransportInvoker {
-  const internals = (globalThis as typeof globalThis & {
-    readonly __TAURI_INTERNALS__?: TauriWorkerInternals;
-  }).__TAURI_INTERNALS__;
-  if (internals === undefined) {
-    throw new Error("DATASET_TRANSPORT_UNAVAILABLE");
-  }
   return {
     invoke<T>(
-      command:
-        | "open_dataset_stream"
-        | "receive_dataset_chunk"
-        | "complete_dataset_stream"
-        | "cancel_dataset_stream"
-        | "close_dataset_stream",
+      command: DesktopTransportRequest["command"],
       args: { readonly request: unknown },
     ) {
-      return internals.invoke<T>(command, args);
+      return desktopTransportInvoke<T>(command, args);
     },
   };
 }
@@ -82,7 +85,7 @@ async function commitDesktopWorkerResult(
   capability: WorkerOperationCapability,
   result: CanonicalAnalysisResult,
 ): Promise<string> {
-  const value = await tauriWorkerInternals().invoke<unknown>(
+  const value = await desktopTransportInvoke<unknown>(
     "commit_worker_result",
     {
       request: {
@@ -121,7 +124,25 @@ async function createDesktopDatasetSource(
   ).source;
 }
 
-workerScope.onmessage = createAnalysisWorkerHandler(workerScope, runtime, {
+const workerHandler = createAnalysisWorkerHandler(workerScope, runtime, {
   createDesktopDatasetSource,
   commitDesktopWorkerResult,
 });
+
+workerScope.onmessage = (event): void => {
+  const message = event.data;
+  if (message.type === "desktop-transport-response") {
+    const pending = pendingDesktopTransport.get(message.requestId);
+    if (pending === undefined) {
+      return;
+    }
+    pendingDesktopTransport.delete(message.requestId);
+    if (message.accepted) {
+      pending.resolve(message.value);
+    } else {
+      pending.reject();
+    }
+    return;
+  }
+  workerHandler(event as MessageEvent<WorkerRequest>);
+};

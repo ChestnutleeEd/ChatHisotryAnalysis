@@ -1,3 +1,5 @@
+import { invoke } from "@tauri-apps/api/core";
+
 import type {
   AcceptedDatasetResult,
   AnalysisResult,
@@ -7,6 +9,7 @@ import type {
   WorkerProgress,
   WorkerRequest,
   WorkerResponse,
+  DesktopTransportRequest,
   DesktopDatasetSourceRequest,
   WorkerOperationCapability,
 } from "./protocol";
@@ -51,6 +54,30 @@ interface PendingOperation<Result> {
   readonly reject: (error: Error) => void;
   readonly onProgress?: (progress: WorkerProgress) => void;
   readonly timeout: ReturnType<typeof globalThis.setTimeout>;
+}
+
+const DESKTOP_TRANSPORT_COMMANDS: ReadonlySet<DesktopTransportRequest["command"]> = new Set([
+  "open_dataset_stream",
+  "receive_dataset_chunk",
+  "complete_dataset_stream",
+  "cancel_dataset_stream",
+  "close_dataset_stream",
+  "commit_worker_result",
+]);
+
+function isDesktopTransportRequest(
+  value: DesktopTransportRequest,
+): boolean {
+  return (
+    Number.isSafeInteger(value.requestId) &&
+    value.requestId > 0 &&
+    DESKTOP_TRANSPORT_COMMANDS.has(value.command) &&
+    value.args !== null &&
+    typeof value.args === "object" &&
+    !Array.isArray(value.args) &&
+    Object.keys(value.args).length === 1 &&
+    Object.hasOwn(value.args, "request")
+  );
 }
 
 function defaultWorkerFactory(): WorkerPort {
@@ -323,30 +350,41 @@ export class AnalysisWorkerClient {
     });
   }
 
-  private ensureWorker(): WorkerPort {
-    if (this.worker !== undefined) {
-      return this.worker;
+  private async handleDesktopTransportRequest(
+    request: DesktopTransportRequest,
+  ): Promise<void> {
+    const worker = this.worker;
+    if (worker === undefined || !isDesktopTransportRequest(request)) {
+      return;
     }
-    const worker = this.workerFactory();
-    worker.onmessage = (event): void => {
-      this.handleMessage(event.data);
-    };
-    worker.onerror = (event): void => {
-      event.preventDefault?.();
-      this.terminateWorker(
-        new WorkerClientError("WORKER_RUNTIME_FAILED"),
-      );
-    };
-    worker.onmessageerror = (): void => {
-      this.terminateWorker(
-        new WorkerClientError("WORKER_RUNTIME_FAILED"),
-      );
-    };
-    this.worker = worker;
-    return worker;
+    try {
+      const value = await invoke<unknown>(request.command, request.args);
+      worker.postMessage({
+        type: "desktop-transport-response",
+        requestId: request.requestId,
+        accepted: true,
+        value,
+      } as unknown as WorkerRequest);
+    } catch {
+      try {
+        worker.postMessage({
+          type: "desktop-transport-response",
+          requestId: request.requestId,
+          accepted: false,
+        } as unknown as WorkerRequest);
+      } catch {
+        // Worker termination is the lifecycle authority.
+      }
+    }
   }
 
-  private handleMessage(response: WorkerResponse): void {
+  private handleMessage(
+    response: WorkerResponse | DesktopTransportRequest,
+  ): void {
+    if (response.type === "desktop-transport-request") {
+      void this.handleDesktopTransportRequest(response);
+      return;
+    }
     const operation = this.pending.get(response.operationId);
     if (
       operation !== undefined &&
@@ -406,6 +444,29 @@ export class AnalysisWorkerClient {
           } as AcceptedDatasetResult)
         : response.result;
     operation.resolve(resolved);
+  }
+
+  private ensureWorker(): WorkerPort {
+    if (this.worker !== undefined) {
+      return this.worker;
+    }
+    const worker = this.workerFactory();
+    worker.onmessage = (event): void => {
+      this.handleMessage(event.data as WorkerResponse | DesktopTransportRequest);
+    };
+    worker.onerror = (event): void => {
+      event.preventDefault?.();
+      this.terminateWorker(
+        new WorkerClientError("WORKER_RUNTIME_FAILED"),
+      );
+    };
+    worker.onmessageerror = (): void => {
+      this.terminateWorker(
+        new WorkerClientError("WORKER_RUNTIME_FAILED"),
+      );
+    };
+    this.worker = worker;
+    return worker;
   }
 
   private rejectOperation(operationId: number, error: Error): void {
