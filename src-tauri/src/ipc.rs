@@ -2008,8 +2008,13 @@ impl IpcCoreState {
             .registry
             .lock()
             .map_err(|_| FailureCode::InvalidState)?;
-        if registry.active.is_some() {
-            return Err(FailureCode::InvalidState);
+        if let Some(active) = registry.active.take() {
+            if active.terminal_outcome.is_some() && active.cleanup_status.is_some() {
+                registry.retained = Some(active);
+            } else {
+                registry.active = Some(active);
+                return Err(FailureCode::SessionBusy);
+            }
         }
         registry.active = Some(SessionRecord::new_with_operation(
             trusted_window_label,
@@ -2048,6 +2053,50 @@ impl IpcCoreState {
         }
         if active.closed {
             return Err(FailureCode::InvalidSession);
+        }
+        Ok(())
+    }
+
+    /// Retry is allowed to address the terminal generation that is either
+    /// still visible in the active record or already moved to the retained
+    /// terminal record by the idempotent finalizer.
+    pub fn validate_retry_session(
+        &self,
+        trusted_window_label: &str,
+        session_id: &str,
+        generation: u64,
+    ) -> Result<(), FailureCode> {
+        if !trusted_main_window_label(trusted_window_label) {
+            return Err(FailureCode::WindowNotAuthorized);
+        }
+        let registry = self
+            .registry
+            .lock()
+            .map_err(|_| FailureCode::InvalidState)?;
+        let record = registry
+            .active
+            .as_ref()
+            .filter(|record| {
+                record.window_label == trusted_window_label
+                    && record.session_id == session_id
+                    && record.generation == generation
+            })
+            .or_else(|| {
+                registry.retained.as_ref().filter(|record| {
+                    record.window_label == trusted_window_label
+                        && record.session_id == session_id
+                        && record.generation == generation
+                })
+            })
+            .ok_or(FailureCode::InvalidSession)?;
+        if record.closed {
+            return Err(FailureCode::InvalidSession);
+        }
+        if record.generation != generation {
+            return Err(FailureCode::StaleGeneration);
+        }
+        if record.terminal_outcome != Some(TerminalOutcome::Failure) {
+            return Err(FailureCode::InvalidState);
         }
         Ok(())
     }
@@ -2200,12 +2249,46 @@ impl IpcCoreState {
                 && active.session_id == session_id
                 && active.generation == generation
                 && active.terminal_outcome.is_some()
-                && active.cleanup_status.as_deref() == Some("complete")
+                && active.cleanup_status.is_some()
         });
         if should_release {
             registry.retained = registry.active.take();
         }
         Ok(())
+    }
+
+    /// Last-resort fence for a renderer-disconnect/error path where a
+    /// terminal event cannot be emitted. It deliberately records cleanup as
+    /// required so the generation is recoverable without keeping `active` as
+    /// a permanent busy slot.
+    pub fn force_release_failed_session(
+        &self,
+        trusted_window_label: &str,
+        session_id: &str,
+        generation: u64,
+    ) {
+        if !trusted_main_window_label(trusted_window_label) {
+            return;
+        }
+        let Ok(mut registry) = self.registry.lock() else {
+            return;
+        };
+        let should_release = registry.active.as_ref().is_some_and(|active| {
+            active.window_label == trusted_window_label
+                && active.session_id == session_id
+                && active.generation == generation
+                && active.cleanup_status.is_none()
+        });
+        if should_release {
+            if let Some(active) = registry.active.as_mut() {
+                if active.terminal_outcome.is_none() {
+                    active.state = "failed".to_string();
+                    active.terminal_outcome = Some(TerminalOutcome::Failure);
+                }
+                active.cleanup_status = Some("required".to_string());
+            }
+            registry.retained = registry.active.take();
+        }
     }
 
     pub fn accept_event(
@@ -2796,6 +2879,52 @@ fn phase_for_sidecar(value: &str) -> &'static str {
     }
 }
 
+fn release_terminal_snapshot(
+    core: &IpcCoreState,
+    window: &tauri::WebviewWindow,
+    snapshot: &crate::session_supervisor::SessionSnapshot,
+) {
+    let _ = core.release_terminal_session(
+        window.label(),
+        &snapshot.operation_id,
+        &snapshot.session_id,
+        snapshot.generation,
+    );
+}
+
+fn publish_unexpected_terminal(
+    core: &IpcCoreState,
+    window: &tauri::WebviewWindow,
+    snapshot: Option<&crate::session_supervisor::SessionSnapshot>,
+    session_id: &str,
+    generation: u64,
+    code: FailureCode,
+) {
+    let Some(snapshot) = snapshot else {
+        let _ = core.publish_failure(window, code.clone(), retryable_failure(&code));
+        core.force_release_failed_session(window.label(), session_id, generation);
+        return;
+    };
+    match snapshot.terminal {
+        Some(crate::session_supervisor::SessionTerminal::Complete(_)) => return,
+        Some(crate::session_supervisor::SessionTerminal::Cancelled) => {
+            let reason = match snapshot.cancel_reason {
+                Some(crate::session_supervisor::CancelReason::Replacement) => "replacement",
+                Some(crate::session_supervisor::CancelReason::ApplicationClose) => {
+                    "application-close"
+                }
+                Some(crate::session_supervisor::CancelReason::User) | None => "user",
+            };
+            let _ = core.publish_cancelled(window, reason);
+        }
+        Some(crate::session_supervisor::SessionTerminal::Failed(_)) | None => {
+            let _ = core.publish_failure(window, code.clone(), retryable_failure(&code));
+        }
+    }
+    publish_snapshot_cleanup(core, window, snapshot);
+    release_terminal_snapshot(core, window, snapshot);
+}
+
 fn handle_watched_session(
     core: IpcCoreState,
     window: tauri::WebviewWindow,
@@ -2812,12 +2941,20 @@ fn handle_watched_session(
         Ok(snapshot) => snapshot,
         Err(error) => {
             let code = map_supervisor_code(error.code);
+            let finalized = core
+                .supervisor
+                .finalize_unexpected(window.label(), &session_id, generation, error.code)
+                .ok();
             transport.close_session(window.label(), &session_id, generation);
             core.clear_result(window.label(), &session_id, generation);
-            let _ = core.publish_failure(&window, code.clone(), retryable_failure(&code));
-            if let Some(snapshot) = core.supervisor.active_snapshot() {
-                publish_snapshot_cleanup(&core, &window, &snapshot);
-            }
+            publish_unexpected_terminal(
+                &core,
+                &window,
+                finalized.as_ref(),
+                &session_id,
+                generation,
+                code,
+            );
             return;
         }
     };
@@ -2851,6 +2988,7 @@ fn handle_watched_session(
                         code_as_reason(&code),
                     ) {
                         publish_snapshot_cleanup(&core, &window, &cleaned);
+                        release_terminal_snapshot(&core, &window, &cleaned);
                     }
                     return;
                 }
@@ -2876,6 +3014,7 @@ fn handle_watched_session(
                         "DATASET_TRANSPORT_INVALID",
                     ) {
                         publish_snapshot_cleanup(&core, &window, &cleaned);
+                        release_terminal_snapshot(&core, &window, &cleaned);
                     }
                     return;
                 }
@@ -2899,6 +3038,7 @@ fn handle_watched_session(
                     "EXPORT_SCHEMA_INVALID",
                 ) {
                     publish_snapshot_cleanup(&core, &window, &cleaned);
+                    release_terminal_snapshot(&core, &window, &cleaned);
                 }
                 return;
             };
@@ -2915,6 +3055,16 @@ fn handle_watched_session(
             {
                 transport.close_session(window.label(), &session_id, generation);
                 core.clear_result(window.label(), &session_id, generation);
+                let _ = core.publish_failure(&window, FailureCode::DatasetTransportInvalid, true);
+                if let Ok(cleaned) = core.supervisor.reject_handoff(
+                    window.label(),
+                    &session_id,
+                    generation,
+                    "DATASET_TRANSPORT_INVALID",
+                ) {
+                    publish_snapshot_cleanup(&core, &window, &cleaned);
+                    release_terminal_snapshot(&core, &window, &cleaned);
+                }
                 return;
             }
             let _ = core.publish_state(&window, "analyzing");
@@ -2925,6 +3075,7 @@ fn handle_watched_session(
             core.clear_result(window.label(), &session_id, generation);
             let _ = core.publish_failure(&window, code.clone(), retryable_failure(&code));
             publish_snapshot_cleanup(&core, &window, &snapshot);
+            release_terminal_snapshot(&core, &window, &snapshot);
         }
         Some(crate::session_supervisor::SessionTerminal::Cancelled) => {
             transport.close_session(window.label(), &session_id, generation);
@@ -2938,18 +3089,8 @@ fn handle_watched_session(
             };
             let _ = core.publish_cancelled(&window, reason);
             publish_snapshot_cleanup(&core, &window, &snapshot);
-            if reason == "user"
-                && matches!(
-                    snapshot.cleanup,
-                    Some(crate::session_supervisor::CleanupStatus::Complete { .. })
-                )
-            {
-                let _ = core.release_terminal_session(
-                    window.label(),
-                    &snapshot.operation_id,
-                    &snapshot.session_id,
-                    snapshot.generation,
-                );
+            if reason == "user" {
+                release_terminal_snapshot(&core, &window, &snapshot);
                 // The IPC registry retains the terminal snapshot for status
                 // recovery, while the supervisor must release its live slot
                 // before a second analysis can start.
@@ -2969,18 +3110,32 @@ fn handle_watched_session(
                         "cleanup-required"
                     },
                 );
+                release_terminal_snapshot(&core, &window, &snapshot);
                 let _ = core
                     .supervisor
                     .discard(window.label(), &session_id, generation);
             }
         }
         None => {
+            let finalized = core
+                .supervisor
+                .finalize_unexpected(
+                    window.label(),
+                    &session_id,
+                    generation,
+                    crate::session_supervisor::SupervisorErrorCode::SidecarCrashed,
+                )
+                .ok();
             core.clear_result(window.label(), &session_id, generation);
-            let _ = core.publish_failure(&window, FailureCode::SidecarCrashed, true);
             transport.close_session(window.label(), &session_id, generation);
-            if let Some(snapshot) = core.supervisor.active_snapshot() {
-                publish_snapshot_cleanup(&core, &window, &snapshot);
-            }
+            publish_unexpected_terminal(
+                &core,
+                &window,
+                finalized.as_ref(),
+                &session_id,
+                generation,
+                FailureCode::SidecarCrashed,
+            );
         }
     }
 }
@@ -2999,6 +3154,64 @@ fn publish_sidecar_progress(
         total,
         f64::from(progress.percentage),
     );
+}
+
+fn prepare_source_selection(
+    window: &tauri::WebviewWindow,
+    state: &IpcCoreState,
+) -> Result<(), IpcError> {
+    let active = state.supervisor.active_snapshot();
+    let retained = state.supervisor.retained_snapshot();
+    let Some(existing) = active.clone().or(retained.clone()) else {
+        return Ok(());
+    };
+    let registry_terminal = state.registry.lock().ok().and_then(|registry| {
+        registry
+            .active
+            .as_ref()
+            .filter(|record| {
+                record.session_id == existing.session_id && record.generation == existing.generation
+            })
+            .map(|record| (record.terminal_outcome, record.cleanup_status.is_some()))
+    });
+
+    // A failed generation is already terminal. Keep its host-owned input
+    // authority so a cancelled picker can still offer Retry; it is not an
+    // active slot and therefore cannot block a future start.
+    if active.is_none()
+        && matches!(
+            existing.terminal,
+            Some(crate::session_supervisor::SessionTerminal::Failed(_))
+        )
+    {
+        state.clear_result(window.label(), &existing.session_id, existing.generation);
+        if !registry_terminal.is_some_and(|(_, cleanup_seen)| cleanup_seen) {
+            publish_snapshot_cleanup(state, window, &existing);
+        }
+        release_terminal_snapshot(state, window, &existing);
+        return Ok(());
+    }
+
+    let cleaned = state
+        .supervisor
+        .prepare_replacement(window.label(), &existing.session_id, existing.generation)
+        .map_err(|error| IpcError::with_code(None, map_supervisor_code(error.code)))?;
+    window
+        .app_handle()
+        .state::<crate::dataset_transport::DatasetTransportState>()
+        .close_session(window.label(), &existing.session_id, existing.generation);
+    state.clear_result(window.label(), &existing.session_id, existing.generation);
+
+    // The old registry record is still active while these terminal events are
+    // accepted. Only then move it to the retained registry slot.
+    if registry_terminal.is_none_or(|(terminal, _)| terminal.is_none()) {
+        let _ = state.publish_cancelled(&window, "replacement");
+    }
+    if !registry_terminal.is_some_and(|(_, cleanup_seen)| cleanup_seen) {
+        publish_snapshot_cleanup(state, window, &cleaned);
+    }
+    release_terminal_snapshot(state, window, &cleaned);
+    Ok(())
 }
 
 fn start_session(
@@ -3031,18 +3244,28 @@ fn start_session(
         &snapshot.session_id,
         snapshot.generation,
     ) {
-        let _ = state
-            .supervisor
-            .discard(window.label(), &snapshot.session_id, snapshot.generation);
+        if let Ok(cleaned) =
+            state
+                .supervisor
+                .discard(window.label(), &snapshot.session_id, snapshot.generation)
+        {
+            publish_snapshot_cleanup(state, window, &cleaned);
+            release_terminal_snapshot(state, window, &cleaned);
+        }
         return Err(IpcError::with_code(None, code));
     }
     if let Err(code) = state
         .publish_state(window, "ready")
         .and_then(|_| state.publish_state(window, "preprocessing"))
     {
-        let _ = state
-            .supervisor
-            .discard(window.label(), &snapshot.session_id, snapshot.generation);
+        if let Ok(cleaned) =
+            state
+                .supervisor
+                .discard(window.label(), &snapshot.session_id, snapshot.generation)
+        {
+            publish_snapshot_cleanup(state, window, &cleaned);
+            release_terminal_snapshot(state, window, &cleaned);
+        }
         return Err(IpcError::with_code(None, code));
     }
     let core = state.clone();
@@ -3075,9 +3298,13 @@ fn start_session(
             );
         },
     ) {
-        let _ = state
+        if let Ok(cleaned) = state
             .supervisor
-            .discard(window.label(), &session_id, generation);
+            .discard(window.label(), &session_id, generation)
+        {
+            publish_snapshot_cleanup(state, window, &cleaned);
+            release_terminal_snapshot(state, window, &cleaned);
+        }
         return Err(IpcError::with_code(None, map_supervisor_code(error.code)));
     }
     Ok(snapshot)
@@ -3094,6 +3321,10 @@ pub fn select_annual_sources(
         return Err(IpcError::invalid(Some(request_id)));
     }
     retry_startup_recovery(&window, state.inner()).map_err(|mut error| {
+        error.request_id = Some(request_id.clone());
+        error
+    })?;
+    prepare_source_selection(&window, state.inner()).map_err(|mut error| {
         error.request_id = Some(request_id.clone());
         error
     })?;
@@ -3135,6 +3366,10 @@ pub fn select_verification_sources(
         return Err(IpcError::invalid(Some(request_id)));
     }
     retry_startup_recovery(&window, state.inner()).map_err(|mut error| {
+        error.request_id = Some(request_id.clone());
+        error
+    })?;
+    prepare_source_selection(&window, state.inner()).map_err(|mut error| {
         error.request_id = Some(request_id.clone());
         error
     })?;
@@ -3423,7 +3658,7 @@ pub fn retry_analysis(
         .and_then(Value::as_u64)
         .unwrap_or(0);
     state
-        .validate_owned_session(window.label(), session_id, generation)
+        .validate_retry_session(window.label(), session_id, generation)
         .map_err(|code| IpcError::with_code(Some(request_id.clone()), code))?;
     let resolution = resolve_sidecar(&window)?;
     let snapshot = state
@@ -3438,18 +3673,28 @@ pub fn retry_analysis(
         &snapshot.session_id,
         snapshot.generation,
     ) {
-        let _ = state
-            .supervisor
-            .discard(window.label(), &snapshot.session_id, snapshot.generation);
+        if let Ok(cleaned) =
+            state
+                .supervisor
+                .discard(window.label(), &snapshot.session_id, snapshot.generation)
+        {
+            publish_snapshot_cleanup(state.inner(), &window, &cleaned);
+            release_terminal_snapshot(state.inner(), &window, &cleaned);
+        }
         return Err(IpcError::with_code(Some(request_id.clone()), code));
     }
     if let Err(code) = state
         .publish_state(&window, "ready")
         .and_then(|_| state.publish_state(&window, "preprocessing"))
     {
-        let _ = state
-            .supervisor
-            .discard(window.label(), &snapshot.session_id, snapshot.generation);
+        if let Ok(cleaned) =
+            state
+                .supervisor
+                .discard(window.label(), &snapshot.session_id, snapshot.generation)
+        {
+            publish_snapshot_cleanup(state.inner(), &window, &cleaned);
+            release_terminal_snapshot(state.inner(), &window, &cleaned);
+        }
         return Err(IpcError::with_code(Some(request_id.clone()), code));
     }
     let core = state.inner().clone();
@@ -3483,9 +3728,14 @@ pub fn retry_analysis(
             );
         },
     ) {
-        let _ = state
-            .supervisor
-            .discard(window.label(), &new_session_id, new_generation);
+        if let Ok(cleaned) =
+            state
+                .supervisor
+                .discard(window.label(), &new_session_id, new_generation)
+        {
+            publish_snapshot_cleanup(state.inner(), &window, &cleaned);
+            release_terminal_snapshot(state.inner(), &window, &cleaned);
+        }
         return Err(IpcError::with_code(
             Some(request_id.clone()),
             map_supervisor_code(error.code),

@@ -52,6 +52,7 @@ from chat_history_analysis.sidecar_protocol import (
     SidecarConfiguration,
     SidecarProtocolError,
     emit_failure,
+    emit_heartbeat,
     emit_progress,
     emit_result,
     encode_configuration,
@@ -754,6 +755,62 @@ class CanonicalDatasetPipelineTests(unittest.TestCase):
         self.assertEqual(result.duplicate_event_count, 2)
         self.assertEqual(result.eligible_text_count, 0)
 
+    def test_five_annual_sources_span_years_and_dedupe(self) -> None:
+        annual_sources = []
+        year_timestamps = [
+            1577836800,  # 2020-01-01
+            1577836800,  # duplicate of the first annual source
+            1640995200,  # 2022-01-01
+            1672531200,  # 2023-01-01
+            1704067200,  # 2024-01-01
+        ]
+        for ordinal, timestamp in enumerate(year_timestamps, start=1):
+            source = self.root / f"annual-{ordinal}.json"
+            write_export(
+                source,
+                [
+                    message(timestamp, OWNER, content="synthetic-owner"),
+                    message(timestamp + 1, PEER, content="synthetic-peer"),
+                ],
+            )
+            annual_sources.append(source)
+
+        cache = self.root / "multi-year-cache"
+        destination = ensure_desktop_session_root(cache) / "synthetic-multi-year-01"
+        inputs = preflight_desktop_inputs(
+            InputSelection(tuple(annual_sources), (), destination)
+        )
+        consumer = CanonicalEventStagingConsumer(inputs.output_directory)
+        try:
+            validation = validate_preflighted_inputs_v2(
+                inputs,
+                real_backend(),
+                canonical_event_consumer=consumer,
+            )
+            result = consumer.publish(validation)
+        except BaseException:
+            consumer.abort()
+            raise
+
+        verify_canonical_dataset_directory(destination)
+        minimum_timestamp = min(
+            descriptor.minimum_create_time for descriptor in validation.annual_sources
+        )
+        maximum_timestamp = max(
+            descriptor.maximum_create_time for descriptor in validation.annual_sources
+        )
+        self.assertEqual(len(validation.annual_sources), 5)
+        self.assertEqual(result.event_count, 8)
+        self.assertEqual(result.duplicate_event_count, 2)
+        self.assertEqual(
+            datetime.fromtimestamp(minimum_timestamp, tz=timezone.utc).date().isoformat(),
+            "2020-01-01",
+        )
+        self.assertEqual(
+            datetime.fromtimestamp(maximum_timestamp, tz=timezone.utc).date().isoformat(),
+            "2024-01-01",
+        )
+
 
 class DesktopPolicyAndProtocolTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -822,6 +879,7 @@ class DesktopPolicyAndProtocolTests(unittest.TestCase):
             read_configuration(BytesIO(encoded + b"extra"))
 
         output = StringIO()
+        emit_heartbeat(output, configuration)
         emit_progress(
             output,
             configuration,

@@ -260,9 +260,20 @@ fn main() {
     }
     if matches!(
         selected_mode.as_str(),
-        "success" | "delay" | "ignore-cancel" | "grandchild"
+        "success" | "delay" | "heartbeat-success" | "ignore-cancel" | "grandchild"
     ) {
         write_synthetic_dataset(&output_directory);
+    }
+    if selected_mode == "heartbeat-success" {
+        for _ in 0..16 {
+            emit(json!({
+                "protocolVersion": PROTOCOL,
+                "type": "heartbeat",
+                "sessionId": session_id,
+                "generation": generation
+            }));
+            thread::sleep(Duration::from_millis(25));
+        }
     }
     if selected_mode == "out-of-order" {
         emit(json!({

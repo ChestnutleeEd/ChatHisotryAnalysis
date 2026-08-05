@@ -12,9 +12,9 @@ use chat_history_analysis_lib::secure_storage::{
     OwnerRecord, SecureStorage, OWNER_RECORD_SCHEMA_VERSION,
 };
 use chat_history_analysis_lib::session_supervisor::{
-    recover_startup_sessions, CancelReason, CleanupStatus, SessionEvent, SessionInput,
-    SessionState, SessionSupervisor, SessionTerminal, SidecarResolution, SupervisorErrorCode,
-    ANALYSIS_SESSIONS_DIRECTORY, SESSION_MARKER_CONTENT,
+    recover_startup_sessions, CancelReason, CleanupStatus, HeartbeatStatus, SessionEvent,
+    SessionInput, SessionState, SessionSupervisor, SessionTerminal, SidecarResolution,
+    SupervisorErrorCode, ANALYSIS_SESSIONS_DIRECTORY, SESSION_MARKER_CONTENT,
 };
 use std::fs::{self, File};
 use std::io::Write;
@@ -961,6 +961,73 @@ fn live_progress_and_watchdog_close_silent_and_stalled_sidecars() {
 }
 
 #[test]
+fn independent_heartbeat_keeps_a_long_cpu_stage_alive() {
+    let fixture = Fixture::new();
+    let supervisor = SessionSupervisor::with_watchdog_timeouts(
+        Duration::from_millis(300),
+        Duration::from_millis(180),
+    );
+    let started = supervisor
+        .start(
+            "main",
+            fixture.resolution("heartbeat-success"),
+            fixture.input(),
+        )
+        .expect("start heartbeat synthetic sidecar");
+    let completed = supervisor
+        .wait(
+            "main",
+            &started.session_id,
+            started.generation,
+            Duration::from_secs(2),
+        )
+        .expect("heartbeat-protected terminal");
+    let terminal = completed.terminal.clone();
+    assert!(
+        matches!(terminal, Some(SessionTerminal::Complete(_))),
+        "unexpected heartbeat terminal: {:?}",
+        completed.terminal
+    );
+    assert_eq!(completed.heartbeat_status, HeartbeatStatus::Terminal);
+    supervisor
+        .discard("main", &started.session_id, started.generation)
+        .expect("cleanup heartbeat session");
+}
+
+#[test]
+fn prepare_replacement_fences_old_generation_before_next_start() {
+    let fixture = Fixture::new();
+    let supervisor = SessionSupervisor::default();
+    let first = supervisor
+        .start("main", fixture.resolution("no-terminal"), fixture.input())
+        .expect("start first synthetic session");
+    let replaced = supervisor
+        .prepare_replacement("main", &first.session_id, first.generation)
+        .expect("finalize replacement");
+    assert!(matches!(
+        replaced.terminal,
+        Some(SessionTerminal::Cancelled)
+    ));
+    assert!(supervisor.active_snapshot().is_none());
+
+    let second = supervisor
+        .start("main", fixture.resolution("success"), fixture.input())
+        .expect("start after replacement");
+    assert!(second.generation > first.generation);
+    supervisor
+        .wait(
+            "main",
+            &second.session_id,
+            second.generation,
+            Duration::from_secs(2),
+        )
+        .expect("second terminal");
+    supervisor
+        .discard("main", &second.session_id, second.generation)
+        .expect("cleanup replacement session");
+}
+
+#[test]
 fn stale_window_and_generation_requests_cannot_mutate_terminal_session() {
     let fixture = Fixture::new();
     let supervisor = SessionSupervisor::default();
@@ -1287,4 +1354,46 @@ fn cleanup_preserves_unknown_entries_and_requires_explicit_retry() {
         .discard("main", &started.session_id, started.generation)
         .expect("cleanup retry");
     assert!(supervisor.active_snapshot().is_none());
+}
+
+#[test]
+fn failed_terminal_releases_active_slot_for_a_new_start() {
+    let fixture = Fixture::new();
+    let supervisor = SessionSupervisor::default();
+    let failed_start = supervisor
+        .start("main", fixture.resolution("malformed"), fixture.input())
+        .expect("start failing synthetic session");
+    let failed = supervisor
+        .wait(
+            "main",
+            &failed_start.session_id,
+            failed_start.generation,
+            Duration::from_secs(2),
+        )
+        .expect("failure terminal");
+    assert!(matches!(failed.terminal, Some(SessionTerminal::Failed(_))));
+    assert!(matches!(
+        failed.cleanup,
+        Some(CleanupStatus::Complete { .. })
+    ));
+
+    let next = supervisor
+        .start("main", fixture.resolution("success"), fixture.input())
+        .expect("a terminal failed session must not reserve the active slot");
+    assert!(next.generation > failed_start.generation);
+    let completed = supervisor
+        .wait(
+            "main",
+            &next.session_id,
+            next.generation,
+            Duration::from_secs(2),
+        )
+        .expect("second synthetic session terminal");
+    assert!(matches!(
+        completed.terminal,
+        Some(SessionTerminal::Complete(_))
+    ));
+    supervisor
+        .discard("main", &next.session_id, next.generation)
+        .expect("cleanup second synthetic session");
 }

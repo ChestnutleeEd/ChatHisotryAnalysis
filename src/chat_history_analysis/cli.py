@@ -48,6 +48,7 @@ from .sidecar_protocol import (
     SidecarConfiguration,
     SidecarProtocolError,
     emit_failure,
+    emit_heartbeat,
     emit_progress,
     emit_result,
     read_configuration,
@@ -381,7 +382,10 @@ def run_sidecar_streams(
     extra_input = threading.Event()
     monitor_stop = threading.Event()
     operation_done = threading.Event()
+    heartbeat_stop = threading.Event()
     monitor: threading.Thread | None = None
+    heartbeat_thread: threading.Thread | None = None
+    output_lock = threading.Lock()
 
     def monitor_parent(stream, control: OperationControl) -> None:
         """Treat parent EOF as cancellation without a helper process."""
@@ -428,7 +432,8 @@ def run_sidecar_streams(
         def progress(payload):
             if configuration is None:
                 raise SidecarProtocolError()
-            emit_progress(output_stream, configuration, payload)
+            with output_lock:
+                emit_progress(output_stream, configuration, payload)
 
         control = OperationControl(progress_sink=progress)
         monitor = threading.Thread(
@@ -438,23 +443,46 @@ def run_sidecar_streams(
             daemon=True,
         )
         monitor.start()
+
+        def emit_liveness() -> None:
+            if configuration is None:
+                return
+            try:
+                with output_lock:
+                    emit_heartbeat(output_stream, configuration)
+                while not heartbeat_stop.wait(1.0):
+                    with output_lock:
+                        emit_heartbeat(output_stream, configuration)
+            except (OSError, RuntimeError, ValueError):
+                control.request_cancellation()
+
+        heartbeat_thread = threading.Thread(
+            target=emit_liveness,
+            name="sidecar-heartbeat",
+            daemon=True,
+        )
+        heartbeat_thread.start()
         with use_operation_control(control), install_sigint_handler(control):
             result = run_preprocessing_v2(selection)
         if extra_input.is_set():
             raise SidecarProtocolError()
         if not isinstance(result, CanonicalPreprocessingResult):
             raise SidecarProtocolError()
-        emit_result(
-            output_stream,
-            configuration,
-            {
-                "eventCount": result.dataset.event_count,
-                "eligibleTextCount": result.dataset.eligible_text_count,
-                "chunkCount": result.dataset.chunk_count,
-                "duplicateEventCount": result.dataset.duplicate_event_count,
-                "warningCount": result.dataset.warning_count,
-            },
-        )
+        heartbeat_stop.set()
+        if heartbeat_thread is not None:
+            heartbeat_thread.join(timeout=0.25)
+        with output_lock:
+            emit_result(
+                output_stream,
+                configuration,
+                {
+                    "eventCount": result.dataset.event_count,
+                    "eligibleTextCount": result.dataset.eligible_text_count,
+                    "chunkCount": result.dataset.chunk_count,
+                    "duplicateEventCount": result.dataset.duplicate_event_count,
+                    "warningCount": result.dataset.warning_count,
+                },
+            )
         return int(ExitCode.SUCCESS)
     except SidecarProtocolError as error:
         emit_failure(error_stream, error.reason_code)
@@ -486,7 +514,10 @@ def run_sidecar_streams(
         return int(ExitCode.OUTPUT_FAILURE)
     finally:
         operation_done.set()
+        heartbeat_stop.set()
         monitor_stop.set()
+        if heartbeat_thread is not None and heartbeat_thread.is_alive():
+            heartbeat_thread.join(timeout=0.25)
         if monitor is not None and monitor.is_alive():
             monitor.join(timeout=0.25)
 

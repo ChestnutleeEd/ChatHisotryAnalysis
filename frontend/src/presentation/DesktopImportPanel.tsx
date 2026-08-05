@@ -149,6 +149,9 @@ function eventStatus(event: DesktopEvent): string | undefined {
   if (event.type === "dataset-ready") {
     return "本地分析数据已准备好";
   }
+  if (event.type === "failure") {
+    return "本地分析未完成，可重试或重新选择文件";
+  }
   if (event.type === "cleanup") {
     return event.payload.status === "complete" ? "本地临时数据已清理" : "需要再次清理本地临时数据";
   }
@@ -670,6 +673,9 @@ export function DesktopImportPanel() {
       case "failure":
         setFailure(event.payload);
         setDesktopState("failed");
+        if (operationRef.current !== undefined) {
+          updateOperation({ ...operationRef.current, cancelAvailable: false });
+        }
         setProgress(undefined);
         break;
       case "cancelled":
@@ -918,6 +924,7 @@ export function DesktopImportPanel() {
       status,
       failure,
     };
+    const previousWasLive = ["preprocessing", "handoff", "analyzing", "cancelling"].includes(previous.desktopState);
     cursorRef.current = resetCursorForSelection(cursorRef.current);
     cursorRef.current = { ...cursorRef.current, state: "selecting" };
     setDesktopState("selecting");
@@ -930,7 +937,13 @@ export function DesktopImportPanel() {
     );
     if (completed === undefined) {
       cursorRef.current = previous.cursor;
-      if (previous.selectionId !== undefined) {
+      if (previousWasLive) {
+        setSession(undefined);
+        updateOperation(undefined);
+        setDataset(undefined);
+        setDesktopState("failed");
+        setStatus("旧本地分析已安全停止；选择失败，请根据错误码重试");
+      } else if (previous.selectionId !== undefined) {
         setDesktopState(previous.desktopState);
         setStatus("选择失败，保留上一次有效选择");
       } else {
@@ -940,6 +953,17 @@ export function DesktopImportPanel() {
       return;
     }
     if (completed.outcome === "cancelled" || completed.selection === null) {
+      if (previousWasLive) {
+        cursorRef.current = resetCursorForSelection(previous.cursor);
+        setSession(undefined);
+        updateOperation(undefined);
+        setDataset(undefined);
+        setFailure(undefined);
+        setProgress(undefined);
+        setDesktopState("ready");
+        setStatus("旧本地分析已安全停止，可重新选择文件或开始分析");
+        return;
+      }
       cursorRef.current = previous.cursor;
       setSelectionId(previous.selectionId);
       setAnnualCount(previous.annualCount);
@@ -1226,7 +1250,7 @@ export function DesktopImportPanel() {
         <div className="desktop-status-actions">
           <button className="dashboard-button" type="button" disabled={!canCancel} onClick={() => void cancel()}>取消</button>
           {failure?.retryable === true && !failure.code.startsWith("EXPORT_") ? <button className="dashboard-button" type="button" disabled={pendingCommand} onClick={() => void retry()}>重试</button> : null}
-          {failure !== undefined && session === undefined ? <button className="dashboard-button" type="button" disabled={pendingCommand} onClick={() => void selectSources("annual")}>重新选择</button> : null}
+          {failure !== undefined && !failure.code.startsWith("EXPORT_") ? <button className="dashboard-button" type="button" disabled={pendingCommand} onClick={() => void selectSources("annual")}>重新选择</button> : null}
         </div>
       </section>
 

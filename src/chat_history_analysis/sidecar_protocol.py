@@ -34,6 +34,12 @@ SIDECAR_PROGRESS_FIELDS = (
     "aggregateCount",
     "capacityValue",
 )
+SIDECAR_HEARTBEAT_FIELDS = (
+    "protocolVersion",
+    "type",
+    "sessionId",
+    "generation",
+)
 SIDECAR_RESULT_FIELDS = (
     "protocolVersion",
     "type",
@@ -327,6 +333,19 @@ def emit_progress(stream: TextIO, configuration: SidecarConfiguration, payload: 
     _write_json_line(stream, value)
 
 
+def emit_heartbeat(stream: TextIO, configuration: SidecarConfiguration) -> None:
+    """Emit content-free liveness independent of pipeline progress."""
+
+    value = {
+        "protocolVersion": SIDECAR_PROTOCOL_VERSION,
+        "type": "heartbeat",
+        "sessionId": configuration.session_id,
+        "generation": configuration.generation,
+    }
+    _validate_heartbeat(value, configuration.session_id, configuration.generation)
+    _write_json_line(stream, value)
+
+
 def emit_result(stream: TextIO, configuration: SidecarConfiguration, result: Mapping[str, object]) -> None:
     value = {
         "protocolVersion": SIDECAR_PROTOCOL_VERSION,
@@ -400,6 +419,20 @@ def _validate_progress(
     return value["percentage"]
 
 
+def _validate_heartbeat(
+    value: Mapping[str, object],
+    session_id: str,
+    generation: int,
+) -> None:
+    if not _exact_keys(value, SIDECAR_HEARTBEAT_FIELDS) or (
+        value.get("protocolVersion") != SIDECAR_PROTOCOL_VERSION
+        or value.get("type") != "heartbeat"
+        or value.get("sessionId") != session_id
+        or value.get("generation") != generation
+    ):
+        raise SidecarProtocolError()
+
+
 def _validate_result(value: Mapping[str, object], session_id: str, generation: int) -> None:
     if not _exact_keys(value, SIDECAR_RESULT_FIELDS) or (
         value.get("protocolVersion") != SIDECAR_PROTOCOL_VERSION
@@ -469,6 +502,8 @@ def parse_stdout_lines(
                 previous_percentage,
             )
             progress.append(value)
+        elif value.get("type") == "heartbeat":
+            _validate_heartbeat(value, session_id, generation)
         elif value.get("type") == "result":
             _validate_result(value, session_id, generation)
             terminal = value

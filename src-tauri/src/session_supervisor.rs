@@ -563,6 +563,16 @@ struct ActiveSession {
     worker: Option<Arc<dyn WorkerTermination>>,
 }
 
+/// A terminal operation is no longer an active supervisor slot.  The small
+/// retained record keeps only the original host-owned selection authority and
+/// content-free terminal snapshot needed by Retry/cleanup recovery.
+struct RetainedSession {
+    input: SessionInput,
+    storage: Option<crate::secure_storage::SecureStorage>,
+    output_directory: PathBuf,
+    snapshot: SessionSnapshot,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CancelReason {
     User,
@@ -591,6 +601,7 @@ pub trait WorkerTermination: Send + Sync {
 struct SupervisorInner {
     next_generation: u64,
     active: Option<ActiveSession>,
+    retained: Option<RetainedSession>,
 }
 
 #[derive(Clone)]
@@ -612,6 +623,7 @@ impl Default for SessionSupervisor {
             inner: Arc::new(Mutex::new(SupervisorInner {
                 next_generation: 0,
                 active: None,
+                retained: None,
             })),
             cleanup_coordinator: CleanupCoordinator::default(),
             watchdog_timeouts: WatchdogTimeouts::default(),
@@ -628,6 +640,7 @@ impl SessionSupervisor {
             inner: Arc::new(Mutex::new(SupervisorInner {
                 next_generation: 0,
                 active: None,
+                retained: None,
             })),
             cleanup_coordinator: CleanupCoordinator::default(),
             watchdog_timeouts: WatchdogTimeouts {
@@ -643,6 +656,17 @@ impl SessionSupervisor {
             .lock()
             .ok()
             .and_then(|inner| inner.active.as_ref().map(snapshot))
+    }
+
+    /// Return the last terminal snapshot without making it an active slot.
+    /// This is a host-only recovery seam; it never exposes paths or content.
+    pub fn retained_snapshot(&self) -> Option<SessionSnapshot> {
+        self.inner.lock().ok().and_then(|inner| {
+            inner
+                .retained
+                .as_ref()
+                .map(|retained| retained.snapshot.clone())
+        })
     }
 
     pub fn start(
@@ -671,6 +695,20 @@ impl SessionSupervisor {
         let mut inner = self.lock_inner()?;
         if inner.active.is_some() {
             return Err(SupervisorError::new(SupervisorErrorCode::SessionBusy));
+        }
+        if let Some(retained) = inner.retained.take() {
+            if !matches!(
+                retained.snapshot.cleanup,
+                Some(CleanupStatus::Complete { .. })
+            ) {
+                inner.retained = Some(retained);
+                return Err(SupervisorError::new(SupervisorErrorCode::CleanupRequired));
+            }
+            self.cleanup_coordinator.forget(&CleanupKey::new(
+                window_label,
+                &retained.snapshot.session_id,
+                retained.snapshot.generation,
+            ));
         }
         inner.next_generation = inner
             .next_generation
@@ -785,7 +823,7 @@ impl SessionSupervisor {
         loop {
             if let Some(progress_receiver) = progress_receiver.as_ref() {
                 while let Ok(progress) = progress_receiver.try_recv() {
-                    let _ = self.record_progress(progress);
+                    let _ = self.record_progress(session_id, generation, progress);
                 }
             }
             let remaining = deadline.saturating_duration_since(Instant::now());
@@ -805,16 +843,20 @@ impl SessionSupervisor {
                 Ok(outcome) => {
                     if let Some(progress_receiver) = progress_receiver.as_ref() {
                         while let Ok(progress) = progress_receiver.try_recv() {
-                            let _ = self.record_progress(progress);
+                            let _ = self.record_progress(session_id, generation, progress);
                         }
                     }
-                    return self.apply_outcome(outcome);
+                    return self.apply_outcome(session_id, generation, outcome);
                 }
                 Err(RecvTimeoutError::Timeout) => continue,
                 Err(RecvTimeoutError::Disconnected) => {
-                    return self.apply_outcome(RunOutcome {
-                        terminal: Err(SupervisorErrorCode::SidecarCrashed),
-                    });
+                    return self.apply_outcome(
+                        session_id,
+                        generation,
+                        RunOutcome {
+                            terminal: Err(SupervisorErrorCode::SidecarCrashed),
+                        },
+                    );
                 }
             }
         }
@@ -874,22 +916,34 @@ impl SessionSupervisor {
             .spawn(move || {
                 let result = loop {
                     while let Ok(progress) = progress_receiver.try_recv() {
-                        let _ = supervisor.record_progress(progress.clone());
-                        on_progress(progress);
+                        if supervisor
+                            .record_progress(&session_id, generation, progress.clone())
+                            .is_ok()
+                        {
+                            on_progress(progress);
+                        }
                     }
                     match receiver.recv_timeout(Duration::from_millis(25)) {
                         Ok(outcome) => {
                             while let Ok(progress) = progress_receiver.try_recv() {
-                                let _ = supervisor.record_progress(progress.clone());
-                                on_progress(progress);
+                                if supervisor
+                                    .record_progress(&session_id, generation, progress.clone())
+                                    .is_ok()
+                                {
+                                    on_progress(progress);
+                                }
                             }
-                            break supervisor.apply_outcome(outcome);
+                            break supervisor.apply_outcome(&session_id, generation, outcome);
                         }
                         Err(RecvTimeoutError::Timeout) => continue,
                         Err(RecvTimeoutError::Disconnected) => {
-                            break supervisor.apply_outcome(RunOutcome {
-                                terminal: Err(SupervisorErrorCode::SidecarCrashed),
-                            });
+                            break supervisor.apply_outcome(
+                                &session_id,
+                                generation,
+                                RunOutcome {
+                                    terminal: Err(SupervisorErrorCode::SidecarCrashed),
+                                },
+                            );
                         }
                     }
                 };
@@ -1017,9 +1071,13 @@ impl SessionSupervisor {
         let outcome = match result {
             Ok(outcome) => outcome,
             Err(RecvTimeoutError::Disconnected) => {
-                return self.apply_outcome(RunOutcome {
-                    terminal: Err(SupervisorErrorCode::SidecarCrashed),
-                });
+                return self.apply_outcome(
+                    session_id,
+                    generation,
+                    RunOutcome {
+                        terminal: Err(SupervisorErrorCode::SidecarCrashed),
+                    },
+                );
             }
             Err(RecvTimeoutError::Timeout) => {
                 process.close_stdin();
@@ -1034,9 +1092,13 @@ impl SessionSupervisor {
                 match receiver.recv_timeout(TERM_CANCEL_GRACE) {
                     Ok(outcome) => outcome,
                     Err(RecvTimeoutError::Disconnected) => {
-                        return self.apply_outcome(RunOutcome {
-                            terminal: Err(SupervisorErrorCode::SidecarCrashed),
-                        });
+                        return self.apply_outcome(
+                            session_id,
+                            generation,
+                            RunOutcome {
+                                terminal: Err(SupervisorErrorCode::SidecarCrashed),
+                            },
+                        );
                     }
                     Err(RecvTimeoutError::Timeout) => {
                         self.force_worker_termination(session_id, generation);
@@ -1055,9 +1117,13 @@ impl SessionSupervisor {
                         match receiver.recv_timeout(FINAL_KILL_WAIT) {
                             Ok(outcome) => outcome,
                             Err(RecvTimeoutError::Disconnected) => {
-                                return self.apply_outcome(RunOutcome {
-                                    terminal: Err(SupervisorErrorCode::SidecarCrashed),
-                                });
+                                return self.apply_outcome(
+                                    session_id,
+                                    generation,
+                                    RunOutcome {
+                                        terminal: Err(SupervisorErrorCode::SidecarCrashed),
+                                    },
+                                );
                             }
                             Err(RecvTimeoutError::Timeout) => {
                                 self.put_back_receivers(
@@ -1075,7 +1141,7 @@ impl SessionSupervisor {
                 }
             }
         };
-        self.apply_outcome(outcome)
+        self.apply_outcome(session_id, generation, outcome)
     }
 
     pub fn attach_worker(
@@ -1214,6 +1280,37 @@ impl SessionSupervisor {
         self.start(window_label, resolution, input)
     }
 
+    /// Fence and remove the current generation before a native source picker
+    /// opens.  The picker must never run alongside a live sidecar or Worker.
+    pub fn prepare_replacement(
+        &self,
+        window_label: &str,
+        session_id: &str,
+        generation: u64,
+    ) -> Result<SessionSnapshot, SupervisorError> {
+        if let Some(active) = self.active_snapshot() {
+            if active.session_id != session_id || active.generation != generation {
+                return Err(SupervisorError::new(SupervisorErrorCode::SessionStale));
+            }
+            if (active.terminal.is_none()
+                || matches!(active.terminal, Some(SessionTerminal::Complete(_)))
+                    && active.state == SessionState::Analyzing)
+                && active.state != SessionState::Closing
+            {
+                let cancelled = self.cancel(
+                    window_label,
+                    session_id,
+                    generation,
+                    CancelReason::Replacement,
+                )?;
+                if cancelled.terminal.is_none() {
+                    self.wait_for_terminal(session_id, generation)?;
+                }
+            }
+        }
+        self.discard(window_label, session_id, generation)
+    }
+
     pub fn retry(
         &self,
         window_label: &str,
@@ -1223,14 +1320,26 @@ impl SessionSupervisor {
     ) -> Result<SessionSnapshot, SupervisorError> {
         let input = {
             let inner = self.lock_inner()?;
-            validate_active(&inner, window_label, session_id, generation)?;
-            let active = inner.active.as_ref().expect("validated active session");
-            if active.state != SessionState::Failed
-                || !matches!(active.cleanup, Some(CleanupStatus::Complete { .. }))
-            {
-                return Err(SupervisorError::new(SupervisorErrorCode::InvalidState));
+            if let Some(active) = inner.active.as_ref().filter(|active| {
+                active.window_label == window_label
+                    && active.session_id == session_id
+                    && active.generation == generation
+            }) {
+                if active.state != SessionState::Failed {
+                    return Err(SupervisorError::new(SupervisorErrorCode::InvalidState));
+                }
+                active.input.clone()
+            } else if let Some(retained) = inner.retained.as_ref().filter(|retained| {
+                retained.snapshot.session_id == session_id
+                    && retained.snapshot.generation == generation
+            }) {
+                if !matches!(retained.snapshot.terminal, Some(SessionTerminal::Failed(_))) {
+                    return Err(SupervisorError::new(SupervisorErrorCode::InvalidState));
+                }
+                retained.input.clone()
+            } else {
+                return Err(SupervisorError::new(SupervisorErrorCode::SessionStale));
             }
-            active.input.clone()
         };
         self.cleanup_and_maybe_remove(window_label, session_id, generation)?;
         self.start(window_label, resolution, input)
@@ -1263,30 +1372,32 @@ impl SessionSupervisor {
             }
             return self.cleanup_and_maybe_remove(window_label, session_id, generation);
         }
-        Err(SupervisorError::new(SupervisorErrorCode::SessionStale))
+        self.cleanup_and_maybe_remove(window_label, session_id, generation)
     }
 
     pub fn shutdown(&self) {
-        let Some(active) = self.active_snapshot() else {
-            return;
-        };
-        if (active.terminal.is_none()
-            || matches!(active.terminal, Some(SessionTerminal::Complete(_)))
-                && active.state == SessionState::Analyzing)
-            && active.state != SessionState::Closing
-        {
-            if let Ok(cancelled) = self.cancel(
-                "main",
-                &active.session_id,
-                active.generation,
-                CancelReason::ApplicationClose,
-            ) {
-                if cancelled.terminal.is_none() {
-                    let _ = self.wait_for_terminal(&active.session_id, active.generation);
+        if let Some(active) = self.active_snapshot() {
+            if (active.terminal.is_none()
+                || matches!(active.terminal, Some(SessionTerminal::Complete(_)))
+                    && active.state == SessionState::Analyzing)
+                && active.state != SessionState::Closing
+            {
+                if let Ok(cancelled) = self.cancel(
+                    "main",
+                    &active.session_id,
+                    active.generation,
+                    CancelReason::ApplicationClose,
+                ) {
+                    if cancelled.terminal.is_none() {
+                        let _ = self.wait_for_terminal(&active.session_id, active.generation);
+                    }
                 }
             }
+            let _ = self.cleanup_and_maybe_remove("main", &active.session_id, active.generation);
+        } else if let Some(retained) = self.retained_snapshot() {
+            let _ =
+                self.cleanup_and_maybe_remove("main", &retained.session_id, retained.generation);
         }
-        let _ = self.cleanup_and_maybe_remove("main", &active.session_id, active.generation);
     }
 
     pub fn renderer_disconnected(&self, window_label: &str) {
@@ -1332,6 +1443,97 @@ impl SessionSupervisor {
         );
         active.cleanup = Some(cleanup.clone());
         active.events.push(SessionEvent::Cleanup(cleanup));
+        let result = snapshot(active);
+        let can_release = active.worker.is_none()
+            && !matches!(
+                (&active.terminal, active.state),
+                (Some(SessionTerminal::Complete(_)), SessionState::Analyzing)
+            );
+        if can_release {
+            let retained = retain_terminal_locked(&mut inner);
+            return retained.ok_or_else(|| SupervisorError::new(SupervisorErrorCode::SessionStale));
+        }
+        Ok(result)
+    }
+
+    /// Complete an unexpected watcher/error path exactly once.  This is the
+    /// fallback for failures that happen outside the normal sidecar outcome
+    /// parser (for example a disconnected watcher or a late process error).
+    /// It fences the generation, records a stable terminal reason, performs
+    /// the same cleanup attempt as the normal path, and releases the live
+    /// slot when no renderer Worker still owns the generation.
+    pub fn finalize_unexpected(
+        &self,
+        window_label: &str,
+        session_id: &str,
+        generation: u64,
+        reason: SupervisorErrorCode,
+    ) -> Result<SessionSnapshot, SupervisorError> {
+        let mut inner = self.lock_inner()?;
+        if inner.active.is_none() {
+            return inner
+                .retained
+                .as_ref()
+                .filter(|retained| {
+                    retained.snapshot.session_id == session_id
+                        && retained.snapshot.generation == generation
+                })
+                .map(|retained| retained.snapshot.clone())
+                .ok_or_else(|| SupervisorError::new(SupervisorErrorCode::SessionStale));
+        }
+        validate_active(&inner, window_label, session_id, generation)?;
+        let active = inner.active.as_mut().expect("validated active session");
+        active.watcher_active = false;
+        if active.terminal.is_none() {
+            let cancelled = active.cancel_reason.is_some();
+            let next_state = if cancelled {
+                SessionState::Cancelling
+            } else {
+                SessionState::Failed
+            };
+            active.state = next_state;
+            active.events.push(SessionEvent::State(next_state));
+            let terminal = if cancelled {
+                SessionTerminal::Cancelled
+            } else {
+                SessionTerminal::Failed(reason.as_str().to_string())
+            };
+            active.events.push(SessionEvent::Terminal(terminal.clone()));
+            active.terminal = Some(terminal);
+        }
+
+        if !matches!(active.terminal, Some(SessionTerminal::Complete(_))) {
+            if active.worker.is_some() {
+                active.cleanup = Some(CleanupStatus::Required);
+                active
+                    .events
+                    .push(SessionEvent::Cleanup(CleanupStatus::Required));
+                return Ok(snapshot(active));
+            }
+            let output_directory = active.output_directory.clone();
+            let active_window = active.window_label.clone();
+            let active_session = active.session_id.clone();
+            let active_generation = active.generation;
+            let storage = active.storage.clone();
+            let cleanup = self.cleanup_for_identity(
+                &active_window,
+                &active_session,
+                active_generation,
+                &output_directory,
+                storage.as_ref(),
+            );
+            active.cleanup = Some(cleanup.clone());
+            active.events.push(SessionEvent::Cleanup(cleanup));
+        }
+        let can_release = active.worker.is_none()
+            && !matches!(
+                (&active.terminal, active.state),
+                (Some(SessionTerminal::Complete(_)), SessionState::Analyzing)
+            );
+        if can_release {
+            let retained = retain_terminal_locked(&mut inner);
+            return retained.ok_or_else(|| SupervisorError::new(SupervisorErrorCode::SessionStale));
+        }
         Ok(snapshot(active))
     }
 
@@ -1344,6 +1546,7 @@ impl SessionSupervisor {
         loop {
             let snapshot = self
                 .active_snapshot()
+                .or_else(|| self.retained_snapshot())
                 .ok_or_else(|| SupervisorError::new(SupervisorErrorCode::SessionStale))?;
             if snapshot.session_id != session_id || snapshot.generation != generation {
                 return Err(SupervisorError::new(SupervisorErrorCode::SessionStale));
@@ -1360,13 +1563,25 @@ impl SessionSupervisor {
 
     fn record_progress(
         &self,
+        session_id: &str,
+        generation: u64,
         progress: SidecarProgress,
     ) -> Result<SessionSnapshot, SupervisorError> {
         let mut inner = self.lock_inner()?;
-        let active = inner
-            .active
-            .as_mut()
-            .ok_or_else(|| SupervisorError::new(SupervisorErrorCode::SessionStale))?;
+        let Some(active) = inner.active.as_mut() else {
+            return inner
+                .retained
+                .as_ref()
+                .filter(|retained| {
+                    retained.snapshot.session_id == session_id
+                        && retained.snapshot.generation == generation
+                })
+                .map(|retained| retained.snapshot.clone())
+                .ok_or_else(|| SupervisorError::new(SupervisorErrorCode::SessionStale));
+        };
+        if active.session_id != session_id || active.generation != generation {
+            return Err(SupervisorError::new(SupervisorErrorCode::SessionStale));
+        }
         if active.terminal.is_some() {
             return Ok(snapshot(active));
         }
@@ -1381,12 +1596,27 @@ impl SessionSupervisor {
         Ok(snapshot(active))
     }
 
-    fn apply_outcome(&self, outcome: RunOutcome) -> Result<SessionSnapshot, SupervisorError> {
+    fn apply_outcome(
+        &self,
+        session_id: &str,
+        generation: u64,
+        outcome: RunOutcome,
+    ) -> Result<SessionSnapshot, SupervisorError> {
         let mut inner = self.lock_inner()?;
-        let active = inner
-            .active
-            .as_mut()
-            .ok_or_else(|| SupervisorError::new(SupervisorErrorCode::SessionStale))?;
+        let Some(active) = inner.active.as_mut() else {
+            return inner
+                .retained
+                .as_ref()
+                .filter(|retained| {
+                    retained.snapshot.session_id == session_id
+                        && retained.snapshot.generation == generation
+                })
+                .map(|retained| retained.snapshot.clone())
+                .ok_or_else(|| SupervisorError::new(SupervisorErrorCode::SessionStale));
+        };
+        if active.session_id != session_id || active.generation != generation {
+            return Err(SupervisorError::new(SupervisorErrorCode::SessionStale));
+        }
         active.watcher_active = false;
         if active.terminal.is_some() {
             return Ok(snapshot(active));
@@ -1464,7 +1694,17 @@ impl SessionSupervisor {
             active.cleanup = Some(status.clone());
             active.events.push(SessionEvent::Cleanup(status));
         }
-        Ok(snapshot(active))
+        let result = snapshot(active);
+        let can_release = active.worker.is_none()
+            && !matches!(
+                (&active.terminal, active.state),
+                (Some(SessionTerminal::Complete(_)), SessionState::Analyzing)
+            );
+        if can_release {
+            let retained = retain_terminal_locked(&mut inner);
+            return retained.ok_or_else(|| SupervisorError::new(SupervisorErrorCode::SessionStale));
+        }
+        Ok(result)
     }
 
     fn cleanup_and_maybe_remove(
@@ -1474,6 +1714,17 @@ impl SessionSupervisor {
         generation: u64,
     ) -> Result<SessionSnapshot, SupervisorError> {
         let mut inner = self.lock_inner()?;
+        if inner.active.is_none() {
+            let retained_matches = inner.retained.as_ref().is_some_and(|retained| {
+                retained.snapshot.session_id == session_id
+                    && retained.snapshot.generation == generation
+            });
+            if retained_matches {
+                drop(inner);
+                return self.cleanup_retained(window_label, session_id, generation);
+            }
+            return Err(SupervisorError::new(SupervisorErrorCode::SessionStale));
+        }
         validate_active(&inner, window_label, session_id, generation)?;
         let active = inner.active.as_mut().expect("validated active session");
         if active.watcher_active && active.terminal.is_none() {
@@ -1513,11 +1764,56 @@ impl SessionSupervisor {
         if completed {
             let result = snapshot(active);
             inner.active = None;
+            self.cleanup_coordinator
+                .forget(&CleanupKey::new(window_label, session_id, generation));
             Ok(result)
         } else {
             active.state = SessionState::Closing;
             Err(SupervisorError::new(SupervisorErrorCode::CleanupRequired))
         }
+    }
+
+    fn cleanup_retained(
+        &self,
+        window_label: &str,
+        session_id: &str,
+        generation: u64,
+    ) -> Result<SessionSnapshot, SupervisorError> {
+        let retained = {
+            let mut inner = self.lock_inner()?;
+            let Some(retained) = inner.retained.take() else {
+                return Err(SupervisorError::new(SupervisorErrorCode::SessionStale));
+            };
+            if retained.snapshot.session_id != session_id
+                || retained.snapshot.generation != generation
+            {
+                inner.retained = Some(retained);
+                return Err(SupervisorError::new(SupervisorErrorCode::SessionStale));
+            }
+            retained
+        };
+        let status = self.cleanup_for_identity(
+            window_label,
+            session_id,
+            generation,
+            &retained.output_directory,
+            retained.storage.as_ref(),
+        );
+        let mut terminal_snapshot = retained.snapshot;
+        terminal_snapshot.cleanup = Some(status.clone());
+        if matches!(status, CleanupStatus::Complete { .. }) {
+            self.cleanup_coordinator
+                .forget(&CleanupKey::new(window_label, session_id, generation));
+            return Ok(terminal_snapshot);
+        }
+        let mut inner = self.lock_inner()?;
+        inner.retained = Some(RetainedSession {
+            input: retained.input,
+            storage: retained.storage,
+            output_directory: retained.output_directory,
+            snapshot: terminal_snapshot,
+        });
+        Err(SupervisorError::new(SupervisorErrorCode::CleanupRequired))
     }
 
     fn put_back_receivers(
@@ -1670,6 +1966,18 @@ impl SessionSupervisor {
             .lock()
             .map_err(|_| SupervisorError::new(SupervisorErrorCode::InvalidState))
     }
+}
+
+fn retain_terminal_locked(inner: &mut SupervisorInner) -> Option<SessionSnapshot> {
+    let active = inner.active.take()?;
+    let terminal_snapshot = snapshot(&active);
+    inner.retained = Some(RetainedSession {
+        input: active.input,
+        storage: active.storage,
+        output_directory: active.output_directory,
+        snapshot: terminal_snapshot.clone(),
+    });
+    Some(terminal_snapshot)
 }
 
 impl Drop for SessionSupervisor {
@@ -2401,6 +2709,23 @@ fn parse_stdout_with_progress(
                     let _ = sender.send(progress_item.clone());
                 }
                 progress.push(progress_item);
+            }
+            "heartbeat" => {
+                let allowed = ["protocolVersion", "type", "sessionId", "generation"];
+                exact_keys(object, &allowed)
+                    .then_some(())
+                    .ok_or(ParserError::Invalid)?;
+                require_protocol(object)?;
+                if object.get("sessionId").and_then(Value::as_str) != Some(session_id)
+                    || object.get("generation").and_then(Value::as_u64) != Some(generation)
+                {
+                    return Err(ParserError::Invalid);
+                }
+                if let Some(heartbeat) = heartbeat.as_ref() {
+                    if let Ok(mut last) = heartbeat.lock() {
+                        *last = Some(Instant::now());
+                    }
+                }
             }
             "result" => {
                 let allowed = [
