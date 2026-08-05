@@ -103,6 +103,37 @@ export type DesktopFailureCode =
   | "EXPORT_CLEANUP_REQUIRED"
   | "EXPORT_RESULT_NOT_FOUND";
 
+export type DatasetHandoffReasonCode =
+  | "HANDOFF_MANIFEST_SCHEMA_INVALID"
+  | "HANDOFF_SCHEMA_VERSION_MISMATCH"
+  | "HANDOFF_PUBLICATION_INCOMPLETE"
+  | "HANDOFF_CHUNK_MISSING"
+  | "HANDOFF_CHUNK_SEQUENCE_INVALID"
+  | "HANDOFF_CHUNK_COUNT_MISMATCH"
+  | "HANDOFF_EVENT_COUNT_MISMATCH"
+  | "HANDOFF_BYTE_COUNT_MISMATCH"
+  | "HANDOFF_HASH_MISMATCH"
+  | "HANDOFF_EVENT_ORDER_INVALID"
+  | "HANDOFF_DUPLICATE_IDENTITY_INVALID"
+  | "HANDOFF_TIMEZONE_INVALID"
+  | "HANDOFF_SOURCE_COUNT_MISMATCH"
+  | "HANDOFF_DATASET_LIMIT_EXCEEDED"
+  | "HANDOFF_SESSION_STALE"
+  | "HANDOFF_STORAGE_IDENTITY_INVALID"
+  | "HANDOFF_CHUNK_SCHEMA_INVALID";
+
+export type SourceReasonCode =
+  | "SOURCE_SCHEMA_INVALID"
+  | "SOURCE_UNSUPPORTED_EXPORT"
+  | "SOURCE_LIMIT_EXCEEDED"
+  | "SOURCE_READ_FAILED"
+  | "SOURCE_EVENT_INVALID"
+  | "SOURCE_DATE_INVALID";
+
+export type DesktopDiagnosticReasonCode =
+  | DatasetHandoffReasonCode
+  | SourceReasonCode;
+
 export type ReportFormat = "png" | "csv" | "json";
 export type ApprovedChartKey =
   | "trends"
@@ -240,7 +271,11 @@ export type DesktopEvent =
     >
   | DesktopEventEnvelope<
       "failure",
-      { readonly code: DesktopFailureCode; readonly retryable: boolean }
+      {
+        readonly code: DesktopFailureCode;
+        readonly retryable: boolean;
+        readonly reasonCode?: DesktopDiagnosticReasonCode;
+      }
     >
   | DesktopEventEnvelope<
       "cancelled",
@@ -905,9 +940,18 @@ export function parseDesktopEvent(value: unknown): DesktopEvent {
     case "failure":
       requireSessionEventCorrelation(value);
       if (
-        !hasExactKeys(payload, ["code", "retryable"]) ||
+        (!hasExactKeys(payload, ["code", "retryable"]) &&
+          !hasExactKeys(payload, ["code", "reasonCode", "retryable"])) ||
         !isDesktopFailureCode(payload.code) ||
-        typeof payload.retryable !== "boolean"
+        typeof payload.retryable !== "boolean" ||
+        ("reasonCode" in payload &&
+          (!isDesktopDiagnosticReasonCode(payload.reasonCode) ||
+            (isDatasetHandoffReasonCode(payload.reasonCode) &&
+              payload.code !== "DATASET_HANDOFF_INVALID" &&
+              payload.code !== "DATASET_TAMPERED") ||
+            (isSourceReasonCode(payload.reasonCode) &&
+              payload.code !== "SOURCE_SET_INVALID" &&
+              payload.code !== "SOURCE_UNREADABLE")))
       ) {
         throw new DesktopIpcValidationError("INVALID_REQUEST");
       }
@@ -1058,6 +1102,53 @@ function isDesktopFailureCode(value: unknown): value is DesktopFailureCode {
       "EXPORT_RESULT_NOT_FOUND",
     ].includes(value)
   );
+}
+
+export function isDatasetHandoffReasonCode(
+  value: unknown,
+): value is DatasetHandoffReasonCode {
+  return (
+    typeof value === "string" &&
+    [
+      "HANDOFF_MANIFEST_SCHEMA_INVALID",
+      "HANDOFF_SCHEMA_VERSION_MISMATCH",
+      "HANDOFF_PUBLICATION_INCOMPLETE",
+      "HANDOFF_CHUNK_MISSING",
+      "HANDOFF_CHUNK_SEQUENCE_INVALID",
+      "HANDOFF_CHUNK_COUNT_MISMATCH",
+      "HANDOFF_EVENT_COUNT_MISMATCH",
+      "HANDOFF_BYTE_COUNT_MISMATCH",
+      "HANDOFF_HASH_MISMATCH",
+      "HANDOFF_EVENT_ORDER_INVALID",
+      "HANDOFF_DUPLICATE_IDENTITY_INVALID",
+      "HANDOFF_TIMEZONE_INVALID",
+      "HANDOFF_SOURCE_COUNT_MISMATCH",
+      "HANDOFF_DATASET_LIMIT_EXCEEDED",
+      "HANDOFF_SESSION_STALE",
+      "HANDOFF_STORAGE_IDENTITY_INVALID",
+      "HANDOFF_CHUNK_SCHEMA_INVALID",
+    ].includes(value)
+  );
+}
+
+export function isSourceReasonCode(value: unknown): value is SourceReasonCode {
+  return (
+    typeof value === "string" &&
+    [
+      "SOURCE_SCHEMA_INVALID",
+      "SOURCE_UNSUPPORTED_EXPORT",
+      "SOURCE_LIMIT_EXCEEDED",
+      "SOURCE_READ_FAILED",
+      "SOURCE_EVENT_INVALID",
+      "SOURCE_DATE_INVALID",
+    ].includes(value)
+  );
+}
+
+export function isDesktopDiagnosticReasonCode(
+  value: unknown,
+): value is DesktopDiagnosticReasonCode {
+  return isDatasetHandoffReasonCode(value) || isSourceReasonCode(value);
 }
 
 const STATE_TRANSITIONS: Readonly<Record<DesktopState, readonly DesktopState[]>> = {

@@ -35,6 +35,14 @@ canonical order, which is ascending by create time, annual file rank, source
 array index, and stable insertion order. A valid dataset may contain zero
 eligible text events as long as at least one canonical event remains.
 
+The manifest also freezes publication accounting in `publicationCounts`:
+`sourceCount`, `rawAcceptedEventCount`, `canonicalEventCount`, and
+`duplicateEventCount`. The invariant is
+`rawAcceptedEventCount = canonicalEventCount + duplicateEventCount`, and
+`canonicalEventCount` equals both the aggregate event count and the sum of all
+chunk record counts. Chunks are zero-based, gap-free, and named
+`chunk-0000.ndjson`, `chunk-0001.ndjson`, and so on.
+
 The output limits are 2,000,000 events, 536,870,912 manifest-plus-chunk bytes,
 33,554,432 bytes per chunk, and 16,384 chunks.
 
@@ -57,8 +65,14 @@ deduplication match.
 
 v2 staging uses a private owner-only SQLite sibling with DELETE journaling,
 in-memory temporary storage, secure delete, zero busy timeout, no WAL, and no
-raw payload columns. The database and marker are removed entry by entry before
-the private chunk/manifest directory is atomically promoted.
+raw payload columns. Chunks are written and fsynced first, then the manifest is
+written through a temporary file and atomically renamed. A fixed-content
+`.canonical-dataset-complete-v2` marker is created only after the Python
+publisher has verified the complete directory; the marker, manifest, and
+chunks are then promoted together by one directory rename. The Rust host
+requires that marker and re-verifies the exact file set, UTF-8 LF bytes,
+per-chunk SHA-256, ordering, counts, and privacy contract before Worker
+handoff.
 
 Desktop mode accepts an absent destination only beneath a core-created,
 owner-only `analysis-sessions/<opaque-session-id>` directory. The desktop

@@ -1812,6 +1812,16 @@ impl IpcCoreState {
         code: FailureCode,
         retryable: bool,
     ) -> Result<(), FailureCode> {
+        self.publish_failure_with_reason(window, code, retryable, None)
+    }
+
+    pub fn publish_failure_with_reason(
+        &self,
+        window: &tauri::WebviewWindow,
+        code: FailureCode,
+        retryable: bool,
+        reason_code: Option<&str>,
+    ) -> Result<(), FailureCode> {
         if matches!(
             code,
             FailureCode::ExportBusy
@@ -1837,14 +1847,19 @@ impl IpcCoreState {
                 None,
             );
         }
-        self.publish_session_value(
-            window,
-            "failure",
-            serde_json::json!({
-                "code": code,
-                "retryable": retryable,
-            }),
-        )
+        let mut payload = serde_json::json!({
+            "code": code,
+            "retryable": retryable,
+        });
+        if let Some(reason_code) = reason_code {
+            if let Some(object) = payload.as_object_mut() {
+                object.insert(
+                    "reasonCode".to_string(),
+                    serde_json::Value::String(reason_code.to_string()),
+                );
+            }
+        }
+        self.publish_session_value(window, "failure", payload)
     }
 
     pub fn publish_cancelled(
@@ -2714,7 +2729,9 @@ fn map_supervisor_code(code: crate::session_supervisor::SupervisorErrorCode) -> 
 
 fn map_sidecar_reason(reason: &str) -> FailureCode {
     match reason {
-        "SOURCE_MUTATED" => FailureCode::SourceUnreadable,
+        "SOURCE_MUTATED" | "SOURCE_READ_FAILED" | "INVALID_UTF8" | "UTF8_BOM_NOT_SUPPORTED" => {
+            FailureCode::SourceUnreadable
+        }
         "OUTPUT_DESTINATION_EXISTS"
         | "OUTPUT_PARENT_UNSAFE"
         | "OUTPUT_STAGING_FAILED"
@@ -2731,9 +2748,16 @@ fn map_sidecar_reason(reason: &str) -> FailureCode {
         | "CANONICAL_NO_EVENTS" => FailureCode::DatasetHandoffInvalid,
         "INPUT_PREFLIGHT_FAILED"
         | "RAW_INPUT_FILE_LIMIT_EXCEEDED"
+        | "RAW_MESSAGE_LIMIT_EXCEEDED"
         | "ANNUAL_SOURCE_COUNT_LIMIT_EXCEEDED"
         | "AGGREGATE_RAW_INPUT_LIMIT_EXCEEDED"
         | "UNSUPPORTED_EXPORT_FORMAT"
+        | "UNSUPPORTED_TOP_LEVEL_STRUCTURE"
+        | "UNSUPPORTED_SESSION"
+        | "SOURCE_EVENT_INVALID"
+        | "MESSAGE_TIME_INVALID"
+        | "MESSAGE_TIME_RANGE_UNAVAILABLE"
+        | "TIME_CONFLICT"
         | "NO_ELIGIBLE_TEXT_RECORDS" => FailureCode::SourceSetInvalid,
         "USER_CANCELLED" => FailureCode::SessionCancelled,
         "SIDECAR_CRASHED" => FailureCode::SidecarCrashed,
@@ -2746,11 +2770,50 @@ fn map_sidecar_reason(reason: &str) -> FailureCode {
     }
 }
 
-fn code_as_reason(code: &FailureCode) -> &'static str {
-    match code {
-        FailureCode::DatasetTampered => "DATASET_TAMPERED",
-        FailureCode::DatasetHandoffInvalid => "DATASET_HANDOFF_INVALID",
-        _ => "DATASET_HANDOFF_INVALID",
+fn sidecar_reason_code(reason: &str) -> Option<&'static str> {
+    match reason {
+        "SOURCE_MUTATED" | "SOURCE_READ_FAILED" | "INVALID_UTF8" | "UTF8_BOM_NOT_SUPPORTED" => {
+            Some("SOURCE_READ_FAILED")
+        }
+        "UNSUPPORTED_EXPORT_FORMAT" | "UNSUPPORTED_TOP_LEVEL_STRUCTURE" | "UNSUPPORTED_SESSION" => {
+            Some("SOURCE_UNSUPPORTED_EXPORT")
+        }
+        "RAW_INPUT_FILE_LIMIT_EXCEEDED"
+        | "RAW_MESSAGE_LIMIT_EXCEEDED"
+        | "ANNUAL_SOURCE_COUNT_LIMIT_EXCEEDED"
+        | "AGGREGATE_RAW_INPUT_LIMIT_EXCEEDED" => Some("SOURCE_LIMIT_EXCEEDED"),
+        "MESSAGE_TIME_INVALID" | "MESSAGE_TIME_RANGE_UNAVAILABLE" | "TIME_CONFLICT" => {
+            Some("SOURCE_DATE_INVALID")
+        }
+        "SOURCE_EVENT_INVALID" => Some("SOURCE_EVENT_INVALID"),
+        "INPUT_PREFLIGHT_FAILED"
+        | "OUTPUT_IGNORE_POLICY_FAILED"
+        | "INVALID_JSON"
+        | "PARTICIPANT_INVALID"
+        | "SESSION_IDENTITY_INVALID"
+        | "UNSAFE_LOCAL_TYPE"
+        | "DIFFERENT_CONVERSATION"
+        | "NO_ELIGIBLE_TEXT_RECORDS" => Some("SOURCE_SCHEMA_INVALID"),
+        "OUTPUT_DESTINATION_EXISTS"
+        | "OUTPUT_PARENT_UNSAFE"
+        | "OUTPUT_STAGING_FAILED"
+        | "OUTPUT_WRITE_FAILED"
+        | "OUTPUT_FLUSH_FAILED"
+        | "OUTPUT_INTEGRITY_FAILED"
+        | "OUTPUT_CLEANUP_FAILED"
+        | "OUTPUT_PROMOTION_FAILED" => Some("HANDOFF_PUBLICATION_INCOMPLETE"),
+        "CANONICAL_SCHEMA_INVALID"
+        | "NORMALIZED_SCHEMA_INVALID"
+        | "CANONICAL_PRIVACY_VALIDATION_FAILED"
+        | "PRIVACY_VALIDATION_FAILED" => Some("HANDOFF_MANIFEST_SCHEMA_INVALID"),
+        "CANONICAL_DATASET_LIMIT_EXCEEDED"
+        | "CANONICAL_CHUNK_LIMIT_EXCEEDED"
+        | "CANONICAL_EVENT_LIMIT_EXCEEDED"
+        | "NORMALIZED_DATASET_LIMIT_EXCEEDED"
+        | "NORMALIZED_RECORD_LIMIT_EXCEEDED"
+        | "NORMALIZED_RECORD_TOO_LARGE" => Some("HANDOFF_DATASET_LIMIT_EXCEEDED"),
+        "CANONICAL_NO_EVENTS" => Some("HANDOFF_EVENT_COUNT_MISMATCH"),
+        _ => None,
     }
 }
 
@@ -2959,7 +3022,7 @@ fn handle_watched_session(
         }
     };
     match snapshot.terminal.clone() {
-        Some(crate::session_supervisor::SessionTerminal::Complete(_)) => {
+        Some(crate::session_supervisor::SessionTerminal::Complete(sidecar_result)) => {
             let _ = core.publish_state(&window, "handoff");
             let session_root = cache_root
                 .join(crate::session_supervisor::ANALYSIS_SESSIONS_DIRECTORY)
@@ -2971,21 +3034,21 @@ fn handle_watched_session(
             ) {
                 Ok(verified) => verified,
                 Err(error) => {
-                    let code = if error.code
-                        == crate::dataset_handoff::HandoffErrorCode::TamperedDataset
-                    {
-                        FailureCode::DatasetTampered
-                    } else {
-                        FailureCode::DatasetHandoffInvalid
-                    };
+                    let code = FailureCode::DatasetHandoffInvalid;
+                    let reason_code = error.reason_code();
                     transport.close_session(window.label(), &session_id, generation);
                     core.clear_result(window.label(), &session_id, generation);
-                    let _ = core.publish_failure(&window, code.clone(), true);
+                    let _ = core.publish_failure_with_reason(
+                        &window,
+                        code.clone(),
+                        true,
+                        Some(reason_code),
+                    );
                     if let Ok(cleaned) = core.supervisor.reject_handoff(
                         window.label(),
                         &session_id,
                         generation,
-                        code_as_reason(&code),
+                        reason_code,
                     ) {
                         publish_snapshot_cleanup(&core, &window, &cleaned);
                         release_terminal_snapshot(&core, &window, &cleaned);
@@ -2993,6 +3056,43 @@ fn handle_watched_session(
                     return;
                 }
             };
+            let count_reason = if sidecar_result.source_count != verified.source_count {
+                Some(crate::dataset_handoff::HandoffReasonCode::SourceCountMismatch)
+            } else if sidecar_result.event_count != verified.record_count {
+                Some(crate::dataset_handoff::HandoffReasonCode::EventCountMismatch)
+            } else if sidecar_result.chunk_count != verified.chunk_count {
+                Some(crate::dataset_handoff::HandoffReasonCode::ChunkCountMismatch)
+            } else if sidecar_result.duplicate_event_count != verified.duplicate_event_count
+                || sidecar_result
+                    .event_count
+                    .saturating_add(sidecar_result.duplicate_event_count)
+                    != verified.raw_accepted_event_count
+            {
+                Some(crate::dataset_handoff::HandoffReasonCode::DuplicateIdentityInvalid)
+            } else {
+                None
+            };
+            if let Some(reason) = count_reason {
+                let reason_code = reason.as_str();
+                transport.close_session(window.label(), &session_id, generation);
+                core.clear_result(window.label(), &session_id, generation);
+                let _ = core.publish_failure_with_reason(
+                    &window,
+                    FailureCode::DatasetHandoffInvalid,
+                    true,
+                    Some(reason_code),
+                );
+                if let Ok(cleaned) = core.supervisor.reject_handoff(
+                    window.label(),
+                    &session_id,
+                    generation,
+                    reason_code,
+                ) {
+                    publish_snapshot_cleanup(&core, &window, &cleaned);
+                    release_terminal_snapshot(&core, &window, &cleaned);
+                }
+                return;
+            }
             transport.mark_sidecar_verified();
             let capability = match transport.register_host_dataset_for_session(
                 window.label(),
@@ -3073,7 +3173,12 @@ fn handle_watched_session(
             let code = map_sidecar_reason(&reason);
             transport.close_session(window.label(), &session_id, generation);
             core.clear_result(window.label(), &session_id, generation);
-            let _ = core.publish_failure(&window, code.clone(), retryable_failure(&code));
+            let _ = core.publish_failure_with_reason(
+                &window,
+                code.clone(),
+                retryable_failure(&code),
+                sidecar_reason_code(&reason),
+            );
             publish_snapshot_cleanup(&core, &window, &snapshot);
             release_terminal_snapshot(&core, &window, &snapshot);
         }

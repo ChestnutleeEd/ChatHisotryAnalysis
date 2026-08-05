@@ -44,6 +44,7 @@ CANONICAL_MANIFEST_FIELDS: Final = (
     "preprocessorVersion",
     "timePolicy",
     "metricDefinitionVersions",
+    "publicationCounts",
     "chunks",
     "aggregates",
     "limits",
@@ -211,7 +212,24 @@ class CanonicalAggregatesV2:
 
 
 @dataclass(frozen=True)
+class CanonicalPublicationCountsV2:
+    source_count: int
+    raw_accepted_event_count: int
+    canonical_event_count: int
+    duplicate_event_count: int
+
+    def as_mapping(self) -> dict[str, int]:
+        return {
+            "sourceCount": self.source_count,
+            "rawAcceptedEventCount": self.raw_accepted_event_count,
+            "canonicalEventCount": self.canonical_event_count,
+            "duplicateEventCount": self.duplicate_event_count,
+        }
+
+
+@dataclass(frozen=True)
 class CanonicalManifestV2:
+    publication_counts: CanonicalPublicationCountsV2
     chunks: tuple[CanonicalChunkDescriptorV2, ...]
     aggregates: CanonicalAggregatesV2
 
@@ -222,6 +240,7 @@ class CanonicalManifestV2:
             "preprocessorVersion": CANONICAL_PREPROCESSOR_VERSION,
             "timePolicy": CANONICAL_TIME_POLICY,
             "metricDefinitionVersions": dict(METRIC_DEFINITION_VERSIONS),
+            "publicationCounts": self.publication_counts.as_mapping(),
             "chunks": [chunk.as_mapping() for chunk in self.chunks],
             "aggregates": self.aggregates.as_mapping(),
             "limits": {
@@ -443,6 +462,39 @@ def validate_canonical_manifest(value: object) -> CanonicalManifestV2:
             )
         )
 
+    publication_counts = value["publicationCounts"]
+    if (
+        not isinstance(publication_counts, dict)
+        or not _has_exact_fields(
+            publication_counts,
+            (
+                "sourceCount",
+                "rawAcceptedEventCount",
+                "canonicalEventCount",
+                "duplicateEventCount",
+            ),
+        )
+        or any(
+            not _positive_int(publication_counts[field])
+            for field in (
+                "sourceCount",
+                "rawAcceptedEventCount",
+                "canonicalEventCount",
+            )
+        )
+        or not _is_safe_integer(publication_counts["duplicateEventCount"], 0)
+    ):
+        raise CanonicalEventValidationError("CANONICAL_PUBLICATION_COUNTS")
+    publication = CanonicalPublicationCountsV2(
+        source_count=cast(int, publication_counts["sourceCount"]),
+        raw_accepted_event_count=cast(
+            int, publication_counts["rawAcceptedEventCount"]
+        ),
+        canonical_event_count=cast(int, publication_counts["canonicalEventCount"]),
+        duplicate_event_count=cast(
+            int, publication_counts["duplicateEventCount"]
+        ),
+    )
     aggregates = value["aggregates"]
     if not isinstance(aggregates, dict) or not _has_exact_fields(aggregates, CANONICAL_AGGREGATE_FIELDS):
         raise CanonicalEventValidationError("CANONICAL_AGGREGATES")
@@ -505,6 +557,10 @@ def validate_canonical_manifest(value: object) -> CanonicalManifestV2:
         or aggregate.chunk_count != len(chunks)
         or aggregate.total_bytes != total_bytes
         or aggregate.total_bytes > MAX_CANONICAL_DATASET_BYTES
+        or publication.canonical_event_count != aggregate.event_count
+        or publication.raw_accepted_event_count > MAX_CANONICAL_EVENTS
+        or publication.raw_accepted_event_count
+        != publication.canonical_event_count + publication.duplicate_event_count
     ):
         raise CanonicalEventValidationError("CANONICAL_AGGREGATES")
 
@@ -532,7 +588,7 @@ def validate_canonical_manifest(value: object) -> CanonicalManifestV2:
         }
     ):
         raise CanonicalEventValidationError("CANONICAL_PRIVACY")
-    return CanonicalManifestV2(tuple(chunks), aggregate)
+    return CanonicalManifestV2(publication, tuple(chunks), aggregate)
 
 
 def _validate_v1_dataset_contract(value: object) -> dict[str, object]:

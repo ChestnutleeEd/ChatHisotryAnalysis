@@ -15,6 +15,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from chat_history_analysis.canonical_dataset import (
+    CANONICAL_PUBLICATION_MARKER,
+    CANONICAL_PUBLICATION_MARKER_NAME,
     CanonicalEventStagingConsumer,
     verify_canonical_dataset_directory,
 )
@@ -262,6 +264,17 @@ class EventIdentityAndStagingTests(unittest.TestCase):
         self.root = Path(temporary.name).resolve()
         self.source = self.root / "synthetic-source.json"
         self.source.write_bytes(b"synthetic-source")
+
+    def test_invalid_source_candidate_uses_source_reason(self) -> None:
+        with self.assertRaises(DatasetPersistenceError) as raised:
+            CanonicalEventStagingConsumer._candidate_event(
+                _descriptor(self.source),
+                _candidate(category="synthetic-invalid-category"),
+            )
+        self.assertEqual(
+            raised.exception.reason_code,
+            DatasetPersistenceReasonCode.SOURCE_EVENT_INVALID,
+        )
 
     def test_platform_and_fallback_identity_rules(self) -> None:
         platform_text = _candidate(platform_id="platform-1")
@@ -758,21 +771,28 @@ class CanonicalDatasetPipelineTests(unittest.TestCase):
     def test_five_annual_sources_span_years_and_dedupe(self) -> None:
         annual_sources = []
         year_timestamps = [
-            1577836800,  # 2020-01-01
-            1577836800,  # duplicate of the first annual source
             1640995200,  # 2022-01-01
             1672531200,  # 2023-01-01
             1704067200,  # 2024-01-01
+            1735689600,  # 2025-01-01
+            1767225600,  # 2026-01-01
         ]
         for ordinal, timestamp in enumerate(year_timestamps, start=1):
             source = self.root / f"annual-{ordinal}.json"
-            write_export(
-                source,
-                [
-                    message(timestamp, OWNER, content="synthetic-owner"),
-                    message(timestamp + 1, PEER, content="synthetic-peer"),
-                ],
-            )
+            messages = [
+                message(timestamp, OWNER, content="synthetic-owner"),
+                message(timestamp + 1, PEER, content="synthetic-peer"),
+            ]
+            if ordinal == 5:
+                messages.insert(
+                    0,
+                    message(
+                        year_timestamps[0],
+                        OWNER,
+                        content="synthetic-owner",
+                    ),
+                )
+            write_export(source, messages)
             annual_sources.append(source)
 
         cache = self.root / "multi-year-cache"
@@ -793,6 +813,24 @@ class CanonicalDatasetPipelineTests(unittest.TestCase):
             raise
 
         verify_canonical_dataset_directory(destination)
+        manifest = json.loads((destination / "manifest.json").read_text())
+        self.assertEqual(
+            manifest["publicationCounts"],
+            {
+                "sourceCount": 5,
+                "rawAcceptedEventCount": 11,
+                "canonicalEventCount": 10,
+                "duplicateEventCount": 1,
+            },
+        )
+        self.assertEqual(
+            sum(chunk["recordCount"] for chunk in manifest["chunks"]),
+            manifest["aggregates"]["eventCount"],
+        )
+        self.assertEqual(
+            (destination / CANONICAL_PUBLICATION_MARKER_NAME).read_bytes(),
+            CANONICAL_PUBLICATION_MARKER,
+        )
         minimum_timestamp = min(
             descriptor.minimum_create_time for descriptor in validation.annual_sources
         )
@@ -800,15 +838,17 @@ class CanonicalDatasetPipelineTests(unittest.TestCase):
             descriptor.maximum_create_time for descriptor in validation.annual_sources
         )
         self.assertEqual(len(validation.annual_sources), 5)
-        self.assertEqual(result.event_count, 8)
-        self.assertEqual(result.duplicate_event_count, 2)
+        self.assertEqual(result.event_count, 10)
+        self.assertEqual(result.duplicate_event_count, 1)
+        self.assertEqual(result.source_count, 5)
+        self.assertEqual(result.raw_accepted_event_count, 11)
         self.assertEqual(
             datetime.fromtimestamp(minimum_timestamp, tz=timezone.utc).date().isoformat(),
-            "2020-01-01",
+            "2022-01-01",
         )
         self.assertEqual(
             datetime.fromtimestamp(maximum_timestamp, tz=timezone.utc).date().isoformat(),
-            "2024-01-01",
+            "2026-01-01",
         )
 
 
@@ -906,6 +946,7 @@ class DesktopPolicyAndProtocolTests(unittest.TestCase):
             output,
             configuration,
             {
+                "sourceCount": 1,
                 "eventCount": 1,
                 "eligibleTextCount": 0,
                 "chunkCount": 1,
@@ -942,6 +983,7 @@ class DesktopPolicyAndProtocolTests(unittest.TestCase):
                 "sessionId": configuration.session_id,
                 "generation": 1,
                 "status": "success",
+                "sourceCount": 1,
                 "eventCount": 1,
                 "eligibleTextCount": 0,
                 "chunkCount": 1,

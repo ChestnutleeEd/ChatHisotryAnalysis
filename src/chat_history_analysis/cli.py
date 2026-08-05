@@ -476,6 +476,7 @@ def run_sidecar_streams(
                 output_stream,
                 configuration,
                 {
+                    "sourceCount": result.dataset.source_count,
                     "eventCount": result.dataset.event_count,
                     "eligibleTextCount": result.dataset.eligible_text_count,
                     "chunkCount": result.dataset.chunk_count,

@@ -93,6 +93,12 @@ export function createCanonicalDataset(
     preprocessorVersion: CANONICAL_PREPROCESSOR_VERSION,
     timePolicy: CANONICAL_TIME_POLICY,
     metricDefinitionVersions: METRIC_DEFINITION_VERSIONS,
+    publicationCounts: {
+      sourceCount: 1,
+      rawAcceptedEventCount: events.length,
+      canonicalEventCount: events.length,
+      duplicateEventCount: 0,
+    },
     chunks: chunks.map((chunk) => chunk.descriptor),
     aggregates: {
       eventCount: events.length,

@@ -143,6 +143,12 @@ function buildCapacityDataset(eventCount: number, contentLength: number): Capaci
     preprocessorVersion: CANONICAL_PREPROCESSOR_VERSION,
     timePolicy: CANONICAL_TIME_POLICY,
     metricDefinitionVersions: METRIC_DEFINITION_VERSIONS,
+    publicationCounts: {
+      sourceCount: 1,
+      rawAcceptedEventCount: eventCount,
+      canonicalEventCount: eventCount,
+      duplicateEventCount: 0,
+    },
     chunks: chunks.map((chunk, ordinal) => ({
       ordinal,
       name: `chunk-${String(ordinal).padStart(4, "0")}.ndjson`,

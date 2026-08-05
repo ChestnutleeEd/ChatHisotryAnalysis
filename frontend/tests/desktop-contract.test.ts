@@ -100,6 +100,52 @@ describe("versioned desktop IPC contract", () => {
     }
   });
 
+  it("keeps source and handoff diagnostics in their own public namespaces", () => {
+    const failure = vectors.events.find((vector) => vector.value.type === "failure")
+      ?.value;
+    expect(failure).toBeDefined();
+    expect(
+      parseDesktopEvent({
+        ...failure,
+        payload: {
+          ...failure!.payload,
+          code: "DATASET_HANDOFF_INVALID",
+          reasonCode: "HANDOFF_HASH_MISMATCH",
+        },
+      }),
+    ).toBeDefined();
+    expect(
+      parseDesktopEvent({
+        ...failure,
+        payload: {
+          ...failure!.payload,
+          code: "SOURCE_SET_INVALID",
+          reasonCode: "SOURCE_EVENT_INVALID",
+        },
+      }),
+    ).toBeDefined();
+    expect(() =>
+      parseDesktopEvent({
+        ...failure,
+        payload: {
+          ...failure!.payload,
+          code: "SOURCE_SET_INVALID",
+          reasonCode: "HANDOFF_HASH_MISMATCH",
+        },
+      }),
+    ).toThrow();
+    expect(() =>
+      parseDesktopEvent({
+        ...failure,
+        payload: {
+          ...failure!.payload,
+          code: "DATASET_HANDOFF_INVALID",
+          reasonCode: "UNSTABLE_INTERNAL_DETAIL",
+        },
+      }),
+    ).toThrow();
+  });
+
   it("suppresses wrong-window, stale, duplicate, and invalid-transition events", () => {
     const cursor: EventCursor = {
       windowId: "main",

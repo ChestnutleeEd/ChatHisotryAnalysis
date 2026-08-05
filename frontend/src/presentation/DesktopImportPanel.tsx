@@ -6,6 +6,7 @@ import {
   type AnalysisStatusAck,
   type DesktopEvent,
   type DesktopFailureCode,
+  type DesktopDiagnosticReasonCode,
   type DesktopPhase,
   type DesktopState,
   type DatasetId,
@@ -61,6 +62,7 @@ const INITIAL_CURSOR: EventCursor = {
 interface FailureState {
   readonly code: DesktopFailureCode;
   readonly retryable: boolean;
+  readonly reasonCode?: DesktopDiagnosticReasonCode;
 }
 
 interface ActiveOperation {
@@ -1258,6 +1260,7 @@ export function DesktopImportPanel() {
         <section className="desktop-alert" role="alert" aria-labelledby="desktop-error-heading">
           <h2 id="desktop-error-heading">{failureText}</h2>
           <p className="desktop-error-code">错误码：<code>{failure?.code}</code></p>
+          {failure?.reasonCode !== undefined ? <p className="desktop-error-code">原因码：<code>{failure.reasonCode}</code></p> : null}
           <p>应用只显示稳定的本地错误说明，不显示路径、命令、日志、正文或内部堆栈。</p>
           {failure?.code.startsWith("EXPORT_") && exportAttemptRef.current !== undefined ? (
             <button className="dashboard-button" type="button" disabled={pendingCommand} onClick={() => void exportAggregate(exportAttemptRef.current!.format, exportAttemptRef.current!.chartKey)}>重试导出</button>

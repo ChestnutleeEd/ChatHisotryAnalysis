@@ -172,6 +172,7 @@ pub struct SidecarProgress {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SidecarResult {
+    pub source_count: u64,
     pub event_count: u64,
     pub eligible_text_count: u64,
     pub chunk_count: u64,
@@ -2539,6 +2540,7 @@ fn stable_sidecar_reason(value: &str) -> &str {
         | "PARTICIPANT_INVALID"
         | "MESSAGE_TIME_INVALID"
         | "MESSAGE_TIME_RANGE_UNAVAILABLE"
+        | "SOURCE_EVENT_INVALID"
         | "UNSAFE_LOCAL_TYPE"
         | "DIFFERENT_CONVERSATION"
         | "SOURCE_MUTATED"
@@ -2571,6 +2573,7 @@ fn stable_sidecar_reason(value: &str) -> &str {
         | "CANONICAL_NO_EVENTS"
         | "CANONICAL_SCHEMA_INVALID"
         | "CANONICAL_PRIVACY_VALIDATION_FAILED"
+        | "SOURCE_DATE_INVALID"
         | "SIDECAR_PROTOCOL_INVALID"
         | "SIDECAR_CRASHED"
         | "USER_CANCELLED" => value,
@@ -2734,6 +2737,7 @@ fn parse_stdout_with_progress(
                     "sessionId",
                     "generation",
                     "status",
+                    "sourceCount",
                     "eventCount",
                     "eligibleTextCount",
                     "chunkCount",
@@ -2751,6 +2755,8 @@ fn parse_stdout_with_progress(
                     return Err(ParserError::Invalid);
                 }
                 let result = SidecarResult {
+                    source_count: safe_u64(object.get("sourceCount"))
+                        .ok_or(ParserError::Invalid)?,
                     event_count: safe_u64(object.get("eventCount")).ok_or(ParserError::Invalid)?,
                     eligible_text_count: safe_u64(object.get("eligibleTextCount"))
                         .ok_or(ParserError::Invalid)?,
@@ -3585,7 +3591,7 @@ mod tests {
     fn bounded_parser_rejects_unknown_fields_and_out_of_order_progress() {
         let first = br#"{"protocolVersion":"chat-history-analysis.sidecar.v1","type":"progress","sessionId":"ses_00000000000000000000000000000001","generation":1,"phase":"startup","percentage":50,"status":"running","aggregateCount":0,"capacityValue":1}
 {"protocolVersion":"chat-history-analysis.sidecar.v1","type":"progress","sessionId":"ses_00000000000000000000000000000001","generation":1,"phase":"startup","percentage":49,"status":"running","aggregateCount":0,"capacityValue":1}
-{"protocolVersion":"chat-history-analysis.sidecar.v1","type":"result","sessionId":"ses_00000000000000000000000000000001","generation":1,"status":"success","eventCount":1,"eligibleTextCount":1,"chunkCount":1,"duplicateEventCount":0,"warningCount":0}
+{"protocolVersion":"chat-history-analysis.sidecar.v1","type":"result","sessionId":"ses_00000000000000000000000000000001","generation":1,"status":"success","sourceCount":1,"eventCount":1,"eligibleTextCount":1,"chunkCount":1,"duplicateEventCount":0,"warningCount":0}
 "#;
         assert!(matches!(
             parse_stdout(&first[..], "ses_00000000000000000000000000000001", 1),

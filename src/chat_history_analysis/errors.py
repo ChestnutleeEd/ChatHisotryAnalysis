@@ -192,6 +192,7 @@ class SourceValidationReasonCode(str, Enum):
 class DatasetPersistenceReasonCode(str, Enum):
     """Stable Stage 5/6 reasons that never carry internal exception text."""
 
+    SOURCE_EVENT_INVALID = "SOURCE_EVENT_INVALID"
     OUTPUT_DESTINATION_EXISTS = "OUTPUT_DESTINATION_EXISTS"
     OUTPUT_PARENT_UNSAFE = "OUTPUT_PARENT_UNSAFE"
     OUTPUT_STAGING_FAILED = "OUTPUT_STAGING_FAILED"

@@ -68,6 +68,12 @@ fn write_synthetic_dataset(output: &PathBuf) {
             "keywords": "chat-history-analysis.metric.keywords.log-odds.v1",
             "sessions": "chat-history-analysis.metric.sessions.threshold.v1"
         },
+        "publicationCounts": {
+            "sourceCount": 1,
+            "rawAcceptedEventCount": 1,
+            "canonicalEventCount": 1,
+            "duplicateEventCount": 0
+        },
         "chunks": [{
             "ordinal": 0,
             "name": "chunk-0000.ndjson",
@@ -107,18 +113,25 @@ fn write_synthetic_dataset(output: &PathBuf) {
     manifest_bytes.push(b'\n');
     let chunk_path = output.join("chunk-0000.ndjson");
     let manifest_path = output.join("manifest.json");
+    let publication_marker_path = output.join(".canonical-dataset-complete-v2");
     let mut chunk = std::fs::File::create(chunk_path).expect("synthetic chunk");
     chunk.write_all(event).expect("synthetic chunk bytes");
     let mut manifest_file = std::fs::File::create(manifest_path).expect("synthetic manifest file");
     manifest_file
         .write_all(&manifest_bytes)
         .expect("synthetic manifest bytes");
+    std::fs::write(
+        publication_marker_path,
+        b"chat-history-analysis-canonical-dataset-v2-complete\n",
+    )
+    .expect("synthetic publication marker");
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         for path in [
             output.join("chunk-0000.ndjson"),
             output.join("manifest.json"),
+            output.join(".canonical-dataset-complete-v2"),
         ] {
             std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
                 .expect("synthetic file mode");
@@ -306,6 +319,7 @@ fn main() {
         "generation": generation,
         "status": "success",
         "eventCount": 1,
+        "sourceCount": 1,
         "eligibleTextCount": 1,
         "chunkCount": 1,
         "duplicateEventCount": 0,

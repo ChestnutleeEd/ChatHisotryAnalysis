@@ -73,6 +73,7 @@ export const CANONICAL_MANIFEST_FIELDS = [
   "preprocessorVersion",
   "timePolicy",
   "metricDefinitionVersions",
+  "publicationCounts",
   "chunks",
   "aggregates",
   "limits",
@@ -138,6 +139,13 @@ export interface CanonicalChunkDescriptorV2 {
   readonly sha256: string;
 }
 
+export interface CanonicalPublicationCountsV2 {
+  readonly sourceCount: number;
+  readonly rawAcceptedEventCount: number;
+  readonly canonicalEventCount: number;
+  readonly duplicateEventCount: number;
+}
+
 export interface CanonicalAggregatesV2 {
   readonly eventCount: number;
   readonly userMessageCount: number;
@@ -171,6 +179,7 @@ export interface CanonicalManifestV2 {
   readonly preprocessorVersion: typeof CANONICAL_PREPROCESSOR_VERSION;
   readonly timePolicy: typeof CANONICAL_TIME_POLICY;
   readonly metricDefinitionVersions: MetricDefinitionVersions;
+  readonly publicationCounts: CanonicalPublicationCountsV2;
   readonly chunks: readonly CanonicalChunkDescriptorV2[];
   readonly aggregates: CanonicalAggregatesV2;
   readonly limits: CanonicalLimitsV2;
@@ -619,6 +628,27 @@ function validateCanonicalManifestInternal(
   }
 
   if (
+    !isRecord(value.publicationCounts) ||
+    !hasExactKeys(value.publicationCounts, [
+      "canonicalEventCount",
+      "duplicateEventCount",
+      "rawAcceptedEventCount",
+      "sourceCount",
+    ]) ||
+    !safeInteger(value.publicationCounts.sourceCount, 1) ||
+    !safeInteger(value.publicationCounts.rawAcceptedEventCount, 1) ||
+    !safeInteger(value.publicationCounts.canonicalEventCount, 1) ||
+    !safeInteger(value.publicationCounts.duplicateEventCount) ||
+    value.publicationCounts.rawAcceptedEventCount > MAX_CANONICAL_EVENTS ||
+    value.publicationCounts.canonicalEventCount !== eventCount ||
+    value.publicationCounts.rawAcceptedEventCount !==
+      value.publicationCounts.canonicalEventCount +
+        value.publicationCounts.duplicateEventCount
+  ) {
+    throw new CanonicalContractValidationError("CANONICAL_PUBLICATION_COUNTS");
+  }
+
+  if (
     !isRecord(value.aggregates) ||
     !hasExactKeys(value.aggregates, CANONICAL_AGGREGATE_FIELDS)
   ) {
@@ -718,6 +748,12 @@ function validateCanonicalManifestInternal(
     preprocessorVersion: CANONICAL_PREPROCESSOR_VERSION,
     timePolicy: CANONICAL_TIME_POLICY,
     metricDefinitionVersions,
+    publicationCounts: {
+      sourceCount: value.publicationCounts.sourceCount as number,
+      rawAcceptedEventCount: value.publicationCounts.rawAcceptedEventCount as number,
+      canonicalEventCount: value.publicationCounts.canonicalEventCount as number,
+      duplicateEventCount: value.publicationCounts.duplicateEventCount as number,
+    },
     chunks,
     aggregates,
     limits: {

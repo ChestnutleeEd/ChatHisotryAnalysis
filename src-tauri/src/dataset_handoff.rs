@@ -21,6 +21,8 @@ use crate::dataset_transport::{
 use crate::session_supervisor::ANALYSIS_SESSIONS_DIRECTORY;
 
 const MANIFEST_NAME: &str = "manifest.json";
+const PUBLICATION_MARKER_NAME: &str = ".canonical-dataset-complete-v2";
+const PUBLICATION_MARKER: &[u8] = b"chat-history-analysis-canonical-dataset-v2-complete\n";
 const SESSION_MARKER: &str = ".session-marker";
 const SESSION_STATE: &str = "session-state";
 #[cfg(test)]
@@ -71,6 +73,51 @@ pub enum HandoffErrorCode {
     LimitExceeded,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HandoffReasonCode {
+    ManifestSchemaInvalid,
+    SchemaVersionMismatch,
+    PublicationIncomplete,
+    ChunkMissing,
+    ChunkSequenceInvalid,
+    ChunkCountMismatch,
+    EventCountMismatch,
+    ByteCountMismatch,
+    HashMismatch,
+    EventOrderInvalid,
+    DuplicateIdentityInvalid,
+    TimezoneInvalid,
+    SourceCountMismatch,
+    DatasetLimitExceeded,
+    SessionStale,
+    StorageIdentityInvalid,
+    ChunkSchemaInvalid,
+}
+
+impl HandoffReasonCode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ManifestSchemaInvalid => "HANDOFF_MANIFEST_SCHEMA_INVALID",
+            Self::SchemaVersionMismatch => "HANDOFF_SCHEMA_VERSION_MISMATCH",
+            Self::PublicationIncomplete => "HANDOFF_PUBLICATION_INCOMPLETE",
+            Self::ChunkMissing => "HANDOFF_CHUNK_MISSING",
+            Self::ChunkSequenceInvalid => "HANDOFF_CHUNK_SEQUENCE_INVALID",
+            Self::ChunkCountMismatch => "HANDOFF_CHUNK_COUNT_MISMATCH",
+            Self::EventCountMismatch => "HANDOFF_EVENT_COUNT_MISMATCH",
+            Self::ByteCountMismatch => "HANDOFF_BYTE_COUNT_MISMATCH",
+            Self::HashMismatch => "HANDOFF_HASH_MISMATCH",
+            Self::EventOrderInvalid => "HANDOFF_EVENT_ORDER_INVALID",
+            Self::DuplicateIdentityInvalid => "HANDOFF_DUPLICATE_IDENTITY_INVALID",
+            Self::TimezoneInvalid => "HANDOFF_TIMEZONE_INVALID",
+            Self::SourceCountMismatch => "HANDOFF_SOURCE_COUNT_MISMATCH",
+            Self::DatasetLimitExceeded => "HANDOFF_DATASET_LIMIT_EXCEEDED",
+            Self::SessionStale => "HANDOFF_SESSION_STALE",
+            Self::StorageIdentityInvalid => "HANDOFF_STORAGE_IDENTITY_INVALID",
+            Self::ChunkSchemaInvalid => "HANDOFF_CHUNK_SCHEMA_INVALID",
+        }
+    }
+}
+
 impl HandoffErrorCode {
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -95,6 +142,7 @@ impl fmt::Display for HandoffErrorCode {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct HandoffError {
     pub code: HandoffErrorCode,
+    pub reason: HandoffReasonCode,
 }
 
 impl fmt::Debug for HandoffError {
@@ -102,6 +150,7 @@ impl fmt::Debug for HandoffError {
         formatter
             .debug_struct("HandoffError")
             .field("code", &self.code)
+            .field("reason", &self.reason)
             .finish()
     }
 }
@@ -116,7 +165,31 @@ impl std::error::Error for HandoffError {}
 
 impl HandoffError {
     const fn new(code: HandoffErrorCode) -> Self {
-        Self { code }
+        Self {
+            code,
+            reason: default_reason(code),
+        }
+    }
+
+    const fn with_reason(code: HandoffErrorCode, reason: HandoffReasonCode) -> Self {
+        Self { code, reason }
+    }
+
+    pub const fn reason_code(self) -> &'static str {
+        self.reason.as_str()
+    }
+}
+
+const fn default_reason(code: HandoffErrorCode) -> HandoffReasonCode {
+    match code {
+        HandoffErrorCode::InvalidSession => HandoffReasonCode::SessionStale,
+        HandoffErrorCode::UnsafeSessionRoot => HandoffReasonCode::StorageIdentityInvalid,
+        HandoffErrorCode::MissingEntry => HandoffReasonCode::ChunkMissing,
+        HandoffErrorCode::ExtraEntry => HandoffReasonCode::PublicationIncomplete,
+        HandoffErrorCode::InvalidManifest => HandoffReasonCode::ManifestSchemaInvalid,
+        HandoffErrorCode::InvalidChunk => HandoffReasonCode::ChunkSchemaInvalid,
+        HandoffErrorCode::TamperedDataset => HandoffReasonCode::HashMismatch,
+        HandoffErrorCode::LimitExceeded => HandoffReasonCode::DatasetLimitExceeded,
     }
 }
 
@@ -135,6 +208,9 @@ pub struct VerifiedHandoff {
     pub minimum_calendar_date: String,
     pub maximum_calendar_date: String,
     pub pseudonymous: bool,
+    pub source_count: u64,
+    pub raw_accepted_event_count: u64,
+    pub duplicate_event_count: u64,
 }
 
 /// Verify exactly the session's normalized directory and return opaque bytes.
@@ -144,7 +220,10 @@ pub fn verify_session_dataset(
     generation: u64,
 ) -> Result<VerifiedHandoff, HandoffError> {
     if !valid_session_id(session_id) || generation == 0 {
-        return Err(HandoffError::new(HandoffErrorCode::InvalidSession));
+        return Err(HandoffError::with_reason(
+            HandoffErrorCode::InvalidSession,
+            HandoffReasonCode::SessionStale,
+        ));
     }
     if session_root.file_name().and_then(|value| value.to_str()) != Some(session_id)
         || session_root
@@ -154,44 +233,102 @@ pub fn verify_session_dataset(
             != Some(ANALYSIS_SESSIONS_DIRECTORY)
         || !absolute_no_parent(session_root)
     {
-        return Err(HandoffError::new(HandoffErrorCode::UnsafeSessionRoot));
+        return Err(HandoffError::with_reason(
+            HandoffErrorCode::UnsafeSessionRoot,
+            HandoffReasonCode::StorageIdentityInvalid,
+        ));
     }
     let application_cache_root = session_root
         .parent()
         .and_then(Path::parent)
-        .ok_or_else(|| HandoffError::new(HandoffErrorCode::UnsafeSessionRoot))?;
-    let storage = crate::secure_storage::SecureStorage::new(application_cache_root)
-        .map_err(|_| HandoffError::new(HandoffErrorCode::UnsafeSessionRoot))?;
+        .ok_or_else(|| {
+            HandoffError::with_reason(
+                HandoffErrorCode::UnsafeSessionRoot,
+                HandoffReasonCode::StorageIdentityInvalid,
+            )
+        })?;
+    let storage =
+        crate::secure_storage::SecureStorage::new(application_cache_root).map_err(|_| {
+            HandoffError::with_reason(
+                HandoffErrorCode::UnsafeSessionRoot,
+                HandoffReasonCode::StorageIdentityInvalid,
+            )
+        })?;
     verify_session_marker(&storage, session_id, generation)?;
+    let publication_marker = storage
+        .read_normalized_entry(
+            session_id,
+            PUBLICATION_MARKER_NAME,
+            PUBLICATION_MARKER.len(),
+        )
+        .map_err(|_| {
+            HandoffError::with_reason(
+                HandoffErrorCode::MissingEntry,
+                HandoffReasonCode::PublicationIncomplete,
+            )
+        })?;
+    if publication_marker != PUBLICATION_MARKER {
+        return Err(HandoffError::with_reason(
+            HandoffErrorCode::InvalidChunk,
+            HandoffReasonCode::PublicationIncomplete,
+        ));
+    }
     let manifest = storage
         .read_normalized_entry(session_id, MANIFEST_NAME, MAX_MANIFEST_BYTES)
-        .map_err(|_| HandoffError::new(HandoffErrorCode::MissingEntry))?;
+        .map_err(|_| {
+            HandoffError::with_reason(
+                HandoffErrorCode::MissingEntry,
+                HandoffReasonCode::PublicationIncomplete,
+            )
+        })?;
     if !manifest.ends_with(b"\n") || manifest.starts_with(b"\xef\xbb\xbf") {
-        return Err(HandoffError::new(HandoffErrorCode::InvalidManifest));
+        return Err(HandoffError::with_reason(
+            HandoffErrorCode::InvalidManifest,
+            HandoffReasonCode::ManifestSchemaInvalid,
+        ));
     }
-    let manifest_value = parse_json_without_duplicates(&manifest[..manifest.len() - 1])
-        .map_err(|_| HandoffError::new(HandoffErrorCode::InvalidManifest))?;
-    let descriptors = validate_manifest(&manifest_value).map_err(HandoffError::new)?;
+    let manifest_value =
+        parse_json_without_duplicates(&manifest[..manifest.len() - 1]).map_err(|_| {
+            HandoffError::with_reason(
+                HandoffErrorCode::InvalidManifest,
+                HandoffReasonCode::ManifestSchemaInvalid,
+            )
+        })?;
+    let descriptors = validate_manifest(&manifest_value)
+        .map_err(|code| HandoffError::with_reason(code, manifest_reason(&manifest_value, code)))?;
 
     let expected_names = std::iter::once(MANIFEST_NAME.to_string())
+        .chain(std::iter::once(PUBLICATION_MARKER_NAME.to_string()))
         .chain(descriptors.iter().map(|descriptor| descriptor.name.clone()))
         .collect::<BTreeSet<_>>();
     let observed_names = storage
         .list_normalized_entries(session_id)
-        .map_err(|_| HandoffError::new(HandoffErrorCode::UnsafeSessionRoot))?
+        .map_err(|_| {
+            HandoffError::with_reason(
+                HandoffErrorCode::UnsafeSessionRoot,
+                HandoffReasonCode::StorageIdentityInvalid,
+            )
+        })?
         .into_iter()
         .collect::<BTreeSet<_>>();
     if observed_names != expected_names {
-        return Err(HandoffError::new(
-            if expected_names.is_superset(&observed_names) {
-                HandoffErrorCode::MissingEntry
-            } else {
-                HandoffErrorCode::ExtraEntry
-            },
-        ));
+        let code = if expected_names.is_superset(&observed_names) {
+            HandoffErrorCode::MissingEntry
+        } else {
+            HandoffErrorCode::ExtraEntry
+        };
+        let reason = if !observed_names.contains(PUBLICATION_MARKER_NAME) {
+            HandoffReasonCode::PublicationIncomplete
+        } else if expected_names.is_superset(&observed_names) {
+            HandoffReasonCode::ChunkMissing
+        } else {
+            HandoffReasonCode::PublicationIncomplete
+        };
+        return Err(HandoffError::with_reason(code, reason));
     }
 
-    let mut chunks = Vec::with_capacity(descriptors.len());
+    let descriptor_count = descriptors.len();
+    let mut chunks = Vec::with_capacity(descriptor_count);
     let mut event_count = 0u64;
     let mut eligible_count = 0u64;
     let mut system_count = 0u64;
@@ -206,38 +343,72 @@ pub fn verify_session_dataset(
     for descriptor in descriptors {
         let bytes = storage
             .read_normalized_entry(session_id, &descriptor.name, MAX_CHUNK_BYTES)
-            .map_err(|_| HandoffError::new(HandoffErrorCode::InvalidChunk))?;
+            .map_err(|_| {
+                HandoffError::with_reason(
+                    HandoffErrorCode::MissingEntry,
+                    HandoffReasonCode::ChunkMissing,
+                )
+            })?;
         if bytes.len() != descriptor.byte_size {
-            return Err(HandoffError::new(HandoffErrorCode::TamperedDataset));
+            return Err(HandoffError::with_reason(
+                HandoffErrorCode::TamperedDataset,
+                HandoffReasonCode::ByteCountMismatch,
+            ));
         }
         if hex_digest(&bytes) != descriptor.sha256 {
-            return Err(HandoffError::new(HandoffErrorCode::TamperedDataset));
+            return Err(HandoffError::with_reason(
+                HandoffErrorCode::TamperedDataset,
+                HandoffReasonCode::HashMismatch,
+            ));
         }
         let mut descriptor_count = 0u64;
         for line in bytes.split_inclusive(|byte| *byte == b'\n') {
             if line.is_empty() || !line.ends_with(b"\n") || line == b"\n" {
-                return Err(HandoffError::new(HandoffErrorCode::InvalidChunk));
+                return Err(HandoffError::with_reason(
+                    HandoffErrorCode::InvalidChunk,
+                    HandoffReasonCode::ChunkSchemaInvalid,
+                ));
             }
-            let value = parse_json_without_duplicates(&line[..line.len() - 1])
-                .map_err(|_| HandoffError::new(HandoffErrorCode::InvalidChunk))?;
-            let event = validate_event(&value)
-                .map_err(|_| HandoffError::new(HandoffErrorCode::InvalidChunk))?;
+            let value = parse_json_without_duplicates(&line[..line.len() - 1]).map_err(|_| {
+                HandoffError::with_reason(
+                    HandoffErrorCode::InvalidChunk,
+                    HandoffReasonCode::ChunkSchemaInvalid,
+                )
+            })?;
+            let event = validate_event(&value).map_err(|_| {
+                HandoffError::with_reason(HandoffErrorCode::InvalidChunk, event_reason(&value))
+            })?;
             if event.source_index != event_count {
-                return Err(HandoffError::new(HandoffErrorCode::InvalidChunk));
+                return Err(HandoffError::with_reason(
+                    HandoffErrorCode::InvalidChunk,
+                    HandoffReasonCode::EventOrderInvalid,
+                ));
             }
             let order = (event.create_time, event.file_rank, event.source_index);
             if previous_order.is_some_and(|previous| order < previous) {
-                return Err(HandoffError::new(HandoffErrorCode::InvalidChunk));
+                return Err(HandoffError::with_reason(
+                    HandoffErrorCode::InvalidChunk,
+                    HandoffReasonCode::EventOrderInvalid,
+                ));
             }
             previous_order = Some(order);
-            event_count = event_count
-                .checked_add(1)
-                .ok_or_else(|| HandoffError::new(HandoffErrorCode::LimitExceeded))?;
-            descriptor_count = descriptor_count
-                .checked_add(1)
-                .ok_or_else(|| HandoffError::new(HandoffErrorCode::LimitExceeded))?;
+            event_count = event_count.checked_add(1).ok_or_else(|| {
+                HandoffError::with_reason(
+                    HandoffErrorCode::LimitExceeded,
+                    HandoffReasonCode::DatasetLimitExceeded,
+                )
+            })?;
+            descriptor_count = descriptor_count.checked_add(1).ok_or_else(|| {
+                HandoffError::with_reason(
+                    HandoffErrorCode::LimitExceeded,
+                    HandoffReasonCode::DatasetLimitExceeded,
+                )
+            })?;
             if event_count > MAX_RECORD_COUNT {
-                return Err(HandoffError::new(HandoffErrorCode::LimitExceeded));
+                return Err(HandoffError::with_reason(
+                    HandoffErrorCode::LimitExceeded,
+                    HandoffReasonCode::DatasetLimitExceeded,
+                ));
             }
             if event.text_eligible {
                 eligible_count += 1;
@@ -250,7 +421,12 @@ pub fn verify_session_dataset(
             }
             *category_counts
                 .get_mut(&event.message_category)
-                .ok_or_else(|| HandoffError::new(HandoffErrorCode::InvalidChunk))? += 1;
+                .ok_or_else(|| {
+                    HandoffError::with_reason(
+                        HandoffErrorCode::InvalidChunk,
+                        HandoffReasonCode::ChunkSchemaInvalid,
+                    )
+                })? += 1;
             minimum_date = Some(minimum_date.map_or_else(
                 || event.calendar_date.to_string(),
                 |value| value.min(event.calendar_date.to_string()),
@@ -261,12 +437,18 @@ pub fn verify_session_dataset(
             ));
         }
         if descriptor_count != descriptor.record_count {
-            return Err(HandoffError::new(HandoffErrorCode::TamperedDataset));
+            return Err(HandoffError::with_reason(
+                HandoffErrorCode::TamperedDataset,
+                HandoffReasonCode::EventCountMismatch,
+            ));
         }
         chunks.push(bytes);
     }
     if event_count == 0 {
-        return Err(HandoffError::new(HandoffErrorCode::InvalidManifest));
+        return Err(HandoffError::with_reason(
+            HandoffErrorCode::InvalidManifest,
+            HandoffReasonCode::EventCountMismatch,
+        ));
     }
     validate_aggregates(
         &manifest_value,
@@ -276,16 +458,40 @@ pub fn verify_session_dataset(
         unknown_sender_count,
         &category_counts,
         chunks.iter().map(Vec::len).sum(),
-        expected_names.len() - 1,
+        descriptor_count,
     )?;
     Ok(VerifiedHandoff {
         manifest,
         chunks,
         record_count: event_count,
-        chunk_count: expected_names.len() as u64 - 1,
+        chunk_count: descriptor_count as u64,
         minimum_calendar_date: minimum_date.expect("event count checked"),
         maximum_calendar_date: maximum_date.expect("event count checked"),
         pseudonymous: true,
+        source_count: unsigned(
+            manifest_value
+                .get("publicationCounts")
+                .and_then(Value::as_object)
+                .expect("validated publication counts"),
+            "sourceCount",
+        )
+        .expect("validated source count"),
+        raw_accepted_event_count: unsigned(
+            manifest_value
+                .get("publicationCounts")
+                .and_then(Value::as_object)
+                .expect("validated publication counts"),
+            "rawAcceptedEventCount",
+        )
+        .expect("validated raw accepted count"),
+        duplicate_event_count: unsigned(
+            manifest_value
+                .get("publicationCounts")
+                .and_then(Value::as_object)
+                .expect("validated publication counts"),
+            "duplicateEventCount",
+        )
+        .expect("validated duplicate count"),
     })
 }
 
@@ -296,17 +502,37 @@ fn verify_session_marker(
 ) -> Result<(), HandoffError> {
     let marker = storage
         .read_session_entry(session_id, SESSION_MARKER, 128)
-        .map_err(|_| HandoffError::new(HandoffErrorCode::MissingEntry))?;
+        .map_err(|_| {
+            HandoffError::with_reason(
+                HandoffErrorCode::MissingEntry,
+                HandoffReasonCode::SessionStale,
+            )
+        })?;
     if marker != b"chat-history-analysis-session-v1\n" {
-        return Err(HandoffError::new(HandoffErrorCode::UnsafeSessionRoot));
+        return Err(HandoffError::with_reason(
+            HandoffErrorCode::UnsafeSessionRoot,
+            HandoffReasonCode::StorageIdentityInvalid,
+        ));
     }
     let state = storage
         .read_session_entry(session_id, SESSION_STATE, 256)
-        .map_err(|_| HandoffError::new(HandoffErrorCode::MissingEntry))?;
-    let state = std::str::from_utf8(&state)
-        .map_err(|_| HandoffError::new(HandoffErrorCode::UnsafeSessionRoot))?;
+        .map_err(|_| {
+            HandoffError::with_reason(
+                HandoffErrorCode::MissingEntry,
+                HandoffReasonCode::SessionStale,
+            )
+        })?;
+    let state = std::str::from_utf8(&state).map_err(|_| {
+        HandoffError::with_reason(
+            HandoffErrorCode::UnsafeSessionRoot,
+            HandoffReasonCode::StorageIdentityInvalid,
+        )
+    })?;
     if state != format!("sessionId={session_id}\ngeneration={generation}\n") {
-        return Err(HandoffError::new(HandoffErrorCode::InvalidSession));
+        return Err(HandoffError::with_reason(
+            HandoffErrorCode::InvalidSession,
+            HandoffReasonCode::SessionStale,
+        ));
     }
     Ok(())
 }
@@ -328,6 +554,7 @@ fn validate_manifest(value: &Value) -> Result<Vec<ChunkDescriptor>, HandoffError
             "chunks",
             "limits",
             "metricDefinitionVersions",
+            "publicationCounts",
             "preprocessorVersion",
             "privacyValidation",
             "schemaVersion",
@@ -368,7 +595,10 @@ fn validate_manifest(value: &Value) -> Result<Vec<ChunkDescriptor>, HandoffError
         .get("chunks")
         .and_then(Value::as_array)
         .ok_or(HandoffErrorCode::InvalidManifest)?;
-    if chunks.is_empty() || chunks.len() > MAX_CHUNK_COUNT {
+    if chunks.is_empty() {
+        return Err(HandoffErrorCode::InvalidManifest);
+    }
+    if chunks.len() > MAX_CHUNK_COUNT {
         return Err(HandoffErrorCode::LimitExceeded);
     }
     let mut descriptors = Vec::with_capacity(chunks.len());
@@ -424,7 +654,124 @@ fn validate_manifest(value: &Value) -> Result<Vec<ChunkDescriptor>, HandoffError
             .get("privacyValidation")
             .ok_or(HandoffErrorCode::InvalidManifest)?,
     )?;
+    validate_publication_counts(
+        object
+            .get("publicationCounts")
+            .ok_or(HandoffErrorCode::InvalidManifest)?,
+        total_records,
+    )?;
     Ok(descriptors)
+}
+
+fn validate_publication_counts(
+    value: &Value,
+    canonical_event_count: u64,
+) -> Result<(), HandoffErrorCode> {
+    let object = exact_object(
+        value,
+        &[
+            "canonicalEventCount",
+            "duplicateEventCount",
+            "rawAcceptedEventCount",
+            "sourceCount",
+        ],
+    )?;
+    let source_count = unsigned(object, "sourceCount")?;
+    let raw_accepted = unsigned(object, "rawAcceptedEventCount")?;
+    let canonical = unsigned(object, "canonicalEventCount")?;
+    let duplicate = unsigned(object, "duplicateEventCount")?;
+    if source_count == 0
+        || raw_accepted == 0
+        || canonical != canonical_event_count
+        || raw_accepted > MAX_RECORD_COUNT
+        || raw_accepted != canonical.saturating_add(duplicate)
+    {
+        return Err(HandoffErrorCode::InvalidManifest);
+    }
+    Ok(())
+}
+
+fn manifest_reason(value: &Value, code: HandoffErrorCode) -> HandoffReasonCode {
+    if code == HandoffErrorCode::LimitExceeded {
+        return HandoffReasonCode::DatasetLimitExceeded;
+    }
+    let Some(object) = value.as_object() else {
+        return HandoffReasonCode::ManifestSchemaInvalid;
+    };
+    if object.get("schemaVersion").and_then(Value::as_str) != Some(CANONICAL_MANIFEST_VERSION)
+        || object.get("canonicalSchemaVersion").and_then(Value::as_str)
+            != Some(CANONICAL_EVENT_VERSION)
+        || object.get("preprocessorVersion").and_then(Value::as_str) != Some(PREPROCESSOR_VERSION)
+    {
+        return HandoffReasonCode::SchemaVersionMismatch;
+    }
+    if object.get("timePolicy").and_then(Value::as_str) != Some(TIME_POLICY) {
+        return HandoffReasonCode::TimezoneInvalid;
+    }
+    if let Some(chunks) = object.get("chunks").and_then(Value::as_array) {
+        if chunks.is_empty() {
+            return HandoffReasonCode::ChunkCountMismatch;
+        }
+        for (index, chunk) in chunks.iter().enumerate() {
+            let Some(chunk) = chunk.as_object() else {
+                return HandoffReasonCode::ManifestSchemaInvalid;
+            };
+            let expected_name = format!("chunk-{index:04}.ndjson");
+            if chunk.get("ordinal").and_then(Value::as_u64) != Some(index as u64)
+                || chunk.get("name").and_then(Value::as_str) != Some(expected_name.as_str())
+            {
+                return HandoffReasonCode::ChunkSequenceInvalid;
+            }
+        }
+    }
+    if let Some(publication) = object.get("publicationCounts") {
+        let canonical_event_count = object
+            .get("chunks")
+            .and_then(Value::as_array)
+            .map(|chunks| {
+                chunks
+                    .iter()
+                    .filter_map(|chunk| chunk.get("recordCount").and_then(Value::as_u64))
+                    .sum()
+            })
+            .unwrap_or(0);
+        let reason = publication_reason(publication, canonical_event_count);
+        if reason != HandoffReasonCode::ManifestSchemaInvalid {
+            return reason;
+        }
+    }
+    HandoffReasonCode::ManifestSchemaInvalid
+}
+
+fn publication_reason(value: &Value, canonical_event_count: u64) -> HandoffReasonCode {
+    let Some(object) = value.as_object() else {
+        return HandoffReasonCode::ManifestSchemaInvalid;
+    };
+    let Some(source_count) = object.get("sourceCount").and_then(Value::as_u64) else {
+        return HandoffReasonCode::ManifestSchemaInvalid;
+    };
+    let Some(raw_accepted) = object.get("rawAcceptedEventCount").and_then(Value::as_u64) else {
+        return HandoffReasonCode::ManifestSchemaInvalid;
+    };
+    let Some(canonical) = object.get("canonicalEventCount").and_then(Value::as_u64) else {
+        return HandoffReasonCode::ManifestSchemaInvalid;
+    };
+    let Some(duplicate) = object.get("duplicateEventCount").and_then(Value::as_u64) else {
+        return HandoffReasonCode::ManifestSchemaInvalid;
+    };
+    if source_count == 0 {
+        return HandoffReasonCode::SourceCountMismatch;
+    }
+    if canonical != canonical_event_count {
+        return HandoffReasonCode::EventCountMismatch;
+    }
+    if raw_accepted == 0 || raw_accepted > MAX_RECORD_COUNT {
+        return HandoffReasonCode::DatasetLimitExceeded;
+    }
+    if raw_accepted != canonical.saturating_add(duplicate) {
+        return HandoffReasonCode::DuplicateIdentityInvalid;
+    }
+    HandoffReasonCode::ManifestSchemaInvalid
 }
 
 fn validate_limits(value: &Value) -> Result<(), HandoffErrorCode> {
@@ -488,11 +835,24 @@ fn validate_aggregates(
         || unsigned(object, "userMessageCount")? != event_count - system_count
         || unsigned(object, "eligibleTextCount")? != eligible_count
         || unsigned(object, "systemEventCount")? != system_count
-        || unsigned(object, "chunkCount")? != chunk_count as u64
-        || unsigned(object, "totalBytes")? != total_bytes as u64
         || unsigned(object, "unknownSenderCount")? != unknown_sender_count
     {
-        return Err(HandoffError::new(HandoffErrorCode::TamperedDataset));
+        return Err(HandoffError::with_reason(
+            HandoffErrorCode::TamperedDataset,
+            HandoffReasonCode::EventCountMismatch,
+        ));
+    }
+    if unsigned(object, "chunkCount")? != chunk_count as u64 {
+        return Err(HandoffError::with_reason(
+            HandoffErrorCode::TamperedDataset,
+            HandoffReasonCode::ChunkCountMismatch,
+        ));
+    }
+    if unsigned(object, "totalBytes")? != total_bytes as u64 {
+        return Err(HandoffError::with_reason(
+            HandoffErrorCode::TamperedDataset,
+            HandoffReasonCode::ByteCountMismatch,
+        ));
     }
     let counts = exact_object(
         object
@@ -504,14 +864,20 @@ fn validate_aggregates(
     for category in CATEGORIES {
         let value = unsigned(counts, category)?;
         if value != category_counts.get(category).copied().unwrap_or(0) {
-            return Err(HandoffError::new(HandoffErrorCode::TamperedDataset));
+            return Err(HandoffError::with_reason(
+                HandoffErrorCode::TamperedDataset,
+                HandoffReasonCode::EventCountMismatch,
+            ));
         }
         sum = sum
             .checked_add(value)
             .ok_or(HandoffErrorCode::LimitExceeded)?;
     }
     if sum != event_count || event_count == 0 || total_bytes == 0 {
-        return Err(HandoffError::new(HandoffErrorCode::TamperedDataset));
+        return Err(HandoffError::with_reason(
+            HandoffErrorCode::TamperedDataset,
+            HandoffReasonCode::EventCountMismatch,
+        ));
     }
     Ok(())
 }
@@ -584,12 +950,93 @@ fn validate_event(value: &Value) -> Result<EventValue, ()> {
     })
 }
 
+fn event_reason(value: &Value) -> HandoffReasonCode {
+    let Some(object) = value.as_object() else {
+        return HandoffReasonCode::ChunkSchemaInvalid;
+    };
+    let Some(create_time) = object.get("createTime").and_then(Value::as_u64) else {
+        return HandoffReasonCode::ChunkSchemaInvalid;
+    };
+    let Some((expected_formatted, expected_calendar)) = expected_time(create_time) else {
+        return HandoffReasonCode::TimezoneInvalid;
+    };
+    let formatted = object.get("formattedTime").and_then(Value::as_str);
+    let calendar = object.get("calendarDate").and_then(Value::as_str);
+    if formatted.is_some_and(|value| value != expected_formatted)
+        || calendar.is_some_and(|value| value != expected_calendar)
+    {
+        return HandoffReasonCode::TimezoneInvalid;
+    }
+    HandoffReasonCode::ChunkSchemaInvalid
+}
+
 fn contains_forbidden_content(value: &str) -> bool {
-    let lowercase = value.to_ascii_lowercase();
-    lowercase.contains("http://")
-        || lowercase.contains("https://")
-        || lowercase.contains("www.")
-        || value.contains('<')
+    contains_url_like(value) || contains_xml_like(value)
+}
+
+fn contains_url_like(value: &str) -> bool {
+    for (index, _) in value.char_indices() {
+        let previous = value[..index].chars().next_back();
+        if previous.is_some_and(|character| character.is_ascii_alphanumeric() || character == '_') {
+            continue;
+        }
+        let rest = &value[index..];
+        let prefix_length = ["https://", "http://", "www."]
+            .into_iter()
+            .find(|prefix| {
+                rest.get(..prefix.len())
+                    .is_some_and(|head| head.eq_ignore_ascii_case(prefix))
+            })
+            .map(str::len);
+        let Some(prefix_length) = prefix_length else {
+            continue;
+        };
+        if rest[prefix_length..]
+            .chars()
+            .next()
+            .is_some_and(|character| {
+                !character.is_whitespace()
+                    && character != '<'
+                    && character != '>'
+                    && character != '"'
+                    && character != '\''
+            })
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn contains_xml_like(value: &str) -> bool {
+    for (index, _) in value.match_indices('<') {
+        let rest = value[index + 1..].trim_start_matches(char::is_whitespace);
+        if rest.starts_with('!') || rest.starts_with('?') {
+            return true;
+        }
+        let rest = rest.strip_prefix('/').unwrap_or(rest);
+        let mut name_length = 0usize;
+        for character in rest.chars() {
+            if name_length == 0 {
+                if !(character.is_ascii_alphabetic() || character == '_') {
+                    break;
+                }
+            } else if !(character.is_ascii_alphanumeric()
+                || matches!(character, '_' | '.' | ':' | '-'))
+            {
+                break;
+            }
+            name_length += character.len_utf8();
+        }
+        if name_length > 0
+            && rest[name_length..].chars().next().is_some_and(|character| {
+                character.is_whitespace() || character == '/' || character == '>'
+            })
+        {
+            return true;
+        }
+    }
+    false
 }
 
 fn expected_time(seconds: u64) -> Option<(String, String)> {
@@ -801,12 +1248,16 @@ mod tests {
             &session.join(SESSION_STATE),
             format!("sessionId={session_id}\ngeneration=1\n").as_bytes(),
         );
+        write_private(
+            &normalized.join(PUBLICATION_MARKER_NAME),
+            PUBLICATION_MARKER,
+        );
         let chunk = br#"{"createTime":1735689600,"formattedTime":"2025-01-01 08:00:00","calendarDate":"2025-01-01","senderScope":"owner","messageCategory":"text","textEligible":true,"content":"synthetic","fileRank":0,"sourceIndex":0}
 "#;
         write_private(&normalized.join("chunk-0000.ndjson"), chunk);
         let digest = hex_digest(chunk);
         let manifest = format!(
-            "{{\"schemaVersion\":\"chat-history-analysis.manifest.v2\",\"canonicalSchemaVersion\":\"chat-history-analysis.canonical-event.v2\",\"preprocessorVersion\":\"0.1.0\",\"timePolicy\":\"UTC+08:00\",\"metricDefinitionVersions\":{{\"population\":\"chat-history-analysis.metric.population.v1\",\"time\":\"chat-history-analysis.metric.time.utc-plus-8.v1\",\"tokens\":\"chat-history-analysis.metric.tokens.jieba.v1\",\"keywords\":\"chat-history-analysis.metric.keywords.log-odds.v1\",\"sessions\":\"chat-history-analysis.metric.sessions.threshold.v1\"}},\"chunks\":[{{\"ordinal\":0,\"name\":\"chunk-0000.ndjson\",\"byteSize\":{},\"recordCount\":1,\"sha256\":\"{}\"}}],\"aggregates\":{{\"eventCount\":1,\"userMessageCount\":1,\"eligibleTextCount\":1,\"systemEventCount\":0,\"chunkCount\":1,\"totalBytes\":{},\"warningCount\":0,\"messageCategoryCounts\":{{\"text\":1,\"image\":0,\"voice\":0,\"video\":0,\"file\":0,\"animated-emoji\":0,\"structured\":0,\"location\":0,\"call\":0,\"mini-program\":0,\"reply\":0,\"contact-card\":0,\"system\":0,\"other\":0,\"unknown\":0}},\"unknownSenderCount\":0}},\"limits\":{{\"maxEvents\":2000000,\"maxDatasetBytes\":536870912,\"maxChunkBytes\":33554432,\"maxChunkCount\":16384}},\"privacyValidation\":{{\"status\":\"passed\",\"forbiddenFieldCount\":0,\"contentPolicy\":\"eligible-text-only\"}}}}\n",
+            "{{\"schemaVersion\":\"chat-history-analysis.manifest.v2\",\"canonicalSchemaVersion\":\"chat-history-analysis.canonical-event.v2\",\"preprocessorVersion\":\"0.1.0\",\"timePolicy\":\"UTC+08:00\",\"metricDefinitionVersions\":{{\"population\":\"chat-history-analysis.metric.population.v1\",\"time\":\"chat-history-analysis.metric.time.utc-plus-8.v1\",\"tokens\":\"chat-history-analysis.metric.tokens.jieba.v1\",\"keywords\":\"chat-history-analysis.metric.keywords.log-odds.v1\",\"sessions\":\"chat-history-analysis.metric.sessions.threshold.v1\"}},\"publicationCounts\":{{\"sourceCount\":1,\"rawAcceptedEventCount\":1,\"canonicalEventCount\":1,\"duplicateEventCount\":0}},\"chunks\":[{{\"ordinal\":0,\"name\":\"chunk-0000.ndjson\",\"byteSize\":{},\"recordCount\":1,\"sha256\":\"{}\"}}],\"aggregates\":{{\"eventCount\":1,\"userMessageCount\":1,\"eligibleTextCount\":1,\"systemEventCount\":0,\"chunkCount\":1,\"totalBytes\":{},\"warningCount\":0,\"messageCategoryCounts\":{{\"text\":1,\"image\":0,\"voice\":0,\"video\":0,\"file\":0,\"animated-emoji\":0,\"structured\":0,\"location\":0,\"call\":0,\"mini-program\":0,\"reply\":0,\"contact-card\":0,\"system\":0,\"other\":0,\"unknown\":0}},\"unknownSenderCount\":0}},\"limits\":{{\"maxEvents\":2000000,\"maxDatasetBytes\":536870912,\"maxChunkBytes\":33554432,\"maxChunkCount\":16384}},\"privacyValidation\":{{\"status\":\"passed\",\"forbiddenFieldCount\":0,\"contentPolicy\":\"eligible-text-only\"}}}}\n",
             chunk.len(),
             digest,
             chunk.len()
@@ -834,6 +1285,22 @@ mod tests {
     }
 
     #[test]
+    fn canonical_content_policy_allows_literal_comparison_delimiter() {
+        let value = serde_json::json!({
+            "createTime": 1735689600,
+            "formattedTime": "2025-01-01 08:00:00",
+            "calendarDate": "2025-01-01",
+            "senderScope": "owner",
+            "messageCategory": "text",
+            "textEligible": true,
+            "content": "synthetic 1 < 2",
+            "fileRank": 0,
+            "sourceIndex": 0,
+        });
+        validate_event(&value).expect("literal comparison delimiter is not XML-like");
+    }
+
+    #[test]
     fn valid_handoff_is_opaque_and_tamper_or_extra_entries_fail() {
         let (root, session_id) = fixture();
         let session = root.join(ANALYSIS_SESSIONS_DIRECTORY).join(&session_id);
@@ -843,20 +1310,30 @@ mod tests {
         assert_eq!(verified.minimum_calendar_date, "2025-01-01");
         assert!(!format!("{verified:?}").contains(root.to_string_lossy().as_ref()));
         let chunk = session.join(NORMALIZED_DIRECTORY).join("chunk-0000.ndjson");
+        let original = fs::read(&chunk).expect("read chunk");
+        let mut tampered = original.clone();
+        let offset = tampered
+            .windows(b"synthetic".len())
+            .position(|window| window == b"synthetic")
+            .expect("synthetic fixture content");
+        tampered[offset] = b't';
         let mut file = fs::OpenOptions::new()
-            .append(true)
+            .write(true)
             .open(&chunk)
-            .expect("append");
-        file.write_all(b"tamper\n").expect("tamper");
-        assert_eq!(
-            verify_session_dataset(&session, &session_id, 1)
-                .unwrap_err()
-                .code,
-            HandoffErrorCode::TamperedDataset
-        );
+            .expect("open chunk");
+        file.write_all(&tampered).expect("tamper");
+        let tamper_error = verify_session_dataset(&session, &session_id, 1).unwrap_err();
+        assert_eq!(tamper_error.code, HandoffErrorCode::TamperedDataset);
+        assert_eq!(tamper_error.reason_code(), "HANDOFF_HASH_MISMATCH");
         fs::remove_file(chunk).expect("remove chunk");
         fs::remove_file(session.join(NORMALIZED_DIRECTORY).join(MANIFEST_NAME))
             .expect("remove manifest");
+        fs::remove_file(
+            session
+                .join(NORMALIZED_DIRECTORY)
+                .join(PUBLICATION_MARKER_NAME),
+        )
+        .expect("remove publication marker");
         fs::remove_dir(session.join(NORMALIZED_DIRECTORY)).expect("remove normalized");
         fs::remove_file(session.join(SESSION_MARKER)).expect("remove marker");
         fs::remove_file(session.join(SESSION_STATE)).expect("remove state");

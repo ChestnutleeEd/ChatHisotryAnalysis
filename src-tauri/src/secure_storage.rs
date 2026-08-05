@@ -948,6 +948,7 @@ fn is_known_session_file(name: &str) -> bool {
             | SESSION_STATE_NAME
             | OWNER_RECORD_NAME
             | "manifest.json"
+            | ".canonical-dataset-complete-v2"
             | ".cleanup-required"
     ) || is_known_owner_temporary_file(name)
         || (name.starts_with("chunk-")

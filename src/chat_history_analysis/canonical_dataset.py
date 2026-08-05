@@ -25,6 +25,7 @@ from .canonical_event_v2 import (
     CanonicalAggregatesV2,
     CanonicalEventV2,
     CanonicalManifestV2,
+    CanonicalPublicationCountsV2,
     MAX_CANONICAL_CHUNK_BYTES,
     MAX_CANONICAL_CHUNK_COUNT,
     MAX_CANONICAL_DATASET_BYTES,
@@ -63,6 +64,8 @@ from .preprocessing_validation import ValidatedSourceDescriptor, ValidationResul
 
 
 CANONICAL_MANIFEST_NAME = "manifest.json"
+CANONICAL_PUBLICATION_MARKER_NAME = ".canonical-dataset-complete-v2"
+CANONICAL_PUBLICATION_MARKER = b"chat-history-analysis-canonical-dataset-v2-complete\n"
 CANONICAL_DATABASE_NAME = ".staging-events.sqlite3"
 CANONICAL_STAGING_MARKER = ".chathistoryanalysis-private-stage-v2"
 CANONICAL_STAGING_PREFIX = ".chathistoryanalysis-stage-v2-"
@@ -97,6 +100,8 @@ class CanonicalDatasetBuildResult:
     matched_verification_event_count: int
     unmatched_verification_event_count: int
     manifest_sha256: str
+    source_count: int
+    raw_accepted_event_count: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -371,7 +376,7 @@ class CanonicalEventStagingConsumer:
             or candidate.source_array_index < 0
         ):
             raise _error(
-                DatasetPersistenceReasonCode.CANONICAL_SCHEMA_INVALID,
+                DatasetPersistenceReasonCode.SOURCE_EVENT_INVALID,
                 phase=DATASET_STAGING_PHASE,
                 category=FailureCategory.INPUT_VALIDATION,
             )
@@ -390,7 +395,7 @@ class CanonicalEventStagingConsumer:
             validate_canonical_event(event.as_mapping())
         except ValueError:
             raise _error(
-                DatasetPersistenceReasonCode.CANONICAL_SCHEMA_INVALID,
+                DatasetPersistenceReasonCode.SOURCE_EVENT_INVALID,
                 phase=DATASET_STAGING_PHASE,
                 category=FailureCategory.INPUT_VALIDATION,
             ) from None
@@ -802,6 +807,16 @@ class CanonicalEventStagingConsumer:
             unknown_sender_count=0,
         )
         manifest = CanonicalManifestV2(
+            publication_counts=CanonicalPublicationCountsV2(
+                source_count=len(result.annual_sources),
+                raw_accepted_event_count=(
+                    result.canonical_normalization.emitted_count
+                    if result.canonical_normalization is not None
+                    else 0
+                ),
+                canonical_event_count=stats["eventCount"],
+                duplicate_event_count=self._duplicate_count,
+            ),
             chunks=chunks,  # type: ignore[arg-type]
             aggregates=aggregates,
         )
@@ -830,12 +845,23 @@ class CanonicalEventStagingConsumer:
                 phase=OUTPUT_SERIALIZATION_PHASE,
                 category=FailureCategory.CAPACITY,
             )
-        manifest_handle = _secure_create_file(self._stage / CANONICAL_MANIFEST_NAME)
+        manifest_temporary = self._stage / ".manifest.json.tmp"
+        manifest_handle = _secure_create_file(manifest_temporary)
         _write_all(manifest_handle, manifest_bytes)
         _flush_close(manifest_handle)
+        _atomic_rename_exclusive(
+            manifest_temporary,
+            self._stage / CANONICAL_MANIFEST_NAME,
+        )
+        publication_marker = _secure_create_file(
+            self._stage / CANONICAL_PUBLICATION_MARKER_NAME
+        )
+        _write_all(publication_marker, CANONICAL_PUBLICATION_MARKER)
+        _flush_close(publication_marker)
         verify_canonical_dataset_directory(self._stage, require_exact_entries=False)
         output_names = {
             CANONICAL_MANIFEST_NAME,
+            CANONICAL_PUBLICATION_MARKER_NAME,
             *(chunk.name for chunk in chunks),
         }
         self._remove_non_output_entries(output_names)
@@ -886,6 +912,12 @@ class CanonicalEventStagingConsumer:
             matched_verification_event_count=self._matched_verification,
             unmatched_verification_event_count=self._unmatched_verification,
             manifest_sha256=hashlib.sha256(manifest_bytes).hexdigest(),
+            source_count=len(result.annual_sources),
+            raw_accepted_event_count=(
+                result.canonical_normalization.emitted_count
+                if result.canonical_normalization is not None
+                else 0
+            ),
         )
 
 
@@ -1012,8 +1044,17 @@ def verify_canonical_dataset_directory(
         validate_canonical_manifest(manifest)
         expected_names = {
             CANONICAL_MANIFEST_NAME,
+            CANONICAL_PUBLICATION_MARKER_NAME,
             *(chunk["name"] for chunk in manifest["chunks"]),
         }
+        if (
+            _read_v2_file(
+                directory / CANONICAL_PUBLICATION_MARKER_NAME,
+                len(CANONICAL_PUBLICATION_MARKER),
+            )
+            != CANONICAL_PUBLICATION_MARKER
+        ):
+            raise ValueError
         if require_exact_entries:
             observed_names: set[str] = set()
             for entry in os.scandir(directory):

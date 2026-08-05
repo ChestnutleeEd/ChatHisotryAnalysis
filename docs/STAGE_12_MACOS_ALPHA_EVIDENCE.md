@@ -13,13 +13,35 @@
 | --- | --- | --- |
 | 12.1 | 合成 fixture gate | Python、Worker、metric、filter、threshold、empty/partial/duplicate/cross-boundary 矩阵 |
 | 12.2 | 完成（Alpha synthetic boundary/representative gate） | 已运行 100,000-event representative 与 2,000,000-event/约 512 MiB boundary profile；记录 phase、取消、restart、cache、typed-array/RSS；不把 D.9 formal certification 写成已完成 |
-| 12.3 | synthetic desktop gate | 多文件、verification、dedupe、media-only、failure/retry、handoff、close/recovery、export、offline |
+| 12.3 | synthetic desktop gate | 多文件、verification、dedupe、media-only、failure/retry、multi-year handoff、close/recovery、export、offline |
 | 12.4 | 完成 | Windows 只记录 target-built sidecar、Unicode path、Job Object、cache、signing、installer 后续要求 |
 | 12.5 | 完成 | 用户手册、release notes、build/verify 入口和版本身份文档 |
 | 12.6 | 完成 | 规范/代码/测试/授权边界复核；未执行真实数据 checkpoint |
 | 12.7 | USER-MANUAL — NOT EXECUTED BY AGENT | 不发现、不打开 `data/private`，等待单独授权 |
 | 12.8 | USER-MANUAL — NOT EXECUTED BY AGENT | 不执行 Stage 15.10 或 full productized real-data acceptance |
 | 12.9 | 完成 | final synthetic matrix、package、offline、OpenSpec、Git hygiene |
+
+## Multi-year handoff correction batch
+
+The correction is validated only with generated fixtures. A five-source
+2022–2026 case publishes 11 raw accepted events as 10 canonical events and 1
+duplicate, with `sourceCount=5`; the manifest event count equals the sum of its
+chunk descriptors, and the fixed publication marker is present. Additional
+synthetic probes covered a 60,000-event five-source publication, a forced
+8,192-byte chunk profile with 60,005 canonical events and 10,750 duplicates
+across 1,924 chunks, and a literal-comparison content case (`1 < 2`). Python
+publication and Rust host verification accepted all three regenerated outputs.
+
+The host keeps the main UI code `DATASET_HANDOFF_INVALID` and exposes only
+stable reason codes such as `HANDOFF_PUBLICATION_INCOMPLETE`,
+`HANDOFF_CHUNK_MISSING`, `HANDOFF_EVENT_COUNT_MISMATCH`,
+`HANDOFF_HASH_MISMATCH`, and `HANDOFF_DUPLICATE_IDENTITY_INVALID`. Source
+failures remain in the separate `SOURCE_*` namespace. No path, raw content,
+identifier, hash, or traceback is included in the public diagnostic.
+
+The packaged synthetic smoke remains the vertical integration gate. A real
+2022–2026 CipherTalk import, real-data analytics result, and any user-visible
+behavioral confirmation remain manual work under 12.7/12.8.
 
 ## Synthetic capacity evidence
 
