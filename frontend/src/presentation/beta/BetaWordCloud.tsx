@@ -313,7 +313,7 @@ export function BetaWordCloud({
       <div className="beta-word-cloud-heading">
         <div>
           <p className="beta-type-eyebrow">词云 · 15</p>
-          <h2 className="beta-type-heading">这一组词放在一起是什么样？</h2>
+          <h2 className="beta-type-title beta-word-section-heading">这一组词放在一起是什么样？</h2>
           <p className="beta-type-secondary">
             词语大小代表当前{metric === "raw-count" ? "出现次数" : "每万词频率"}；词云和列表都来自当前 {yearLabel}、{roleLabel} 范围。
           </p>
@@ -355,59 +355,62 @@ export function BetaWordCloud({
       ) : null}
 
       {hasCandidates ? (
-        <div className="beta-word-cloud-list-wrap">
-          <div className="beta-word-cloud-list-heading">
-            <h3>可读词频列表</h3>
-            <span className="beta-type-metadata">{listItems.length} 个词语 · {roleLabel} · {yearLabel}</span>
+        <details className="beta-word-cloud-list-disclosure" data-testid="beta-word-cloud-list-disclosure">
+          <summary>查看词频列表（{listItems.length}）</summary>
+          <div className="beta-word-cloud-list-wrap">
+            <div className="beta-word-cloud-list-heading">
+              <h3>可读词频列表</h3>
+              <span className="beta-type-metadata">{listItems.length} 个词语 · {roleLabel} · {yearLabel}</span>
+            </div>
+            <ol className="beta-word-cloud-list" aria-label={`${yearLabel}${roleLabel}词频列表`}>
+              {listItems.map((item) => {
+                const key = stableKeyForPresentationWord(item.normalizedToken, item.sourceRank);
+                const layoutWord = currentResult === undefined
+                  ? undefined
+                  : [...currentResult.placed, ...currentResult.omitted].find((word) => word.stableKey === key);
+                const layoutPlaced = currentResult?.placed.some((word) => word.stableKey === key) ?? false;
+                const layoutOmitted = currentResult !== undefined && !layoutPlaced;
+                const rendererOmission = rendererReport?.omitted.find((word) => word.stableKey === key);
+                const rendererOmitted = rendererOmission !== undefined;
+                const primaryValue = metric === "raw-count"
+                  ? `出现 ${item.count.toLocaleString("zh-CN")} 次`
+                  : `每万词频率 ${formatRate(item.ratePer10000)}`;
+                const secondaryValue = metric === "raw-count"
+                  ? `每万词频率 ${formatRate(item.ratePer10000)}`
+                  : `出现 ${item.count.toLocaleString("zh-CN")} 次`;
+                return (
+                  <li
+                    key={key}
+                    data-layout-omitted={layoutOmitted ? "true" : undefined}
+                    data-renderer-omitted={rendererOmitted ? "true" : undefined}
+                  >
+                    <span className="beta-word-cloud-list-rank">{item.displayRank}</span>
+                    <span className="beta-word-cloud-list-token">
+                      <strong>{item.displayToken}</strong>
+                      <small>{roleLabel} · {yearLabel}</small>
+                    </span>
+                    <span className="beta-word-cloud-list-values" aria-label={`${primaryValue}；${secondaryValue}`}>
+                      <strong>{primaryValue}</strong>
+                      <small>{secondaryValue}</small>
+                    </span>
+                    {layoutOmitted ? (
+                      <span className="beta-word-cloud-list-note">
+                        {layoutWord === undefined ? "当前降级布局未纳入" : "未放入词云"}
+                      </span>
+                    ) : rendererOmitted ? (
+                      <span className="beta-word-cloud-list-note">
+                        {rendererOmission.reason === "CANVAS_CONTEXT_UNAVAILABLE" ? "Canvas 不可用" : "字体适配后未绘制"}
+                      </span>
+                    ) : null}
+                    {onHideWord !== undefined ? (
+                      <BetaButton variant="tertiary" onClick={() => onHideWord(item.normalizedToken)}>隐藏此词</BetaButton>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ol>
           </div>
-          <ol className="beta-word-cloud-list" aria-label={`${yearLabel}${roleLabel}词频列表`}>
-            {listItems.map((item) => {
-              const key = stableKeyForPresentationWord(item.normalizedToken, item.sourceRank);
-              const layoutWord = currentResult === undefined
-                ? undefined
-                : [...currentResult.placed, ...currentResult.omitted].find((word) => word.stableKey === key);
-              const layoutPlaced = currentResult?.placed.some((word) => word.stableKey === key) ?? false;
-              const layoutOmitted = currentResult !== undefined && !layoutPlaced;
-              const rendererOmission = rendererReport?.omitted.find((word) => word.stableKey === key);
-              const rendererOmitted = rendererOmission !== undefined;
-              const primaryValue = metric === "raw-count"
-                ? `出现 ${item.count.toLocaleString("zh-CN")} 次`
-                : `每万词频率 ${formatRate(item.ratePer10000)}`;
-              const secondaryValue = metric === "raw-count"
-                ? `每万词频率 ${formatRate(item.ratePer10000)}`
-                : `出现 ${item.count.toLocaleString("zh-CN")} 次`;
-              return (
-                <li
-                  key={key}
-                  data-layout-omitted={layoutOmitted ? "true" : undefined}
-                  data-renderer-omitted={rendererOmitted ? "true" : undefined}
-                >
-                  <span className="beta-word-cloud-list-rank">{item.displayRank}</span>
-                  <span className="beta-word-cloud-list-token">
-                    <strong>{item.displayToken}</strong>
-                    <small>{roleLabel} · {yearLabel}</small>
-                  </span>
-                  <span className="beta-word-cloud-list-values" aria-label={`${primaryValue}；${secondaryValue}`}>
-                    <strong>{primaryValue}</strong>
-                    <small>{secondaryValue}</small>
-                  </span>
-                  {layoutOmitted ? (
-                    <span className="beta-word-cloud-list-note">
-                      {layoutWord === undefined ? "当前降级布局未纳入" : "未放入词云"}
-                    </span>
-                  ) : rendererOmitted ? (
-                    <span className="beta-word-cloud-list-note">
-                      {rendererOmission.reason === "CANVAS_CONTEXT_UNAVAILABLE" ? "Canvas 不可用" : "字体适配后未绘制"}
-                    </span>
-                  ) : null}
-                  {onHideWord !== undefined ? (
-                    <BetaButton variant="tertiary" onClick={() => onHideWord(item.normalizedToken)}>隐藏此词</BetaButton>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ol>
-        </div>
+        </details>
       ) : (
         <p className="beta-word-cloud-empty" role="status">当前范围内没有足够的可展示词语。</p>
       )}

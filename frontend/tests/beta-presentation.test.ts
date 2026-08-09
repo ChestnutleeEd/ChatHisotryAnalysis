@@ -231,6 +231,10 @@ describe("Beta B2 core report composition", () => {
     expect(html).toContain("按星期一至星期日排列的消息数量");
     expect(html).toContain("尚未提供");
     expect(html).toContain("UTC+08:00");
+    expect(html).toContain("beta-core-scene-heading");
+    expect(html).toContain("beta-core-visual-details");
+    expect(html).not.toContain("beta-status-success");
+    expect(html).not.toMatch(/<details[^>]+open(?:=|\s|>)/u);
     for (const id of BETA_REPORT_SECTION_IDS.slice(0, 12)) {
       expect(html).toContain(`id="${id}"`);
     }

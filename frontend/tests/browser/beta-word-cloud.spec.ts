@@ -51,6 +51,9 @@ test("renders the synthetic Beta Canvas cloud through the layout Worker", async 
   expect(canvasSize.backingHeight).toBeGreaterThanOrEqual(Math.floor(canvasSize.cssHeight));
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 
+  const listDisclosure = page.getByTestId("beta-word-cloud-list-disclosure");
+  await expect(listDisclosure).not.toHaveAttribute("open");
+  await listDisclosure.locator("summary").click();
   const list = page.getByRole("list", { name: "2025 年双方词频列表" });
   const initialCount = await list.locator("li").count();
   expect(initialCount).toBeGreaterThan(0);

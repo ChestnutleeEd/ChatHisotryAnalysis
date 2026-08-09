@@ -34,8 +34,8 @@ function cardVariant(section: BetaLocalizedReportSectionV1): "hero" | "metric" |
   return section.visual.kind === "table" ? "split" : "chart";
 }
 
-function visualRows(visual: BetaLocalizedVisualV1) {
-  return visual.rows.map((row) => (
+function visualRows(visual: BetaLocalizedVisualV1, rows = visual.rows) {
+  return rows.map((row) => (
     <li key={row.key} className={`beta-core-visual-row beta-core-tone-${row.tone}`}>
       <div className="beta-core-visual-row-copy">
         <span>{row.label}</span>
@@ -72,15 +72,44 @@ function visualTable(visual: BetaLocalizedVisualV1) {
   );
 }
 
-function Visual({ visual }: { readonly visual: BetaLocalizedVisualV1 }) {
+function CompactDistribution({ visual }: { readonly visual: BetaLocalizedVisualV1 }) {
+  return (
+    <div className="beta-core-compact-distribution" aria-hidden="true">
+      <ol>
+        {visual.rows.map((row) => (
+          <li key={row.key} title={`${row.label}：${row.displayValue}`}>
+            <span style={{ "--beta-core-height": `${Math.max(10, row.widthPercent)}%` } as CSSProperties} />
+            <small>{row.label}</small>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+function Visual({
+  visual,
+  sectionId,
+}: {
+  readonly visual: BetaLocalizedVisualV1;
+  readonly sectionId: BetaLocalizedReportSectionV1["id"];
+}) {
+  const compactDistribution = sectionId === "peak-month" || sectionId === "peak-weekday" || sectionId === "peak-hour";
+  const primaryVisual = sectionId === "message-types"
+    ? { ...visual, rows: visual.rows.map((row) => ({ ...row, secondaryLabel: null })) }
+    : visual;
+  const compactTableRows = primaryVisual.kind === "table" ? primaryVisual.rows.slice(0, 3) : primaryVisual.rows;
   return (
     <div className={`beta-core-visual beta-core-visual-${visual.kind}`}>
-      {visual.kind === "table" ? null : (
+      {compactDistribution ? <CompactDistribution visual={primaryVisual} /> : (
         <div className="beta-core-chart" aria-hidden="true">
-          <ol>{visualRows(visual)}</ol>
+          <ol>{visualRows(primaryVisual, compactTableRows)}</ol>
         </div>
       )}
-      {visualTable(visual)}
+      <details className="beta-core-visual-details">
+        <summary>{sectionId === "message-types" ? "查看类型明细" : "查看完整数据"}</summary>
+        {visualTable(visual)}
+      </details>
       {visual.legend.length > 0 ? (
         <ul className="beta-core-legend" aria-label="图例">
           {visual.legend.map((item) => <li key={item}>{item}</li>)}
@@ -93,16 +122,22 @@ function Visual({ visual }: { readonly visual: BetaLocalizedVisualV1 }) {
 function CoreSection({ section }: { readonly section: BetaLocalizedReportSectionV1 }) {
   const variant = cardVariant(section);
   return (
-    <BaseCard id={section.id} variant={variant} className={`beta-core-card beta-core-card-${section.status.toLowerCase()}`}>
+    <BaseCard
+      id={section.id}
+      variant={variant}
+      className={`beta-core-card beta-core-card-${section.status.toLowerCase()}`}
+      data-section-status={section.status.toLowerCase()}
+      data-card-variant={variant}
+    >
       <div className="beta-core-card-heading">
         <div>
           <p className="beta-type-eyebrow">{section.eyebrow} · {String(section.order).padStart(2, "0")}</p>
-          <h2 className="beta-type-heading">{section.heading}</h2>
+          <h2 className="beta-type-title beta-core-section-heading">{section.heading}</h2>
         </div>
-        <StatusPill tone={statusTone(section.status)}>{section.statusLabel}</StatusPill>
+        {section.status === "READY" ? null : <StatusPill tone={statusTone(section.status)}>{section.statusLabel}</StatusPill>}
       </div>
       <p className="beta-type-report-lead">{section.lead}</p>
-      {section.scopeNote !== null ? <p className="beta-core-scope-note">{section.scopeNote}</p> : null}
+      {section.scopeNote !== null && section.id === "opening" ? <p className="beta-core-scope-note">{section.scopeNote}</p> : null}
       {section.metric !== null ? (
         <div className="beta-core-metric" aria-label={section.metric.accessibleLabel}>
           <span className="beta-type-metadata">{section.metric.label}</span>
@@ -110,16 +145,22 @@ function CoreSection({ section }: { readonly section: BetaLocalizedReportSection
           {section.metric.unit !== "" ? <span className="beta-type-metric-unit">{section.metric.unit}</span> : null}
         </div>
       ) : null}
-      {section.visual !== null ? <Visual visual={section.visual} /> : null}
+      {section.visual !== null ? <Visual visual={section.visual} sectionId={section.id} /> : null}
       {section.details.length > 0 ? (
-        <dl className="beta-core-details">
-          {section.details.map((detail) => (
-            <div key={`${detail.label}-${detail.value}`}>
-              <dt>{detail.label}</dt>
-              <dd>{detail.value}</dd>
-            </div>
-          ))}
-        </dl>
+        <details className="beta-core-details-disclosure">
+          <summary>查看明细</summary>
+          <dl className="beta-core-details">
+            {section.scopeNote !== null && section.id !== "opening" ? (
+              <div><dt>当前范围</dt><dd>{section.scopeNote}</dd></div>
+            ) : null}
+            {section.details.map((detail) => (
+              <div key={`${detail.label}-${detail.value}`}>
+                <dt>{detail.label}</dt>
+                <dd>{detail.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </details>
       ) : null}
     </BaseCard>
   );
@@ -136,7 +177,8 @@ export function BetaCoreReportSections({
       {scenes.map((scene) => {
         const sections = viewModel.sections.filter((section) => section.order <= 12 && section.scene === scene);
         return sections.length === 0 ? null : (
-          <section key={scene} className={`beta-core-scene beta-core-scene-${scene}`} aria-label={`${SCENE_LABELS[scene]}核心指标`}>
+          <section key={scene} className={`beta-core-scene beta-core-scene-${scene}`} aria-labelledby={`beta-core-scene-${scene}-heading`}>
+            <h2 id={`beta-core-scene-${scene}-heading`} className="beta-core-scene-heading">{SCENE_LABELS[scene]}</h2>
             {sections.map((section) => <CoreSection key={section.id} section={section} />)}
           </section>
         );

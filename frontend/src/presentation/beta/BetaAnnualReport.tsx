@@ -61,6 +61,69 @@ function committedRangeValue(
   );
 }
 
+function ReportNavigator({
+  reportState,
+  analyticsResult,
+  representedYears,
+  selectedSection,
+  pending,
+  onRangeChange,
+  onSectionChange,
+  onRestoreFullRange,
+}: {
+  readonly reportState: BetaReportPresentationState;
+  readonly analyticsResult?: CanonicalAnalysisResult;
+  readonly representedYears: readonly RepresentedYearOption[];
+  readonly selectedSection: BetaReportSectionId;
+  readonly pending: boolean;
+  readonly onRangeChange: (value: string) => void;
+  readonly onSectionChange: (section: BetaReportSectionId) => void;
+  readonly onRestoreFullRange: () => void;
+}) {
+  const currentSection = BETA_REPORT_SECTIONS.find((section) => section.id === selectedSection) ?? BETA_REPORT_SECTIONS[0];
+  return (
+    <nav className="beta-report-navigation" aria-label="年度报告导航" data-testid="beta-report-navigator">
+      <div className="beta-report-navigation-context" aria-live="polite">
+        <span>报告导航</span>
+        <strong>{currentSection?.title ?? "开场"}</strong>
+        <small>{currentSection?.order ?? 1} / {BETA_REPORT_SECTIONS.length}</small>
+      </div>
+      <label className="beta-report-control-field beta-report-control-year">
+        <span>回顾范围</span>
+        <select
+          value={committedRangeValue(reportState, analyticsResult)}
+          disabled={pending}
+          onChange={(event) => onRangeChange(event.currentTarget.value)}
+        >
+          {representedYears.map((option) => (
+            <option key={option.year} value={`year:${option.year}`}>
+              {option.year} 年{option.scope === "partial-calendar-query" ? "（部分范围）" : ""}
+            </option>
+          ))}
+          <option value="all-years">全部年份</option>
+          {representedYears.length > 1 ? <option value="multi-year-overview">多年度总览</option> : null}
+        </select>
+      </label>
+      <label className="beta-report-control-field beta-report-control-section">
+        <span>跳转章节</span>
+        <select
+          value={selectedSection}
+          onChange={(event) => onSectionChange(event.currentTarget.value as BetaReportSectionId)}
+        >
+          {BETA_REPORT_SECTIONS.map((section) => (
+            <option key={section.id} value={section.id}>
+              {String(section.order).padStart(2, "0")} · {section.title}
+            </option>
+          ))}
+        </select>
+      </label>
+      <BetaButton className="beta-report-restore-action" variant="tertiary" disabled={pending} onClick={onRestoreFullRange}>
+        恢复全部数据范围
+      </BetaButton>
+    </nav>
+  );
+}
+
 export function BetaAnnualReport({
   viewModel,
   reportState,
@@ -111,40 +174,16 @@ export function BetaAnnualReport({
       aria-labelledby="beta-report-heading"
       aria-busy={pending}
     >
-      <nav className="beta-report-navigation" aria-label="年度报告导航">
-        <label>
-          <span>回顾范围</span>
-          <select
-            value={committedRangeValue(reportState, analyticsResult)}
-            disabled={pending}
-            onChange={(event) => onRangeChange(event.currentTarget.value)}
-          >
-            {representedYears.map((option) => (
-              <option key={option.year} value={`year:${option.year}`}>
-                {option.year} 年{option.scope === "partial-calendar-query" ? "（部分范围）" : ""}
-              </option>
-            ))}
-            <option value="all-years">全部年份</option>
-            {representedYears.length > 1 ? <option value="multi-year-overview">多年度总览</option> : null}
-          </select>
-        </label>
-        <label>
-          <span>跳转章节</span>
-          <select
-            value={selectedSection}
-            onChange={(event) => onSectionChange(event.currentTarget.value as BetaReportSectionId)}
-          >
-            {BETA_REPORT_SECTIONS.map((section) => (
-              <option key={section.id} value={section.id}>
-                {String(section.order).padStart(2, "0")} · {section.title}
-              </option>
-            ))}
-          </select>
-        </label>
-        <BetaButton variant="tertiary" disabled={pending} onClick={onRestoreFullRange}>
-          恢复全部数据范围
-        </BetaButton>
-      </nav>
+      <ReportNavigator
+        reportState={reportState}
+        analyticsResult={analyticsResult}
+        representedYears={representedYears}
+        selectedSection={selectedSection}
+        pending={pending}
+        onRangeChange={onRangeChange}
+        onSectionChange={onSectionChange}
+        onRestoreFullRange={onRestoreFullRange}
+      />
 
       {reportState.recoveryUsesDatasetRange ? (
         <p className="beta-recovery-note" role="status">
@@ -277,40 +316,16 @@ function BetaCoreAnnualReport({
       aria-labelledby="beta-report-heading"
       aria-busy={pending}
     >
-      <nav className="beta-report-navigation" aria-label="年度报告导航">
-        <label>
-          <span>回顾范围</span>
-          <select
-            value={committedRangeValue(reportState, analyticsResult)}
-            disabled={pending}
-            onChange={(event) => onRangeChange(event.currentTarget.value)}
-          >
-            {representedYears.map((option) => (
-              <option key={option.year} value={`year:${option.year}`}>
-                {option.year} 年{option.scope === "partial-calendar-query" ? "（部分范围）" : ""}
-              </option>
-            ))}
-            <option value="all-years">全部年份</option>
-            {representedYears.length > 1 ? <option value="multi-year-overview">多年度总览</option> : null}
-          </select>
-        </label>
-        <label>
-          <span>跳转章节</span>
-          <select
-            value={selectedSection}
-            onChange={(event) => onSectionChange(event.currentTarget.value as BetaReportSectionId)}
-          >
-            {BETA_REPORT_SECTIONS.map((section) => (
-              <option key={section.id} value={section.id}>
-                {String(section.order).padStart(2, "0")} · {section.title}
-              </option>
-            ))}
-          </select>
-        </label>
-        <BetaButton variant="tertiary" disabled={pending} onClick={onRestoreFullRange}>
-          恢复全部数据范围
-        </BetaButton>
-      </nav>
+      <ReportNavigator
+        reportState={reportState}
+        analyticsResult={analyticsResult}
+        representedYears={representedYears}
+        selectedSection={selectedSection}
+        pending={pending}
+        onRangeChange={onRangeChange}
+        onSectionChange={onSectionChange}
+        onRestoreFullRange={onRestoreFullRange}
+      />
 
       {pending ? (
         <p className="beta-report-pending" role="status">

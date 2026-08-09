@@ -32,13 +32,26 @@ test("renders synthetic Annual Recap core cards and preserves responsive semanti
   await expect(page.locator("#distinctive-keywords")).toHaveAttribute("data-keyword-year", "2025");
   await expect(page.locator("#word-cloud")).toHaveAttribute("data-clean-mode", "on");
   await expect(page.locator("#word-cloud .beta-word-cloud-list")).toContainText("本地版本");
+  await expect(page.locator("#peak-hour .beta-core-visual-details")).not.toHaveAttribute("open");
+  await expect(page.locator("#frequent-words .beta-word-ranking-disclosure")).not.toHaveAttribute("open");
+  await expect(page.locator("#word-cloud .beta-word-cloud-list-disclosure")).not.toHaveAttribute("open");
+  await expect(page.locator(".beta-core-card[data-section-status='ready'] .beta-status-pill")).toHaveCount(0);
 
-  const meaningfulCount = await page.locator("#frequent-words .beta-word-ranking li", { hasText: "本地版本" }).textContent();
+  await page.getByLabel("跳转章节").selectOption("peak-hour");
+  await expect.poll(() => page.locator("#peak-hour").evaluate((element) => element.getBoundingClientRect().top)).toBeGreaterThan(70);
+  await page.locator("#peak-hour .beta-core-visual-details summary").click();
+  await expect(page.locator("#peak-hour .beta-core-visual-table")).toBeVisible();
+  await page.locator("#word-cloud .beta-word-cloud-list-disclosure summary").click();
+  await expect(page.locator("#word-cloud .beta-word-cloud-list")).toBeVisible();
+
+  const compactRanking = page.locator("#frequent-words .beta-word-ranking:not(.beta-word-ranking-full)");
+  const meaningfulCount = await compactRanking.locator("li", { hasText: "本地版本" }).textContent();
   await cleanToggle.uncheck();
   await expect(page.locator("#frequent-words")).toContainText("但是");
   await expect(page.locator("#word-cloud")).toHaveAttribute("data-clean-mode", "off");
   await expect(page.locator("#word-cloud .beta-word-cloud-list")).toContainText("但是");
-  await expect(page.locator("#frequent-words .beta-word-ranking li", { hasText: "本地版本" })).toContainText("350 次");
+  await page.locator("#frequent-words .beta-word-ranking-disclosure summary").click();
+  await expect(page.locator("#frequent-words .beta-word-ranking-full li", { hasText: "本地版本" })).toContainText("350 次");
   expect(meaningfulCount).toContain("350 次");
   await cleanToggle.check();
   await expect(page.locator("#frequent-words")).not.toContainText("但是");

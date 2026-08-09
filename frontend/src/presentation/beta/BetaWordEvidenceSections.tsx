@@ -19,6 +19,8 @@ import {
   parseCustomHiddenWords,
   readCustomHiddenWords,
   writeCustomHiddenWords,
+  type KeywordPresentationItem,
+  type WordFrequencyPresentationItem,
   type WordFrequencyMetric,
 } from "./word-presentation";
 
@@ -27,6 +29,60 @@ const ROLE_LABELS: Readonly<Record<WordFrequencyRole, string>> = {
   owner: "Owner",
   other: "Other",
 };
+
+const DEFAULT_VISIBLE_WORDS = 8;
+
+function FrequencyRanking({
+  items,
+  metric,
+  onHideWord,
+  className = "beta-word-ranking",
+}: {
+  readonly items: readonly WordFrequencyPresentationItem[];
+  readonly metric: WordFrequencyMetric;
+  readonly onHideWord: (token: string) => void;
+  readonly className?: string;
+}) {
+  return (
+    <ol className={className} aria-label="当前范围常用词排名">
+      {items.map((item) => (
+        <li key={item.normalizedToken}>
+          <span className="beta-word-rank">{item.displayRank}</span>
+          <strong>{item.displayToken}</strong>
+          <span>
+            {metric === "raw-count"
+              ? `${item.count.toLocaleString("zh-CN")} 次`
+              : `${item.ratePer10000.toLocaleString("zh-CN", { maximumFractionDigits: 2 })} / 万`}
+          </span>
+          <BetaButton variant="tertiary" onClick={() => onHideWord(item.normalizedToken)}>隐藏</BetaButton>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function KeywordRanking({
+  items,
+  onHideWord,
+  className = "beta-keyword-ranking",
+}: {
+  readonly items: readonly KeywordPresentationItem[];
+  readonly onHideWord: (token: string) => void;
+  readonly className?: string;
+}) {
+  return (
+    <ol className={className} aria-label="年度关键词展示排名">
+      {items.map((item) => (
+        <li key={item.normalizedToken}>
+          <span>{item.displayRank}</span>
+          <strong>{item.displayToken}</strong>
+          <small>{item.count.toLocaleString("zh-CN")} 次</small>
+          <BetaButton variant="tertiary" onClick={() => onHideWord(item.normalizedToken)}>隐藏</BetaButton>
+        </li>
+      ))}
+    </ol>
+  );
+}
 
 export function BetaWordEvidenceSections({
   result,
@@ -65,6 +121,8 @@ export function BetaWordEvidenceSections({
     () => createKeywordPresentation(result, customHiddenWords, undefined, cleanMode),
     [cleanMode, customHiddenWords, result],
   );
+  const visibleFrequencyItems = frequencyPresentation.items.slice(0, DEFAULT_VISIBLE_WORDS);
+  const visibleKeywordItems = keywordPresentation.items.slice(0, DEFAULT_VISIBLE_WORDS);
   const scopeIsRefreshing = pending && frequency !== undefined && scopedFrequency === undefined;
 
   function commitHidden(words: readonly string[]): void {
@@ -94,7 +152,7 @@ export function BetaWordEvidenceSections({
         <div className="beta-word-evidence-heading">
           <div>
             <p className="beta-type-eyebrow">常用词 · 13</p>
-            <h2 className="beta-type-heading">这一范围最常提到什么？</h2>
+            <h2 className="beta-type-title beta-word-section-heading">这一范围最常提到什么？</h2>
             <p className="beta-type-secondary">同一份本地词频结果同时保留出现次数与每万词频率；切换展示口径不会重新统计。</p>
           </div>
           <Badge tone={pending ? "partial" : "privacy"}>{pending ? "更新中" : "本地词频"}</Badge>
@@ -168,20 +226,13 @@ export function BetaWordEvidenceSections({
           <p className="beta-word-status" role="status">当前年份、角色与已提交范围内没有符合内置质量策略的 eligible token。</p>
         ) : (
           <>
-            <ol className="beta-word-ranking" aria-label="当前范围常用词排名">
-              {frequencyPresentation.items.map((item) => (
-                <li key={item.normalizedToken}>
-                  <span className="beta-word-rank">{item.displayRank}</span>
-                  <strong>{item.displayToken}</strong>
-                  <span>
-                    {metric === "raw-count"
-                      ? `${item.count.toLocaleString("zh-CN")} 次`
-                      : `${item.ratePer10000.toLocaleString("zh-CN", { maximumFractionDigits: 2 })} / 万`}
-                  </span>
-                  <BetaButton variant="tertiary" onClick={() => hideWord(item.normalizedToken)}>隐藏</BetaButton>
-                </li>
-              ))}
-            </ol>
+            <FrequencyRanking items={visibleFrequencyItems} metric={metric} onHideWord={hideWord} />
+            {frequencyPresentation.items.length > visibleFrequencyItems.length ? (
+              <details className="beta-word-ranking-disclosure">
+                <summary>查看全部 {frequencyPresentation.items.length} 个</summary>
+                <FrequencyRanking items={frequencyPresentation.items} metric={metric} onHideWord={hideWord} className="beta-word-ranking beta-word-ranking-full" />
+              </details>
+            ) : null}
             {frequencyPresentation.boundedPoolExhausted ? (
               <p className="beta-word-status">展示过滤已耗尽部分有界候选池，因此当前列表少于目标数量；分析分母与排名未改变。</p>
             ) : null}
@@ -223,22 +274,21 @@ export function BetaWordEvidenceSections({
 
       <BaseCard id="distinctive-keywords" variant="narrative" className="beta-word-evidence-card" data-keyword-year={keywordPresentation.year ?? "all-years"}>
         <p className="beta-type-eyebrow">年度关键词 · 14</p>
-        <h2 className="beta-type-heading">哪些词更能代表这一年？</h2>
+        <h2 className="beta-type-title beta-word-section-heading">哪些词更能代表这一年？</h2>
         <p className="beta-type-report-lead">{keywordPresentation.explanation}</p>
         <p className="beta-type-metadata">年度关键词展示范围：{keywordPresentation.year === null ? "全部年份（不适用）" : `${keywordPresentation.year} 年`}</p>
         {keywordPresentation.items.length === 0 ? (
           <p className="beta-word-status">当前没有可展示的年度关键词证据。</p>
         ) : (
-          <ol className="beta-keyword-ranking" aria-label="年度关键词展示排名">
-            {keywordPresentation.items.map((item) => (
-              <li key={item.normalizedToken}>
-                <span>{item.displayRank}</span>
-                <strong>{item.displayToken}</strong>
-                <small>{item.count.toLocaleString("zh-CN")} 次</small>
-                <BetaButton variant="tertiary" onClick={() => hideWord(item.normalizedToken)}>隐藏</BetaButton>
-              </li>
-            ))}
-          </ol>
+          <>
+            <KeywordRanking items={visibleKeywordItems} onHideWord={hideWord} />
+            {keywordPresentation.items.length > visibleKeywordItems.length ? (
+              <details className="beta-word-ranking-disclosure">
+                <summary>查看全部 {keywordPresentation.items.length} 个</summary>
+                <KeywordRanking items={keywordPresentation.items} onHideWord={hideWord} className="beta-keyword-ranking beta-keyword-ranking-full" />
+              </details>
+            ) : null}
+          </>
         )}
         <MethodologyDisclosure summary="查看年度关键词统计口径" chips={[keywordPresentation.mode === "frequency-fallback" ? "频次回退" : keywordPresentation.mode === "log-odds" ? "year-vs-rest log-odds" : "当前范围不适用"]}>
           <p>年度关键词继续使用现有 Stage7 的候选阈值与平滑 year-vs-rest log-odds。常用词的 count/rate 与关键词的 distinctiveness score 是两种独立语义。</p>

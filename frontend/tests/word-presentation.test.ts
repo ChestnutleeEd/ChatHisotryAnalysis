@@ -353,6 +353,8 @@ describe("Beta B3 word presentation boundary", () => {
     expect(html).toContain("频次回退");
     expect(html).toContain('id="word-cloud"');
     expect(html).toContain('aria-hidden="true"');
+    expect(html).toContain('class="beta-word-cloud-list-disclosure"');
+    expect(html).not.toMatch(/beta-word-cloud-list-disclosure[^>]+open(?:=|\s|>)/u);
     expect(html).toContain("可读词频列表");
     expect(html).not.toMatch(/restCount|restTokenTotal|distinctMessageFrequency|raw score/u);
     expect(roleChange).not.toHaveBeenCalled();

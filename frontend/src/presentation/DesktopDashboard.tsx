@@ -111,6 +111,21 @@ function Definition({ children }: { readonly children: ReactNode }) {
   );
 }
 
+function DeveloperDetails({
+  label = "查看开发信息",
+  value,
+}: {
+  readonly label?: string;
+  readonly value: string;
+}) {
+  return (
+    <details className="dashboard-developer-details">
+      <summary>{label}</summary>
+      <code>{value}</code>
+    </details>
+  );
+}
+
 function Table({
   caption,
   columns,
@@ -123,7 +138,7 @@ function Table({
   readonly emptyText?: string;
 }) {
   return (
-    <div className="dashboard-table-wrap">
+    <div className="dashboard-table-wrap" role="region" tabIndex={0} aria-label={`${caption}，可横向滚动查看`}>
       <table className="dashboard-table">
         <caption>{caption}</caption>
         <thead>
@@ -231,10 +246,19 @@ function TrendChart({ title, definition, buckets }: {
 }
 
 function ScopeLine({ result }: { readonly result: CanonicalAnalysisResult }) {
+  const isFiltered =
+    result.filters.startDate !== result.dataset.minimumCalendarDate ||
+    result.filters.endDate !== result.dataset.maximumCalendarDate;
   return (
-    <p className="dashboard-scope-line">
-      当前范围：{result.filters.startDate} → {result.filters.endDate} · {senderLabel(result.filters.sender)} · UTC+08:00 · 结果代次 {result.generation}
-    </p>
+    <div className="dashboard-scope-line">
+      <ul className="dashboard-query-chips" aria-label="当前已提交分析范围">
+        <li><span>{result.filters.startDate} → {result.filters.endDate}</span></li>
+        <li><span>{senderLabel(result.filters.sender)}</span></li>
+        <li><span>UTC+08</span></li>
+        <li><span>会话 {result.filters.sessionThresholdHours}h</span></li>
+        {isFiltered ? <li><span className="is-active">已筛选</span></li> : null}
+      </ul>
+    </div>
   );
 }
 
@@ -260,9 +284,9 @@ function OverviewPage({
         <div>
           <p className="dashboard-eyebrow">01 / OVERVIEW</p>
           <h2 id="overview-page-heading" tabIndex={-1}>概览</h2>
-          <p>从同一个 Worker 结果代次读取高层摘要；卡片中的“—”表示当前指标没有足够证据。</p>
+          <p>高层摘要与下方页面使用同一份本地已提交结果；卡片中的“—”表示当前指标没有足够证据。</p>
         </div>
-        <span className="dashboard-schema-badge">{result.schemaVersion}</span>
+        <DeveloperDetails value={result.schemaVersion} />
       </div>
       <ScopeLine result={result} />
       <div className="dashboard-kpi-grid">
@@ -349,7 +373,7 @@ function OverviewPage({
           <h3 id="overview-type-heading">主要消息类别</h3>
           <BarChart
             title="当前范围的类别计数"
-            description="类别顺序和计数来自 Stage 7 DTO；完整类别表见 Message Types。"
+            description="类别顺序和计数来自同一份本地结果；完整类别表见消息类型。"
             rows={model.overview.leadingTypes.map((bucket) => ({
               label: categoryLabel(bucket.category),
               value: bucket.count,
@@ -502,10 +526,18 @@ function WordsYearsPage({
     ? model.activeKeywordYear
     : result.stage7.yearlyKeywords.years.find((year) => year.year === selectedYear);
   const applyYear = () => onLocalFilterChange({ ...result.filters, selectedYear });
+  const rankingPreview = model.wordRanking.slice(0, 8);
+  const keywordPreview = selectedKeywordYear?.keywords.slice(0, 8) ?? [];
+  const summaryLead = result.stage7.summary.clauses[0]?.text ?? "当前筛选没有足够证据形成固定摘要。";
   return (
     <section className="dashboard-page" aria-labelledby="words-page-heading">
-      <PageHeading eyebrow="05 / WORDS & YEARS" id="words-page-heading" title="词汇与年度" description="词汇只来自 eligible text；年度关键词和摘要保留阈值、算法版本与 trace。" schema={result.stage7.schemaVersion} />
-      <div className="dashboard-local-control">
+      <PageHeading eyebrow="05 / WORDS & YEARS" id="words-page-heading" title="词汇与年度" description="词汇只来自符合条件的文字；年度关键词和摘要保留统计口径，完整明细按需展开。" schema={result.stage7.schemaVersion} />
+      <section className="dashboard-summary-banner" aria-labelledby="words-summary-heading">
+        <p className="dashboard-eyebrow">当前摘要</p>
+        <h3 id="words-summary-heading">{summaryLead}</h3>
+        <p>先看当前范围的主要词汇，再按需展开逐年数值和统计口径。</p>
+      </section>
+      <div className="dashboard-local-control dashboard-filter-toolbar">
         <label htmlFor="dashboard-year">年度关键词与摘要</label>
         <select id="dashboard-year" value={selectedYear ?? ""} onChange={(event) => setSelectedYear(event.currentTarget.value === "" ? null : Number(event.currentTarget.value))}>
           <option value="">最新有数据年份</option>
@@ -514,21 +546,61 @@ function WordsYearsPage({
         <button className="dashboard-button dashboard-button-primary" type="button" disabled={pending || selectedYear === result.filters.selectedYear} onClick={applyYear}>应用年度</button>
       </div>
       <section className="dashboard-chart-card" aria-labelledby="word-ranking-heading">
-        <h3 id="word-ranking-heading">跨年词汇排名</h3>
-        <p className="dashboard-definition-copy">Top-20 词汇按 raw count 和 Unicode code-point 顺序固定；每年零值保留在明细表。</p>
-        <BarChart title="跨年词汇 raw count" description="不重新分词；读取 Worker 已生成的 token DTO。" rows={model.wordRanking.slice(0, 20).map((word) => ({ label: word.token, value: word.count, displayValue: formatCount(word.count) }))} />
-        <Table caption="跨年词汇逐年数据" columns={["年份", "周期", "token 总数", "词汇值"]} rows={result.stage7.wordEvolution.years.map((year) => [year.year, year.partial ? "部分年份" : "完整年份", formatCount(year.totalTokenCount), year.values.map((cell) => `${cell.token}: ${formatCount(cell.count)} / ${formatMetricValue(cell.ratePer10000)} / 10,000`).join("；") || "—"])} emptyText="当前筛选没有 eligible text。" />
+        <h3 id="word-ranking-heading">主要词汇</h3>
+        <p className="dashboard-primary-insight">{rankingPreview[0] === undefined ? "当前没有可展示的 eligible text 词汇。" : `“${rankingPreview[0].token}”是当前跨年合并排名中的首位词汇。`}</p>
+        <BarChart title="跨年词汇 raw count" description="Top-8 预览；完整 Top-20 仍可在下方明细中查看。" rows={rankingPreview.map((word) => ({ label: word.token, value: word.count, displayValue: formatCount(word.count) }))} />
+        {rankingPreview.length > 0 ? (
+          <ol className="dashboard-ranking-list" aria-label="主要词汇排名">
+            {rankingPreview.map((word, index) => (
+              <li key={word.token}>
+                <span>{index + 1}</span>
+                <strong>{word.token}</strong>
+                <b>{formatCount(word.count)} 次</b>
+              </li>
+            ))}
+          </ol>
+        ) : null}
       </section>
-      <div className="dashboard-two-column">
+      <section className="dashboard-chart-card" aria-labelledby="word-years-heading">
+        <h3 id="word-years-heading">逐年比较</h3>
+        <p className="dashboard-primary-insight">每年保留 partial 标记与 token 总数；零值和逐词 rate 放入明细。</p>
+        <Table
+          caption="各年词汇概览"
+          columns={["年份", "周期", "eligible token 总数", "词汇单元"]}
+          rows={result.stage7.wordEvolution.years.map((year) => [year.year, year.partial ? "部分年份" : "完整年份", formatCount(year.totalTokenCount), formatCount(year.values.length)])}
+          emptyText="当前筛选没有 eligible text。"
+        />
+      </section>
+      <details className="dashboard-definition dashboard-progressive-disclosure">
+        <summary>查看逐年明细</summary>
+        <p>保留每年每个词的 count、rate 和当前排序；展开后可横向查看完整数据。</p>
+        <Table caption="跨年词汇逐年数据" columns={["年份", "周期", "token 总数", "词汇值"]} rows={result.stage7.wordEvolution.years.map((year) => [year.year, year.partial ? "部分年份" : "完整年份", formatCount(year.totalTokenCount), year.values.map((cell) => `${cell.token}: ${formatCount(cell.count)} / ${formatMetricValue(cell.ratePer10000)} / 10,000`).join("；") || "—"])} emptyText="当前筛选没有 eligible text。" />
+      </details>
+      <div className="dashboard-two-column dashboard-words-supporting">
         <section className="dashboard-chart-card" aria-labelledby="keywords-heading">
           <h3 id="keywords-heading">年度关键词</h3>
-          <p className="dashboard-definition-copy">候选需满足 count ≥ 5 且 distinct messages ≥ 3；单年份会标为 frequency-fallback。</p>
+          <p className="dashboard-primary-insight">优先展示当前年度的前 8 个候选；关键词分数与 year-vs-rest 证据保留在明细中。</p>
           {selectedKeywordYear?.mode === "insufficient-evidence" ? <p className="dashboard-empty" role="status">当前年份证据不足：{selectedKeywordYear.omissionReason ?? "没有可用候选"}。</p> : null}
-          <Table caption="年度关键词 trace" columns={["年份", "模式", "词", "count", "year total", "rest count", "rest total", "message DF", "score"]} rows={(selectedKeywordYear?.keywords ?? []).map((keyword) => [selectedKeywordYear?.year ?? "—", selectedKeywordYear?.mode ?? "—", keyword.token, formatCount(keyword.count), formatCount(keyword.yearTokenTotal), formatCount(keyword.restCount), formatCount(keyword.restTokenTotal), formatCount(keyword.distinctMessageFrequency), formatMetricValue(keyword.score)])} emptyText="当前年份没有可展示的年度关键词。" />
+          {keywordPreview.length > 0 ? (
+            <ol className="dashboard-ranking-list dashboard-keyword-list" aria-label="年度关键词排名">
+              {keywordPreview.map((keyword, index) => (
+                <li key={keyword.token}>
+                  <span>{index + 1}</span>
+                  <strong>{keyword.token}</strong>
+                  <b>{formatCount(keyword.count)} 次</b>
+                </li>
+              ))}
+            </ol>
+          ) : <p className="dashboard-empty-inline">当前年份没有可展示的年度关键词。</p>}
+          <details className="dashboard-definition dashboard-progressive-disclosure">
+            <summary>查看关键词明细</summary>
+            <p>候选需满足 count ≥ 5 且 distinct messages ≥ 3；单年份会标为 frequency-fallback。</p>
+            <Table caption="年度关键词 trace" columns={["年份", "模式", "词", "count", "year total", "rest count", "rest total", "message DF", "score"]} rows={(selectedKeywordYear?.keywords ?? []).map((keyword) => [selectedKeywordYear?.year ?? "—", selectedKeywordYear?.mode ?? "—", keyword.token, formatCount(keyword.count), formatCount(keyword.yearTokenTotal), formatCount(keyword.restCount), formatCount(keyword.restTokenTotal), formatCount(keyword.distinctMessageFrequency), formatMetricValue(keyword.score)])} emptyText="当前年份没有可展示的年度关键词。" />
+          </details>
         </section>
         <section className="dashboard-chart-card" aria-labelledby="summary-heading">
           <h3 id="summary-heading">可追溯年度摘要</h3>
-          {result.stage7.summary.clauses.length === 0 ? <p className="dashboard-empty" role="status">当前筛选没有足够证据形成固定摘要。</p> : <ol className="dashboard-summary-list">{result.stage7.summary.clauses.map((clause) => <li key={clause.id}><span>{clause.text}</span><small>{clause.trace.metricId} · {clause.trace.definitionVersion}</small><details><summary>查看 trace</summary><p>{clause.trace.filters.startDate} → {clause.trace.filters.endDate} · {senderLabel(clause.trace.filters.sender)}</p><dl>{Object.entries(clause.trace.values).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{value === null ? "—" : String(value)}</dd></div>)}</dl></details></li>)}</ol>}
+          {result.stage7.summary.clauses.length === 0 ? <p className="dashboard-empty" role="status">当前筛选没有足够证据形成固定摘要。</p> : <ol className="dashboard-summary-list">{result.stage7.summary.clauses.map((clause) => <li key={clause.id}><span>{clause.text}</span><details><summary>查看 trace</summary><small>{clause.trace.metricId} · {clause.trace.definitionVersion}</small><p>{clause.trace.filters.startDate} → {clause.trace.filters.endDate} · {senderLabel(clause.trace.filters.sender)}</p><dl>{Object.entries(clause.trace.values).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{value === null ? "—" : String(value)}</dd></div>)}</dl></details></li>)}</ol>}
           {result.stage7.summary.omissions.length > 0 ? <details className="dashboard-definition"><summary>查看省略原因</summary><ul>{result.stage7.summary.omissions.map((omission) => <li key={omission.metricId}>{omission.metricId}：{omission.reason}</li>)}</ul></details> : null}
         </section>
       </div>
@@ -638,11 +710,12 @@ function ExportPage({
           <div><dt>数据范围</dt><dd>{result.filters.startDate} → {result.filters.endDate}</dd></div>
           <div><dt>发送方范围</dt><dd>{senderLabel(result.filters.sender)}</dd></div>
           <div><dt>时区</dt><dd>UTC+08:00</dd></div>
-          <div><dt>结果代次</dt><dd>{result.generation}</dd></div>
+          <div><dt>结果范围</dt><dd>当前已提交结果</dd></div>
           <div><dt>会话阈值</dt><dd>{result.filters.sessionThresholdHours} 小时</dd></div>
           <div><dt>包含字段</dt><dd>聚合计数、占比、趋势、类别、时间差、会话、筛选、定义版本、partial 标记</dd></div>
           <div><dt>排除字段</dt><dd>正文、参与者、标识符、路径、token、关键词、源元数据</dd></div>
         </dl>
+        <DeveloperDetails label="查看结果代次" value={String(result.generation)} />
         <label className="dashboard-export-chart-select" htmlFor="dashboard-export-chart">
           PNG 图表
           <select
@@ -681,7 +754,7 @@ function PageHeading({ eyebrow, id, title, description, schema }: { readonly eye
   return (
     <div className="dashboard-page-heading">
       <div><p className="dashboard-eyebrow">{eyebrow}</p><h2 id={id} tabIndex={-1}>{title}</h2><p>{description}</p></div>
-      <span className="dashboard-schema-badge">{schema}</span>
+      <DeveloperDetails value={schema} />
     </div>
   );
 }
@@ -700,7 +773,8 @@ function DashboardNavigation({ route, onRouteChange }: { readonly route: Dashboa
     window.setTimeout(() => buttonRefs.current[routeIndex(nextRoute)]?.focus(), 0);
   }
   return (
-    <nav className="dashboard-navigation" aria-label="结果导航">
+    <nav className="dashboard-navigation dashboard-tab-rail" aria-label="结果导航">
+      <div className="dashboard-tab-rail-heading" aria-hidden="true">分析章节</div>
       <div className="dashboard-tablist" role="tablist" aria-label="分析结果页面">
         {DASHBOARD_ROUTES.map((item, index) => (
           <button
@@ -778,17 +852,17 @@ export function DesktopDashboard({
     <section className="dashboard-shell" aria-label="本地分析结果 Dashboard" aria-busy={pending}>
       <header className="dashboard-header">
         <div>
-          <p className="dashboard-eyebrow">LOCAL ANALYSIS / RESULT GENERATION {model.correlation.generation}</p>
+          <p className="dashboard-eyebrow">LOCAL ANALYSIS / DETAILED</p>
           <h1>分析 Dashboard</h1>
-          <p>同一份 canonical dataset、同一代次和同一筛选上下文贯穿所有结果页面。</p>
+          <p>同一份本地分析结果和当前筛选上下文贯穿所有结果页面。</p>
         </div>
         <div className="dashboard-header-actions">
           <span className="dashboard-local-badge">仅本地处理</span>
           <button className="dashboard-button" type="button" onClick={onAnalyzeOtherFiles}>分析其他文件</button>
         </div>
       </header>
-      <form className="dashboard-filter-bar" aria-labelledby="dashboard-filters-heading" onSubmit={submitFilters}>
-        <div className="dashboard-filter-heading"><h2 id="dashboard-filters-heading">全局筛选</h2><span>应用后才会提交新 Worker 结果</span></div>
+      <form className="dashboard-filter-bar dashboard-filter-toolbar" aria-labelledby="dashboard-filters-heading" onSubmit={submitFilters}>
+        <div className="dashboard-filter-heading"><h2 id="dashboard-filters-heading">全局筛选</h2><span>应用后才会提交新本地结果</span></div>
         <label>开始日期<input type="date" value={draftFilters.startDate} min={result.dataset.minimumCalendarDate} max={result.dataset.maximumCalendarDate} aria-invalid={filterErrors.startDate !== undefined || filterErrors.range !== undefined} aria-describedby={filterErrors.startDate !== undefined ? "dashboard-start-error" : filterErrors.range !== undefined ? "dashboard-range-error" : undefined} onChange={(event) => updateDraft({ startDate: event.currentTarget.value })} /></label>
         <label>结束日期<input type="date" value={draftFilters.endDate} min={result.dataset.minimumCalendarDate} max={result.dataset.maximumCalendarDate} aria-invalid={filterErrors.endDate !== undefined || filterErrors.range !== undefined} aria-describedby={filterErrors.endDate !== undefined ? "dashboard-end-error" : filterErrors.range !== undefined ? "dashboard-range-error" : undefined} onChange={(event) => updateDraft({ endDate: event.currentTarget.value })} /></label>
         <label>发送方<select value={draftFilters.sender} onChange={(event) => updateDraft({ sender: event.currentTarget.value as CanonicalAnalysisFilters["sender"] })}><option value="both">owner 与 other</option><option value="owner">仅 owner</option><option value="other">仅 other</option></select></label>
@@ -801,7 +875,7 @@ export function DesktopDashboard({
         <ScopeLine result={result} />
         <span className="dashboard-comparative-note">比较面板：both senders</span>
       </div>
-      {pending ? <div className="dashboard-pending" role="status" aria-live="polite"><strong>正在由本地 Worker 更新统计</strong><span>上一次完整结果仍可阅读；当前筛选未完成前不能导出。</span></div> : null}
+      {pending ? <div className="dashboard-pending" role="status" aria-live="polite"><strong>正在本地更新统计</strong><span>上一次完整结果仍可阅读；当前筛选未完成前不能导出。</span></div> : null}
       <DashboardNavigation route={route} onRouteChange={handleRouteChange} />
       <div ref={headingRef} id={`dashboard-panel-${activePanelIndex}`} role="tabpanel" aria-labelledby={`dashboard-tab-${activePanelIndex}`} tabIndex={-1} aria-label={route} className="dashboard-panel-wrap">
         {route === "Overview" ? <OverviewPage model={model} onNavigate={handleRouteChange} /> : null}
