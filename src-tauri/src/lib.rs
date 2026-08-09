@@ -103,6 +103,11 @@ pub fn run() {
                       const button = (label) => Array.from(document.querySelectorAll("button")).find((candidate) => candidate.textContent?.includes(label));
                       const failureCodes = ["SIDECAR_UNAVAILABLE", "SIDECAR_VERIFICATION_FAILED", "SIDECAR_SPAWN_FAILED", "SIDECAR_START_FAILED", "SIDECAR_HANDSHAKE_TIMEOUT", "PREPROCESSING_STALLED", "SIDECAR_PROTOCOL_FAILED", "SIDECAR_EXITED_UNEXPECTEDLY", "SIDECAR_PROTOCOL_INVALID", "SIDECAR_CRASHED", "DATASET_HANDOFF_INVALID", "DATASET_TRANSPORT_INVALID", "WORKER_RUNTIME_FAILED", "WORKER_TIMEOUT", "INVALID_REQUEST", "INVALID_STATE"];
                       const visibleFailureCode = () => failureCodes.find((code) => document.body.textContent?.includes(code));
+                      const betaHome = () => document.querySelector('[data-beta-mode="home"]');
+                      const betaAnnualRecap = () => document.querySelector('[data-beta-mode="annual-recap"]');
+                      const betaCoreSectionIds = ["opening", "messages", "active-days", "longest-streak", "peak-month", "peak-weekday", "peak-hour", "sender-share", "message-length", "message-types", "sessions", "replies", "frequent-words", "distinctive-keywords", "word-cloud"];
+                      const betaCoreReady = () => betaAnnualRecap() !== null && betaCoreSectionIds.every((id) => document.getElementById(id) !== null);
+                      const betaWordCloudReady = () => document.querySelector('[data-testid="beta-word-cloud-canvas"][data-layout-state="ready"]') !== null;
                       const waitFor = (predicate, deadline = Date.now() + 120000) => new Promise((resolve, reject) => {
                         const tick = () => {
                           if (predicate()) { resolve(true); return; }
@@ -143,14 +148,34 @@ pub fn run() {
                         await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "cancelled-ready" });
                         button("开始分析")?.click();
                         await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "retry-start-clicked" });
-                        await waitFor(() => document.querySelector(".dashboard-shell") !== null || visibleFailureCode() !== undefined || document.body.textContent?.includes("本地统计未完成") === true);
+                        await waitFor(() => document.querySelector(".dashboard-shell") !== null || betaHome() !== null || visibleFailureCode() !== undefined || document.body.textContent?.includes("本地统计未完成") === true);
                         const failureCode = visibleFailureCode();
-                        if (document.querySelector(".dashboard-shell") === null) {
+                        if (document.querySelector(".dashboard-shell") !== null) {
+                          await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "dashboard-ready" });
+                        } else if (betaHome() !== null) {
+                          await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "home-ready" });
+                          button("查看年度聊天报告")?.click();
+                          await waitFor(() => betaCoreReady() || visibleFailureCode() !== undefined || document.body.textContent?.includes("本地统计未完成") === true);
+                          if (!betaCoreReady()) {
+                            const checkpoint = visibleFailureCode() ?? (document.body.textContent?.includes("本地统计未完成") === true ? "worker-error-visible" : "error");
+                            await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint });
+                            throw new Error("selection smoke annual recap workflow failed");
+                          }
+                          await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "annual-recap-ready" });
+                          await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "core-sections-ready" });
+                          await waitFor(() => betaWordCloudReady() || visibleFailureCode() !== undefined);
+                          if (!betaWordCloudReady()) {
+                            const checkpoint = visibleFailureCode() ?? "error";
+                            await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint });
+                            throw new Error("selection smoke word cloud workflow failed");
+                          }
+                          await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "word-evidence-ready" });
+                          await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "word-cloud-ready" });
+                        } else {
                           const checkpoint = failureCode ?? (document.body.textContent?.includes("本地统计未完成") === true ? "worker-error-visible" : "error");
                           await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint });
                           throw new Error("selection smoke workflow failed");
                         }
-                        await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "dashboard-ready" });
                         await window.__TAURI_INTERNALS__.invoke("record_selection_smoke");
                         button("退出应用")?.click();
                         await waitFor(() => button("退出并清理") !== undefined);

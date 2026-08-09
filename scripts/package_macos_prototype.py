@@ -612,7 +612,6 @@ def _run_clean_user_smoke(
             "selection-smoke-worker-load-accepted",
             "selection-smoke-worker-dashboard-model",
             "selection-smoke-worker-result-ready",
-            "selection-smoke-dashboard-ready",
         )
         marker_root = selection_root / "isolated-temp"
         missing_markers = [
@@ -620,7 +619,16 @@ def _run_clean_user_smoke(
             for marker in required_selection_markers
             if not (marker_root / marker).is_file()
         ]
-        if missing_markers:
+        dashboard_ready = (marker_root / "selection-smoke-dashboard-ready").is_file()
+        beta_ready_markers = (
+            "selection-smoke-home-ready",
+            "selection-smoke-annual-recap-ready",
+            "selection-smoke-core-sections-ready",
+            "selection-smoke-word-evidence-ready",
+            "selection-smoke-word-cloud-ready",
+        )
+        beta_ready = all((marker_root / marker).is_file() for marker in beta_ready_markers)
+        if missing_markers or not (dashboard_ready or beta_ready):
             raise RuntimeError("PACKAGED_SELECTION_SMOKE_FAILED")
         selection_host.wait(timeout=20)
     except subprocess.TimeoutExpired:
