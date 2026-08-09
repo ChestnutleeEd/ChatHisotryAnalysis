@@ -1,0 +1,208 @@
+import { readFileSync } from "node:fs";
+
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vitest";
+
+import { BetaAnnualReport } from "../src/presentation/beta/BetaAnnualReport";
+import { BetaHome } from "../src/presentation/beta/BetaHome";
+import { BetaModeNavigation } from "../src/presentation/beta/BetaModeNavigation";
+import {
+  BaseCard,
+  BetaButton,
+  MethodologyDisclosure,
+  QueryChips,
+} from "../src/presentation/beta/primitives";
+import {
+  BETA_REPORT_SECTION_IDS,
+  BETA_REPORT_SECTIONS,
+} from "../src/presentation/beta/report-sections";
+import {
+  initializeReportPresentationState,
+  representedYearOptions,
+} from "../src/presentation/beta/report-state";
+import {
+  BETA_LABEL_CLASSIFICATION,
+  SYNTHETIC_BETA_RECAP_FIXTURE,
+  type BetaHomeViewModel,
+} from "../src/presentation/beta/view-model";
+
+const noop = () => undefined;
+const baseRange = { startDate: "2024-01-01", endDate: "2025-12-31" };
+const committedFilters = {
+  ...baseRange,
+  sender: "both" as const,
+  selectedYear: null,
+  sessionThresholdHours: 6 as const,
+};
+const reportState = initializeReportPresentationState({
+  datasetSessionKey: "synthetic-session:synthetic-dataset:1",
+  committedFilters,
+  datasetRange: baseRange,
+  representedYears: [2024, 2025],
+});
+const queryChips = SYNTHETIC_BETA_RECAP_FIXTURE.queryChips;
+
+function relativeLuminance(hex: string): number {
+  const channels = [1, 3, 5].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16) / 255);
+  const [red, green, blue] = channels.map((channel) =>
+    channel <= 0.03928
+      ? channel / 12.92
+      : ((channel + 0.055) / 1.055) ** 2.4,
+  );
+  return 0.2126 * red! + 0.7152 * green! + 0.0722 * blue!;
+}
+
+function contrastRatio(left: string, right: string): number {
+  const leftLuminance = relativeLuminance(left);
+  const rightLuminance = relativeLuminance(right);
+  return (Math.max(leftLuminance, rightLuminance) + 0.05) /
+    (Math.min(leftLuminance, rightLuminance) + 0.05);
+}
+
+describe("Beta B1a shared presentation semantics", () => {
+  it("renders semantic card variants and disabled/loading button states", () => {
+    const card = renderToStaticMarkup(createElement(BaseCard, {
+      variant: "hero",
+      children: "年度回顾",
+    }));
+    expect(card).toContain("beta-card-hero");
+    expect(card).toContain('data-surface-role="report"');
+
+    const button = renderToStaticMarkup(createElement(BetaButton, {
+      variant: "primary",
+      loading: true,
+      children: "查看年度聊天报告",
+    }));
+    expect(button).toContain("beta-button-primary");
+    expect(button).toContain("disabled");
+    expect(button).toContain('aria-busy="true"');
+    expect(button).toContain("处理中");
+  });
+
+  it("renders read-only query chips and an accessible native methodology disclosure", () => {
+    const chips = renderToStaticMarkup(createElement(QueryChips, { chips: queryChips }));
+    expect(chips).toContain('aria-label="当前已提交分析范围"');
+    expect(chips).not.toContain("<button");
+    expect(chips).toContain("UTC+08");
+
+    const disclosure = renderToStaticMarkup(createElement(
+      MethodologyDisclosure,
+      { summary: "范围与定义", chips: ["本地聚合"], children: "完整方法" },
+    ));
+    expect(disclosure).toContain("<details");
+    expect(disclosure).toContain("<summary");
+    expect(disclosure).toContain("完整方法");
+  });
+
+  it("classifies engineering identities away from the primary user surface", () => {
+    expect(BETA_LABEL_CLASSIFICATION.scope).toBe("USER_VISIBLE");
+    expect(BETA_LABEL_CLASSIFICATION.methodology).toBe("METHOD_ONLY");
+    expect(BETA_LABEL_CLASSIFICATION.generation).toBe("DEVELOPER_ONLY");
+    expect(BETA_LABEL_CLASSIFICATION.queryKey).toBe("DEVELOPER_ONLY");
+    expect(BETA_LABEL_CLASSIFICATION.schema).toBe("DEVELOPER_ONLY");
+    expect(BETA_LABEL_CLASSIFICATION.workerDto).toBe("DEVELOPER_ONLY");
+  });
+});
+
+describe("Beta B1a Home and navigation", () => {
+  const homeViewModel: BetaHomeViewModel = {
+    heading: "你的本地聊天回顾已经准备好",
+    lead: "先从年度故事浏览，再进入详细分析。",
+    scopeLabel: "2024-01-01 – 2025-12-31",
+    messageCountLabel: "1,248 条用户消息",
+    representedYears: representedYearOptions([2024, 2025], baseRange),
+    defaultYear: 2025,
+    empty: false,
+    queryChips,
+  };
+
+  it("keeps the recap CTA primary and Detailed Analysis secondary", () => {
+    const html = renderToStaticMarkup(createElement(BetaHome, {
+      viewModel: homeViewModel,
+      pending: false,
+      onOpenRecap: noop,
+      onOpenDetailed: noop,
+      onRestoreFullRange: noop,
+    }));
+    expect(html).toContain("beta-home");
+    expect(html).toMatch(/beta-button-primary[^>]*><span[^>]*>查看年度聊天报告/u);
+    expect(html).toMatch(/beta-button-secondary[^>]*><span[^>]*>进入详细分析/u);
+    expect(html).toContain("本地处理 · 不上传");
+    expect(html).not.toMatch(/generation|queryKey|schema|DTO|Worker/iu);
+  });
+
+  it("presents Home separately from the peer Annual Recap and Detailed modes", () => {
+    const html = renderToStaticMarkup(createElement(BetaModeNavigation, {
+      mode: "annual-recap",
+      onModeChange: noop,
+    }));
+    expect(html).toContain('aria-label="产品模式"');
+    expect(html).toContain("首页");
+    expect(html).toContain('aria-pressed="true"');
+    expect(html).toContain("年度回顾");
+    expect(html).toContain("详细分析");
+  });
+});
+
+describe("Beta B1a annual report skeleton", () => {
+  it("keeps all sixteen stable logical section IDs in fixed order", () => {
+    expect(BETA_REPORT_SECTION_IDS).toHaveLength(16);
+    expect(BETA_REPORT_SECTIONS.map((section) => section.id)).toEqual(BETA_REPORT_SECTION_IDS);
+    expect(BETA_REPORT_SECTIONS.map((section) => section.order)).toEqual(
+      Array.from({ length: 16 }, (_, index) => index + 1),
+    );
+    expect(new Set(BETA_REPORT_SECTIONS.map((section) => section.scene)).size).toBeLessThan(16);
+  });
+
+  it("renders synthetic hero, metric, narrative, registry, headings, privacy, and methodology", () => {
+    const html = renderToStaticMarkup(createElement(BetaAnnualReport, {
+      viewModel: SYNTHETIC_BETA_RECAP_FIXTURE,
+      reportState,
+      representedYears: representedYearOptions([2024, 2025], baseRange),
+      selectedSection: "opening",
+      pending: false,
+      onRangeChange: noop,
+      onSectionChange: noop,
+      onRestoreFullRange: noop,
+      onOpenDetailed: noop,
+    }));
+    expect(html).toContain('data-fixture-kind="synthetic-automated-test"');
+    expect(html).toContain("自动化合成测试");
+    expect(html).toContain("beta-card-hero");
+    expect(html).toContain("beta-card-metric");
+    expect(html).toContain("beta-card-narrative");
+    expect(html).toContain("beta-card-privacy");
+    expect(html).toContain("下一节：消息");
+    expect(html).toContain("恢复全部数据范围");
+    expect(html.match(/data-delivery-slot=/gu)).toHaveLength(16);
+    expect(html).toContain("<h1");
+    expect(html.match(/<h2/gu)?.length).toBeGreaterThanOrEqual(3);
+    expect(html).not.toContain("16 个 full-screen");
+  });
+
+  it("defines scoped responsive/focus/static reduced-motion CSS contracts", () => {
+    const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+    expect(css).toContain(".desktop-app.beta-enabled {");
+    expect(css).toContain("--beta-color-canvas: #f4efe6");
+    expect(css).toContain("--beta-radius-hero: 24px");
+    expect(css).toContain("--beta-depth-raised:");
+    expect(css).toContain("font-size: clamp(40px, 5.4vw, 72px)");
+    expect(css).toContain("font-size: clamp(36px, 5.2vw, 64px)");
+    expect(css).toContain("min-height: 44px");
+    expect(css).toContain(".desktop-app.beta-enabled .beta-button");
+    expect(css).toContain(".desktop-app.beta-enabled .beta-button:disabled");
+    expect(css).toContain(".desktop-app.beta-enabled button:focus-visible");
+    expect(css).toContain("@media (max-width: 760px)");
+    expect(css).toContain("@media (prefers-reduced-motion: reduce)");
+    expect(css).toContain("scroll-behavior: auto !important");
+  });
+
+  it("keeps primary, privacy, success, focus, and disabled pairs above their frozen contrast floors", () => {
+    expect(contrastRatio("#ffffff", "#1738a8")).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio("#176b45", "#eaf6ef")).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio("#176b5b", "#eaf5f1")).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio("#005fcc", "#f4efe6")).toBeGreaterThanOrEqual(3);
+    expect(contrastRatio("#75716b", "#e3ded6")).toBeGreaterThanOrEqual(3);
+  });
+});

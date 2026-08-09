@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   acceptDesktopEvent,
@@ -37,6 +37,30 @@ import type {
 import { canonicalQueryKey } from "../worker-analysis/analytics-contract";
 import type { WorkerProgress } from "../worker-analysis/protocol";
 import { DesktopDashboard } from "./DesktopDashboard";
+import { BetaAnnualReport } from "./beta/BetaAnnualReport";
+import { BetaHome } from "./beta/BetaHome";
+import { BetaModeNavigation } from "./beta/BetaModeNavigation";
+import { Badge, BetaButton, QueryChips, StatusPill } from "./beta/primitives";
+import type { BetaReportSectionId } from "./beta/report-sections";
+import {
+  applyGlobalReportRange,
+  datasetRange,
+  initializeReportPresentationState,
+  reportSelectionValue,
+  representedYearOptions,
+  representedYearsFromBuckets,
+  restoreDatasetReportRange,
+  selectAllReportYears,
+  selectMultiYearOverview,
+  selectReportYear,
+  type BetaProductMode,
+  type BetaReportPresentationState,
+  type ReportQueryTransition,
+} from "./beta/report-state";
+import {
+  createBetaHomeViewModel,
+  createBetaRecapSkeletonViewModel,
+} from "./beta/view-model";
 import {
   desktopFailureMessage,
   desktopPhaseLabel,
@@ -45,7 +69,11 @@ import {
   isDesktopCancellableState,
   workerPhaseLabel,
 } from "./desktop-workflow";
-import { createDashboardViewModel, validateDashboardFilters } from "./desktop-dashboard";
+import {
+  createDashboardViewModel,
+  validateDashboardFilters,
+  type DashboardRoute,
+} from "./desktop-dashboard";
 
 const WINDOW_ID = "main";
 const ONBOARDING_STORAGE_KEY = "chat-history-analysis.desktop.onboarding.v1";
@@ -91,6 +119,8 @@ interface DatasetState {
   readonly sessionId: SessionId;
   readonly generation: Generation;
 }
+
+type AnalyticsCommitKind = "global" | "report-year" | "report-all" | "restore-full-range";
 
 function requestId(): string {
   const bytes = new Uint8Array(16);
@@ -211,6 +241,8 @@ export function DesktopImportPanel() {
   const operationRef = useRef<ActiveOperation | undefined>(undefined);
   const exportAttemptRef = useRef<{ readonly format: ReportFormat; readonly chartKey: ApprovedChartKey }>(undefined);
   const exportOutcomeRef = useRef<string>("unknown");
+  const betaDatasetSessionKeyRef = useRef<string | undefined>(undefined);
+  const reportScrollPositionRef = useRef(0);
   const [onboardingSeen, setOnboardingSeen] = useState(readOnboardingPreference);
   const [onboardingOpen, setOnboardingOpen] = useState(!readOnboardingPreference());
   const [selectionId, setSelectionId] = useState<string>();
@@ -229,6 +261,11 @@ export function DesktopImportPanel() {
   const [pendingCommand, setPendingCommand] = useState(false);
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
   const [exportMessage, setExportMessage] = useState<string>();
+  const [productMode, setProductMode] = useState<BetaProductMode>("home");
+  const [reportState, setReportState] = useState<BetaReportPresentationState>();
+  const [reportRepresentedYears, setReportRepresentedYears] = useState<readonly number[]>([]);
+  const [reportSection, setReportSection] = useState<BetaReportSectionId>("opening");
+  const [dashboardRoute, setDashboardRoute] = useState<DashboardRoute>("Overview");
 
   function updateOperation(next: ActiveOperation | undefined): void {
     operationRef.current = next;
@@ -278,6 +315,60 @@ export function DesktopImportPanel() {
     return () => document.removeEventListener("keydown", trapFocus);
   }, [closeDialogOpen, onboardingOpen]);
 
+  useEffect(() => {
+    if (analyticsResult === undefined) {
+      return;
+    }
+    const datasetSessionKey = [
+      analyticsResult.sessionId ?? "sessionless",
+      analyticsResult.datasetId ?? "datasetless",
+      analyticsResult.generation,
+    ].join(":");
+    if (betaDatasetSessionKeyRef.current === datasetSessionKey) {
+      return;
+    }
+    betaDatasetSessionKeyRef.current = datasetSessionKey;
+    const years = representedYearsFromBuckets(analyticsResult.activity.trends.yearly);
+    setReportRepresentedYears(years);
+    setReportState(initializeReportPresentationState({
+      datasetSessionKey,
+      committedFilters: analyticsResult.filters,
+      datasetRange: datasetRange(analyticsResult.dataset),
+      representedYears: years,
+      recovery: analyticsResult.filters.selectedYear !== null,
+    }));
+    reportScrollPositionRef.current = 0;
+    setProductMode("home");
+    setReportSection("opening");
+    setDashboardRoute("Overview");
+  }, [analyticsResult]);
+
+  useEffect(() => {
+    if (analyticsResult === undefined) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      document
+        .querySelector<HTMLElement>(
+          `[data-beta-mode="${productMode}"] h1[tabindex], [data-beta-mode="${productMode}"] .dashboard-panel-wrap`,
+        )
+        ?.focus();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [analyticsResult?.datasetId, analyticsResult?.generation, productMode, reportState?.datasetSessionKey]);
+
+  useEffect(() => {
+    if (productMode !== "annual-recap") {
+      return;
+    }
+    window.scrollTo({ top: reportScrollPositionRef.current, behavior: "auto" });
+    const rememberScroll = () => {
+      reportScrollPositionRef.current = window.scrollY;
+    };
+    window.addEventListener("scroll", rememberScroll, { passive: true });
+    return () => window.removeEventListener("scroll", rememberScroll);
+  }, [productMode]);
+
   async function stopAnalyticsWorker(
     sessionId: SessionId | null = cursorRef.current.sessionId,
     generation: Generation = cursorRef.current.generation,
@@ -324,6 +415,13 @@ export function DesktopImportPanel() {
     setAnalyticsError(undefined);
     if (clearResult) {
       setAnalyticsResult(undefined);
+      betaDatasetSessionKeyRef.current = undefined;
+      reportScrollPositionRef.current = 0;
+      setProductMode("home");
+      setReportState(undefined);
+      setReportRepresentedYears([]);
+      setReportSection("opening");
+      setDashboardRoute("Overview");
     }
   }
 
@@ -491,7 +589,10 @@ export function DesktopImportPanel() {
     }
   }
 
-  async function updateAnalyticsFilters(filters: CanonicalAnalysisFilters): Promise<void> {
+  async function updateAnalyticsFilters(
+    filters: CanonicalAnalysisFilters,
+    commitKind: AnalyticsCommitKind = "global",
+  ): Promise<CanonicalAnalysisResult | undefined> {
     const current = analyticsResult;
     const currentSession = cursorRef.current.sessionId;
     const currentGeneration = cursorRef.current.generation;
@@ -502,12 +603,12 @@ export function DesktopImportPanel() {
       current.generation !== currentGeneration ||
       analyticsClientRef.current === undefined
     ) {
-      return;
+      return undefined;
     }
     const validation = validateDashboardFilters(filters, current.dataset);
     if (validation.filters === undefined) {
       setAnalyticsError("筛选条件无效，未开始新的本地计算。");
-      return;
+      return undefined;
     }
     analyticsAttemptRef.current += 1;
     const client = analyticsClientRef.current;
@@ -521,7 +622,7 @@ export function DesktopImportPanel() {
       }
       setAnalyticsError("本地 Worker 未确认取消，未开始新的筛选计算。");
       setAnalyticsPending(false);
-      return;
+      return undefined;
     }
     await desktopApi.acknowledgeWorkerStop(
       requestId() as never,
@@ -585,8 +686,19 @@ export function DesktopImportPanel() {
           : currentDataset,
       );
       setAnalyticsResult(next);
+      if (commitKind === "global") {
+        setReportState((currentState) =>
+          currentState === undefined
+            ? currentState
+            : applyGlobalReportRange(currentState, next.filters),
+        );
+        setReportRepresentedYears(representedYearsFromBuckets(next.activity.trends.yearly));
+      } else if (commitKind === "report-all" || commitKind === "restore-full-range") {
+        setReportRepresentedYears(representedYearsFromBuckets(next.activity.trends.yearly));
+      }
       setStatus("本地筛选统计已更新");
       setProgress(undefined);
+      return next;
     } catch (error) {
       if (
         !mountedRef.current ||
@@ -610,6 +722,7 @@ export function DesktopImportPanel() {
         setAnalyticsPending(false);
       }
     }
+    return undefined;
   }
 
   function applyDesktopEvent(event: DesktopEvent): void {
@@ -1180,14 +1293,137 @@ export function DesktopImportPanel() {
     await runCommand(() => desktopApi.requestApplicationClose(requestId() as never, "cancel-and-close"));
   }
 
+  async function commitReportTransition(
+    transition: ReportQueryTransition,
+    commitKind: Exclude<AnalyticsCommitKind, "global">,
+  ): Promise<void> {
+    const previous = reportState;
+    setReportState(transition.state);
+    const next = await updateAnalyticsFilters(transition.filters, commitKind);
+    if (next === undefined && previous !== undefined) {
+      setReportState((current) =>
+        current !== undefined &&
+        current.datasetSessionKey === transition.state.datasetSessionKey &&
+        reportSelectionValue(current.selection) === reportSelectionValue(transition.state.selection)
+          ? previous
+          : current,
+      );
+    }
+  }
+
+  function changeProductMode(nextMode: BetaProductMode): void {
+    if (nextMode === "annual-recap" && productMode === "home") {
+      openAnnualReportFromHome();
+      return;
+    }
+    setProductMode(nextMode);
+  }
+
+  function openAnnualReportFromHome(): void {
+    setProductMode("annual-recap");
+    if (
+      analyticsResult === undefined ||
+      reportState === undefined ||
+      reportState.selection.kind !== "year" ||
+      analyticsResult.filters.selectedYear === reportState.selection.year
+    ) {
+      return;
+    }
+    const transition = selectReportYear(
+      reportState,
+      analyticsResult.filters,
+      reportState.selection.year,
+    );
+    if (transition !== null) {
+      void commitReportTransition(transition, "report-year");
+    }
+  }
+
+  function changeReportRange(value: string): void {
+    if (analyticsResult === undefined || reportState === undefined) {
+      return;
+    }
+    if (value === "multi-year-overview") {
+      setReportState(selectMultiYearOverview(reportState));
+      return;
+    }
+    if (value === "all-years") {
+      void commitReportTransition(
+        selectAllReportYears(reportState, analyticsResult.filters),
+        "report-all",
+      );
+      return;
+    }
+    const match = /^year:([0-9]{4})$/u.exec(value);
+    if (match === null) {
+      return;
+    }
+    const transition = selectReportYear(
+      reportState,
+      analyticsResult.filters,
+      Number(match[1]),
+    );
+    if (transition !== null) {
+      void commitReportTransition(transition, "report-year");
+    }
+  }
+
+  function restoreFullReportRange(): void {
+    if (analyticsResult === undefined || reportState === undefined) {
+      return;
+    }
+    void commitReportTransition(
+      restoreDatasetReportRange(
+        reportState,
+        analyticsResult.filters,
+        datasetRange(analyticsResult.dataset),
+      ),
+      "restore-full-range",
+    );
+  }
+
+  function changeReportSection(section: BetaReportSectionId): void {
+    setReportSection(section);
+    window.setTimeout(() => {
+      document.getElementById(section)?.scrollIntoView({ block: "start", behavior: "auto" });
+    }, 0);
+  }
+
   const failureText = desktopFailureMessage(failure?.code);
   const isBusy = pendingCommand || analyticsPending || isDesktopCancellableState(desktopState) || desktopState === "cancelling" || desktopState === "closing";
+  const workflowReady = analyticsResult !== undefined && !analyticsPending && analyticsError === undefined && failure === undefined;
   const canCancel = operation !== undefined && session !== undefined && operation.cancelAvailable && isDesktopCancellableState(desktopState) && !pendingCommand;
   const canStart = selectionId !== undefined && annualCount > 0 && !pendingCommand && !isBusy;
   const progressDuration = progress === undefined ? undefined : durationBucket(Date.now() - progress.startedAt);
+  const reportYearOptions = useMemo(
+    () => reportState === undefined
+      ? []
+      : representedYearOptions(reportRepresentedYears, reportState.reportBaseRange),
+    [reportRepresentedYears, reportState],
+  );
+  const homeViewModel = useMemo(
+    () => analyticsResult === undefined || reportState === undefined
+      ? undefined
+      : createBetaHomeViewModel(
+        analyticsResult,
+        reportState.reportBaseRange,
+        reportRepresentedYears,
+      ),
+    [analyticsResult, reportRepresentedYears, reportState],
+  );
+  const recapViewModel = useMemo(
+    () => analyticsResult === undefined || reportState === undefined
+      ? undefined
+      : createBetaRecapSkeletonViewModel(
+        analyticsResult,
+        reportState.selection,
+        reportState.reportBaseRange,
+      ),
+    [analyticsResult, reportState],
+  );
 
   return (
-    <main className="desktop-app" aria-busy={isBusy}>
+    <main className="desktop-app beta-enabled" aria-busy={isBusy}>
       {onboardingOpen ? (
         <div className="desktop-dialog-layer">
           <section className="desktop-dialog" role="dialog" aria-modal="true" aria-labelledby="privacy-onboarding-heading" aria-describedby="privacy-onboarding-copy">
@@ -1203,17 +1439,36 @@ export function DesktopImportPanel() {
         </div>
       ) : null}
       <header className="desktop-app-header">
-        <div>
-          <p className="dashboard-eyebrow">LOCAL CHAT ANALYSIS / DESKTOP ALPHA</p>
-          <h1>本地分析</h1>
-          <p>选择源文件、等待本地统计完成，然后在一个 Dashboard 中查看结果。</p>
+        <div className="beta-product-identity">
+          <div className="beta-product-labels">
+            <p className="beta-type-eyebrow">LOCAL FIRST</p>
+            <Badge tone="beta">Beta</Badge>
+          </div>
+          {analyticsResult === undefined ? (
+            <h1 className="beta-product-name">本地聊天分析</h1>
+          ) : (
+            <p className="beta-product-name">本地聊天分析</p>
+          )}
+          <p className="beta-product-context">
+            {analyticsResult === undefined
+              ? "选择聊天记录，在本机完成合并与分析。"
+              : productMode === "home"
+                ? "分析首页"
+                : productMode === "annual-recap"
+                  ? "年度聊天报告"
+                  : "详细分析"}
+          </p>
         </div>
         <div className="desktop-header-actions">
-          <span className="dashboard-local-badge">不上传聊天记录</span>
-          {onboardingSeen ? <button className="dashboard-button" type="button" onClick={openPrivacy}>隐私说明</button> : null}
-          <button className="dashboard-button" type="button" onClick={() => setCloseDialogOpen(true)}>退出应用</button>
+          <Badge tone="privacy">本地处理 · 不上传</Badge>
+          {onboardingSeen ? <BetaButton variant="tertiary" onClick={openPrivacy}>隐私说明</BetaButton> : null}
+          <BetaButton variant="exit" onClick={() => setCloseDialogOpen(true)}>退出应用</BetaButton>
         </div>
       </header>
+
+      {analyticsResult !== undefined ? (
+        <BetaModeNavigation mode={productMode} onModeChange={changeProductMode} />
+      ) : null}
 
       {analyticsResult === undefined ? (
         <section className="desktop-workflow-card" aria-labelledby="desktop-selection-heading">
@@ -1236,25 +1491,38 @@ export function DesktopImportPanel() {
         </section>
       ) : null}
 
-      <section className="desktop-status-card" aria-labelledby="desktop-status-heading" aria-live="polite">
-        <div>
-          <p className="dashboard-eyebrow">02 / WORKFLOW STATUS</p>
-          <h2 id="desktop-status-heading">{status}</h2>
-          <p className="desktop-status-copy">当前状态：{desktopStateLabel(desktopState)}{progress === undefined ? "" : ` · ${progress.source === "analytics" ? workerPhaseLabel(progress.phase as WorkerProgress["phase"]) : desktopPhaseLabel(progress.phase as DesktopPhase)}`}</p>
-          {progress !== undefined ? (
-            <div className="desktop-progress" aria-label="本地分析进度">
-              <div className="desktop-progress-line"><span>{progress.source === "analytics" ? workerPhaseLabel(progress.phase as WorkerProgress["phase"]) : desktopPhaseLabel(progress.phase as DesktopPhase)}</span><strong>{Math.round(progress.percentage)}%</strong></div>
-              <progress value={progress.percentage} max={100} aria-label={`${progress.source === "analytics" ? workerPhaseLabel(progress.phase as WorkerProgress["phase"]) : desktopPhaseLabel(progress.phase as DesktopPhase)} ${Math.round(progress.percentage)}%`} />
-              <div className="desktop-progress-meta"><span>{progress.total > 0 ? `${progress.completed.toLocaleString()} / ${progress.total.toLocaleString()}` : "阶段总量未知"}</span><span>{progressDuration}</span></div>
-            </div>
-          ) : null}
-        </div>
-        <div className="desktop-status-actions">
-          <button className="dashboard-button" type="button" disabled={!canCancel} onClick={() => void cancel()}>取消</button>
-          {failure?.retryable === true && !failure.code.startsWith("EXPORT_") ? <button className="dashboard-button" type="button" disabled={pendingCommand} onClick={() => void retry()}>重试</button> : null}
-          {failure !== undefined && !failure.code.startsWith("EXPORT_") ? <button className="dashboard-button" type="button" disabled={pendingCommand} onClick={() => void selectSources("annual")}>重新选择</button> : null}
-        </div>
-      </section>
+      {workflowReady ? (
+        <section className="desktop-status-card beta-ready-status" aria-labelledby="desktop-status-heading" aria-live="polite">
+          <div className="beta-ready-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false"><path d="m5 12.5 4.2 4.2L19 7" /></svg>
+          </div>
+          <div className="beta-ready-copy">
+            <h2 id="desktop-status-heading">分析完成</h2>
+            <QueryChips chips={createBetaHomeViewModel(analyticsResult, reportState?.reportBaseRange ?? datasetRange(analyticsResult.dataset), reportRepresentedYears).queryChips} />
+          </div>
+          <StatusPill tone="success">本地处理完成</StatusPill>
+        </section>
+      ) : (
+        <section className="desktop-status-card" aria-labelledby="desktop-status-heading" aria-live="polite">
+          <div>
+            <p className="dashboard-eyebrow">02 / WORKFLOW STATUS</p>
+            <h2 id="desktop-status-heading">{status}</h2>
+            <p className="desktop-status-copy">当前状态：{desktopStateLabel(desktopState)}{progress === undefined ? "" : ` · ${progress.source === "analytics" ? workerPhaseLabel(progress.phase as WorkerProgress["phase"]) : desktopPhaseLabel(progress.phase as DesktopPhase)}`}</p>
+            {progress !== undefined ? (
+              <div className="desktop-progress" aria-label="本地分析进度">
+                <div className="desktop-progress-line"><span>{progress.source === "analytics" ? workerPhaseLabel(progress.phase as WorkerProgress["phase"]) : desktopPhaseLabel(progress.phase as DesktopPhase)}</span><strong>{Math.round(progress.percentage)}%</strong></div>
+                <progress value={progress.percentage} max={100} aria-label={`${progress.source === "analytics" ? workerPhaseLabel(progress.phase as WorkerProgress["phase"]) : desktopPhaseLabel(progress.phase as DesktopPhase)} ${Math.round(progress.percentage)}%`} />
+                <div className="desktop-progress-meta"><span>{progress.total > 0 ? `${progress.completed.toLocaleString()} / ${progress.total.toLocaleString()}` : "阶段总量未知"}</span><span>{progressDuration}</span></div>
+              </div>
+            ) : null}
+          </div>
+          <div className="desktop-status-actions">
+            <button className="dashboard-button" type="button" disabled={!canCancel} onClick={() => void cancel()}>取消</button>
+            {failure?.retryable === true && !failure.code.startsWith("EXPORT_") ? <button className="dashboard-button" type="button" disabled={pendingCommand} onClick={() => void retry()}>重试</button> : null}
+            {failure !== undefined && !failure.code.startsWith("EXPORT_") ? <button className="dashboard-button" type="button" disabled={pendingCommand} onClick={() => void selectSources("annual")}>重新选择</button> : null}
+          </div>
+        </section>
+      )}
 
       {failureText !== undefined ? (
         <section className="desktop-alert" role="alert" aria-labelledby="desktop-error-heading">
@@ -1277,14 +1545,42 @@ export function DesktopImportPanel() {
         </section>
       ) : null}
 
-      {analyticsResult !== undefined ? (
-        <DesktopDashboard
-          result={analyticsResult}
+      {analyticsResult !== undefined && reportState !== undefined && homeViewModel !== undefined && productMode === "home" ? (
+        <BetaHome
+          viewModel={homeViewModel}
           pending={analyticsPending || pendingCommand}
-          onFilterChange={(filters) => void updateAnalyticsFilters(filters)}
-          onAnalyzeOtherFiles={() => void analyzeOtherFiles()}
-          onExport={(format, chartKey) => void exportAggregate(format, chartKey)}
+          onOpenRecap={openAnnualReportFromHome}
+          onOpenDetailed={() => setProductMode("detailed-analysis")}
+          onRestoreFullRange={restoreFullReportRange}
         />
+      ) : null}
+
+      {analyticsResult !== undefined && reportState !== undefined && recapViewModel !== undefined && productMode === "annual-recap" ? (
+        <BetaAnnualReport
+          viewModel={recapViewModel}
+          reportState={reportState}
+          representedYears={reportYearOptions}
+          selectedSection={reportSection}
+          pending={analyticsPending || pendingCommand}
+          onRangeChange={changeReportRange}
+          onSectionChange={changeReportSection}
+          onRestoreFullRange={restoreFullReportRange}
+          onOpenDetailed={() => setProductMode("detailed-analysis")}
+        />
+      ) : null}
+
+      {analyticsResult !== undefined && productMode === "detailed-analysis" ? (
+        <div data-beta-mode="detailed-analysis">
+          <DesktopDashboard
+            result={analyticsResult}
+            pending={analyticsPending || pendingCommand}
+            onFilterChange={(filters) => void updateAnalyticsFilters(filters, "global")}
+            onAnalyzeOtherFiles={() => void analyzeOtherFiles()}
+            onExport={(format, chartKey) => void exportAggregate(format, chartKey)}
+            initialRoute={dashboardRoute}
+            onRouteChange={setDashboardRoute}
+          />
+        </div>
       ) : null}
 
       {dataset !== undefined && analyticsResult === undefined && !analyticsPending ? (

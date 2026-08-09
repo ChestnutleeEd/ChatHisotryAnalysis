@@ -40,6 +40,8 @@ interface DesktopDashboardProps {
   readonly onFilterChange: (filters: CanonicalAnalysisFilters) => void;
   readonly onAnalyzeOtherFiles: () => void;
   readonly onExport: (format: ReportFormat, chartKey: ApprovedChartKey) => void;
+  readonly initialRoute?: DashboardRoute;
+  readonly onRouteChange?: (route: DashboardRoute) => void;
 }
 
 interface MetricCardProps {
@@ -729,9 +731,11 @@ export function DesktopDashboard({
   onFilterChange,
   onAnalyzeOtherFiles,
   onExport,
+  initialRoute = "Overview",
+  onRouteChange,
 }: DesktopDashboardProps) {
   const model = useMemo(() => createDashboardViewModel(result), [result]);
-  const [route, setRoute] = useState<DashboardRoute>("Overview");
+  const [route, setRoute] = useState<DashboardRoute>(initialRoute);
   const [draftFilters, setDraftFilters] = useState<CanonicalAnalysisFilters>(result.filters);
   const [filterErrors, setFilterErrors] = useState<FilterErrors>({});
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -766,6 +770,7 @@ export function DesktopDashboard({
 
   function handleRouteChange(next: DashboardRoute): void {
     setRoute(next);
+    onRouteChange?.(next);
   }
 
   const activePanelIndex = routeIndex(route);
