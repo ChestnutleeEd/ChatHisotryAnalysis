@@ -26,6 +26,9 @@ import {
   SYNTHETIC_BETA_RECAP_FIXTURE,
   type BetaHomeViewModel,
 } from "../src/presentation/beta/view-model";
+import { buildBetaReportDto } from "../src/presentation/beta/report-adapter";
+import { presentBetaReportZhCN } from "../src/presentation/beta/locales/zh-CN";
+import { syntheticBetaAnnualReportResult } from "../src/presentation/beta/synthetic-report-fixture";
 
 const noop = () => undefined;
 const baseRange = { startDate: "2024-01-01", endDate: "2025-12-31" };
@@ -204,5 +207,34 @@ describe("Beta B1a annual report skeleton", () => {
     expect(contrastRatio("#176b5b", "#eaf5f1")).toBeGreaterThanOrEqual(4.5);
     expect(contrastRatio("#005fcc", "#f4efe6")).toBeGreaterThanOrEqual(3);
     expect(contrastRatio("#75716b", "#e3ded6")).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe("Beta B2 core report composition", () => {
+  it("renders localized sections 1–12 with exact table alternatives and honest B3/B4 gaps", () => {
+    const result = syntheticBetaAnnualReportResult(2025);
+    const viewModel = presentBetaReportZhCN(buildBetaReportDto(result, { mode: "annual", year: 2025 }));
+    const html = renderToStaticMarkup(createElement(BetaAnnualReport, {
+      viewModel,
+      reportState,
+      representedYears: representedYearOptions([2024, 2025], baseRange),
+      selectedSection: "opening",
+      pending: false,
+      onRangeChange: noop,
+      onSectionChange: noop,
+      onRestoreFullRange: noop,
+      onOpenDetailed: noop,
+    }));
+    expect(html).toContain('data-beta-mode="annual-recap"');
+    expect(html).toContain("这一范围共有 1,248 条用户消息");
+    expect(html).toContain("星期一和星期二");
+    expect(html).toContain("按星期一至星期日排列的消息数量");
+    expect(html).toContain("尚未提供");
+    expect(html).toContain("UTC+08:00");
+    for (const id of BETA_REPORT_SECTION_IDS.slice(0, 12)) {
+      expect(html).toContain(`id="${id}"`);
+    }
+    expect(html).not.toContain("canonical-event");
+    expect(html).not.toContain("messageBodies");
   });
 });

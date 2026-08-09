@@ -16,12 +16,38 @@ import {
   QueryChips,
 } from "./primitives";
 import type { BetaRecapSkeletonViewModel } from "./view-model";
+import type { BetaReportViewModelV1 } from "./report-contract";
+import { BetaCoreReportSections, BetaUnavailableReportSections } from "./BetaCoreReportSections";
 import type { CanonicalAnalysisResult } from "../../worker-analysis/analytics-contract";
 import type {
   WorkerWordFrequencyDtoV1,
   WordFrequencyRole,
 } from "../../worker-analysis/word-frequency-contract";
 import { BetaWordEvidenceSections } from "./BetaWordEvidenceSections";
+
+export interface BetaAnnualReportProps {
+  readonly viewModel: BetaRecapSkeletonViewModel | BetaReportViewModelV1;
+  readonly reportState: BetaReportPresentationState;
+  readonly representedYears: readonly RepresentedYearOption[];
+  readonly selectedSection: BetaReportSectionId;
+  readonly pending: boolean;
+  readonly analyticsResult?: CanonicalAnalysisResult;
+  readonly wordFrequency?: WorkerWordFrequencyDtoV1;
+  readonly wordRole?: WordFrequencyRole;
+  readonly wordFrequencyPending?: boolean;
+  readonly wordFrequencyError?: string;
+  readonly onRangeChange: (value: string) => void;
+  readonly onSectionChange: (section: BetaReportSectionId) => void;
+  readonly onRestoreFullRange: () => void;
+  readonly onOpenDetailed: () => void;
+  readonly onWordRoleChange?: (role: WordFrequencyRole) => void;
+}
+
+function isBetaReportViewModel(
+  value: BetaAnnualReportProps["viewModel"],
+): value is BetaReportViewModelV1 {
+  return "schemaVersion" in value && value.schemaVersion === "chat-history-analysis.beta-report-view-model.v1";
+}
 
 export function BetaAnnualReport({
   viewModel,
@@ -39,23 +65,28 @@ export function BetaAnnualReport({
   onRestoreFullRange,
   onOpenDetailed,
   onWordRoleChange,
-}: {
-  readonly viewModel: BetaRecapSkeletonViewModel;
-  readonly reportState: BetaReportPresentationState;
-  readonly representedYears: readonly RepresentedYearOption[];
-  readonly selectedSection: BetaReportSectionId;
-  readonly pending: boolean;
-  readonly analyticsResult?: CanonicalAnalysisResult;
-  readonly wordFrequency?: WorkerWordFrequencyDtoV1;
-  readonly wordRole?: WordFrequencyRole;
-  readonly wordFrequencyPending?: boolean;
-  readonly wordFrequencyError?: string;
-  readonly onRangeChange: (value: string) => void;
-  readonly onSectionChange: (section: BetaReportSectionId) => void;
-  readonly onRestoreFullRange: () => void;
-  readonly onOpenDetailed: () => void;
-  readonly onWordRoleChange?: (role: WordFrequencyRole) => void;
-}) {
+}: BetaAnnualReportProps) {
+  if (isBetaReportViewModel(viewModel)) {
+    return (
+      <BetaCoreAnnualReport
+        viewModel={viewModel}
+        reportState={reportState}
+        representedYears={representedYears}
+        selectedSection={selectedSection}
+        pending={pending}
+        analyticsResult={analyticsResult}
+        wordFrequency={wordFrequency}
+        wordRole={wordRole}
+        wordFrequencyPending={wordFrequencyPending}
+        wordFrequencyError={wordFrequencyError}
+        onRangeChange={onRangeChange}
+        onSectionChange={onSectionChange}
+        onRestoreFullRange={onRestoreFullRange}
+        onOpenDetailed={onOpenDetailed}
+        onWordRoleChange={onWordRoleChange}
+      />
+    );
+  }
   const hasWordEvidence =
     analyticsResult !== undefined &&
     wordRole !== undefined &&
@@ -204,6 +235,128 @@ export function BetaAnnualReport({
           </div>
         </BaseCard>
       </div>
+    </section>
+  );
+}
+
+function BetaCoreAnnualReport({
+  viewModel,
+  reportState,
+  representedYears,
+  selectedSection,
+  pending,
+  analyticsResult,
+  wordFrequency,
+  wordRole,
+  wordFrequencyPending,
+  wordFrequencyError,
+  onRangeChange,
+  onSectionChange,
+  onRestoreFullRange,
+  onOpenDetailed,
+  onWordRoleChange,
+}: BetaAnnualReportProps & { readonly viewModel: BetaReportViewModelV1 }) {
+  const opening = viewModel.sections[0];
+  const canRenderWordEvidence = analyticsResult !== undefined && wordRole !== undefined && onWordRoleChange !== undefined;
+  return (
+    <section
+      className="beta-report beta-report-core"
+      data-beta-mode="annual-recap"
+      aria-labelledby="beta-report-heading"
+      aria-busy={pending}
+    >
+      <nav className="beta-report-navigation" aria-label="年度报告导航">
+        <label>
+          <span>回顾范围</span>
+          <select
+            value={reportSelectionValue(reportState.selection)}
+            disabled={pending}
+            onChange={(event) => onRangeChange(event.currentTarget.value)}
+          >
+            {representedYears.map((option) => (
+              <option key={option.year} value={`year:${option.year}`}>
+                {option.year} 年{option.scope === "partial-calendar-query" ? "（部分范围）" : ""}
+              </option>
+            ))}
+            <option value="all-years">全部年份</option>
+            {representedYears.length > 1 ? <option value="multi-year-overview">多年度总览</option> : null}
+          </select>
+        </label>
+        <label>
+          <span>跳转章节</span>
+          <select
+            value={selectedSection}
+            onChange={(event) => onSectionChange(event.currentTarget.value as BetaReportSectionId)}
+          >
+            {BETA_REPORT_SECTIONS.map((section) => (
+              <option key={section.id} value={section.id}>
+                {String(section.order).padStart(2, "0")} · {section.title}
+              </option>
+            ))}
+          </select>
+        </label>
+        <BetaButton variant="tertiary" disabled={pending} onClick={onRestoreFullRange}>
+          恢复全部数据范围
+        </BetaButton>
+      </nav>
+
+      {pending ? (
+        <p className="beta-report-pending" role="status">
+          正在更新报告；以下暂时保留上一份完整报告。
+        </p>
+      ) : null}
+      {viewModel.metadata.partialLabel !== null ? (
+        <p className="beta-report-scope-banner" role="note">{viewModel.metadata.partialLabel}</p>
+      ) : null}
+
+      <header className="beta-core-report-header">
+        <div>
+          <div className="beta-home-kicker">
+            <Badge tone="beta">年度聊天报告</Badge>
+            <Badge tone="privacy">{viewModel.privacy.localOnlyLabel}</Badge>
+          </div>
+          <p className="beta-type-eyebrow">{viewModel.metadata.scopeLabel}</p>
+          <h1 id="beta-report-heading" className="beta-type-display" tabIndex={-1}>{viewModel.metadata.scopeLabel}</h1>
+          <p className="beta-type-report-lead">{opening?.lead ?? "当前范围回顾"}</p>
+          <QueryChips chips={viewModel.metadata.queryChips} />
+        </div>
+      </header>
+
+      <BetaCoreReportSections viewModel={viewModel} />
+
+      {canRenderWordEvidence ? (
+        <BetaWordEvidenceSections
+          result={analyticsResult}
+          frequency={wordFrequency}
+          requestedRole={wordRole}
+          requestedYear={analyticsResult.filters.selectedYear}
+          pending={wordFrequencyPending ?? false}
+          error={wordFrequencyError}
+          onRoleChange={onWordRoleChange}
+        />
+      ) : (
+        <BetaUnavailableReportSections />
+      )}
+
+      <BaseCard id="summary-share" variant="privacy" className="beta-core-summary-card">
+        <div className="beta-core-card-heading">
+          <div>
+            <p className="beta-type-eyebrow">总结与分享 · 16</p>
+            <h2 className="beta-type-heading">这份回顾如何被带走？</h2>
+          </div>
+          <Badge tone="partial">尚未提供</Badge>
+        </div>
+        <p className="beta-type-report-lead">当前 Beta 只呈现本地聚合指标；分享卡片与导出会在后续批次处理。</p>
+        <MethodologyDisclosure summary="查看范围、分母与表达边界" chips={["UTC+08:00", "本地聚合", "非评价性"]}>
+          <ul className="beta-methodology-facts">
+            {viewModel.methodology.map((fact) => (
+              <li key={fact.id}><strong>{fact.label}</strong><span>{fact.value}</span></li>
+            ))}
+          </ul>
+        </MethodologyDisclosure>
+        <p className="beta-core-privacy-note">{viewModel.privacy.badgeLabel} · 不含消息正文或联系人身份。</p>
+        <BetaButton variant="secondary" onClick={onOpenDetailed}>进入详细分析</BetaButton>
+      </BaseCard>
     </section>
   );
 }

@@ -6,7 +6,7 @@ import type {
 
 import type { QueryChipViewModel } from "./view-model";
 
-export type BetaCardVariant = "hero" | "metric" | "narrative" | "word" | "privacy";
+export type BetaCardVariant = "hero" | "metric" | "narrative" | "chart" | "split" | "word" | "privacy";
 export type BetaButtonVariant = "primary" | "secondary" | "tertiary" | "exit";
 
 function joinClasses(...values: readonly (string | undefined | false)[]): string {

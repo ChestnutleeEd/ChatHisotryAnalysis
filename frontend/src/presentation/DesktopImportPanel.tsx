@@ -69,8 +69,10 @@ import {
 } from "./beta/report-state";
 import {
   createBetaHomeViewModel,
-  createBetaRecapSkeletonViewModel,
 } from "./beta/view-model";
+import { presentBetaReportZhCN } from "./beta/locales/zh-CN";
+import { BetaReportFactsCache } from "./beta/report-cache";
+import type { BetaReportAdapterOptions } from "./beta/report-adapter";
 import {
   desktopFailureMessage,
   desktopPhaseLabel,
@@ -87,6 +89,19 @@ import {
 
 const WINDOW_ID = "main";
 const ONBOARDING_STORAGE_KEY = "chat-history-analysis.desktop.onboarding.v1";
+
+function committedReportOptions(
+  result: CanonicalAnalysisResult,
+  selection: BetaReportPresentationState["selection"],
+): BetaReportAdapterOptions {
+  if (result.filters.selectedYear !== null) {
+    return { mode: "annual", year: result.filters.selectedYear };
+  }
+  if (selection.kind === "multi-year-overview") {
+    return { mode: "multi-year-overview", year: null };
+  }
+  return { mode: "all-years", year: null };
+}
 
 const INITIAL_CURSOR: EventCursor = {
   windowId: WINDOW_ID,
@@ -254,6 +269,7 @@ export function DesktopImportPanel() {
   const exportAttemptRef = useRef<{ readonly format: ReportFormat; readonly chartKey: ApprovedChartKey }>(undefined);
   const exportOutcomeRef = useRef<string>("unknown");
   const betaDatasetSessionKeyRef = useRef<string | undefined>(undefined);
+  const reportFactsCacheRef = useRef(new BetaReportFactsCache());
   const reportScrollPositionRef = useRef(0);
   const [onboardingSeen, setOnboardingSeen] = useState(readOnboardingPreference);
   const [onboardingOpen, setOnboardingOpen] = useState(!readOnboardingPreference());
@@ -348,6 +364,7 @@ export function DesktopImportPanel() {
       return;
     }
     betaDatasetSessionKeyRef.current = datasetSessionKey;
+    reportFactsCacheRef.current.clear();
     const years = representedYearsFromBuckets(analyticsResult.activity.trends.yearly);
     setReportRepresentedYears(years);
     setReportState(initializeReportPresentationState({
@@ -493,6 +510,7 @@ export function DesktopImportPanel() {
     setAnalyticsPending(false);
     setAnalyticsError(undefined);
     if (clearResult) {
+      reportFactsCacheRef.current.clear();
       setAnalyticsResult(undefined);
       betaDatasetSessionKeyRef.current = undefined;
       reportScrollPositionRef.current = 0;
@@ -1494,13 +1512,14 @@ export function DesktopImportPanel() {
       ),
     [analyticsResult, reportRepresentedYears, reportState],
   );
-  const recapViewModel = useMemo(
+  const reportViewModel = useMemo(
     () => analyticsResult === undefined || reportState === undefined
       ? undefined
-      : createBetaRecapSkeletonViewModel(
-        analyticsResult,
-        reportState.selection,
-        reportState.reportBaseRange,
+      : presentBetaReportZhCN(
+        reportFactsCacheRef.current.getForResult(
+          analyticsResult,
+          committedReportOptions(analyticsResult, reportState.selection),
+        ),
       ),
     [analyticsResult, reportState],
   );
@@ -1638,9 +1657,9 @@ export function DesktopImportPanel() {
         />
       ) : null}
 
-      {analyticsResult !== undefined && reportState !== undefined && recapViewModel !== undefined && productMode === "annual-recap" ? (
+      {analyticsResult !== undefined && reportState !== undefined && reportViewModel !== undefined && productMode === "annual-recap" ? (
         <BetaAnnualReport
-          viewModel={recapViewModel}
+          viewModel={reportViewModel}
           reportState={reportState}
           representedYears={reportYearOptions}
           selectedSection={reportSection}

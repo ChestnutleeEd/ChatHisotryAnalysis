@@ -19,13 +19,20 @@ export const BETA_REPORT_SECTION_IDS = [
 
 export type BetaReportSectionId = (typeof BETA_REPORT_SECTION_IDS)[number];
 export type BetaSectionDeliverySlot = "core" | "vocabulary" | "cloud" | "sharing";
+export type BetaReportScene =
+  | "opening"
+  | "activity"
+  | "rhythm"
+  | "comparison"
+  | "language"
+  | "closing";
 
 export interface BetaReportSectionDefinition {
   readonly id: BetaReportSectionId;
   readonly order: number;
   readonly title: string;
   readonly question: string;
-  readonly scene: "opening" | "activity" | "rhythm" | "comparison" | "language" | "closing";
+  readonly scene: BetaReportScene;
   readonly deliverySlot: BetaSectionDeliverySlot;
 }
 
