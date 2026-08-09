@@ -18,6 +18,7 @@ import { syntheticBetaWordCloudFrequency } from "./synthetic-word-cloud-fixture"
 import type { WordFrequencyRole } from "../../worker-analysis/word-frequency-contract";
 import type { BetaReportMode } from "./report-contract";
 import { BETA_REPORT_SECTIONS, type BetaReportSectionId } from "./report-sections";
+import { SkipLink } from "./primitives";
 
 type HarnessMode = Exclude<BetaReportMode, "annual"> | "annual";
 
@@ -75,6 +76,7 @@ export function BetaAnnualReportBrowserHarness() {
 
   return (
     <main className="desktop-app beta-enabled" data-testid="beta-annual-recap-harness">
+      <SkipLink />
       <header className="desktop-app-header">
         <div className="beta-product-identity">
           <p className="beta-type-eyebrow">浏览器合成验收</p>

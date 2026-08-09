@@ -1,12 +1,38 @@
 import {
+  ANALYTICS_RESULT_SCHEMA_VERSION,
   canonicalQueryKey,
+  type CanonicalAnalysisFilters,
   type CanonicalAnalysisResult,
 } from "../../worker-analysis/analytics-contract";
 import {
+  ACTIVITY_METRICS_SCHEMA_VERSION,
+  ACTIVITY_TIME_POLICY,
+  ACTIVITY_USER_MESSAGE_POPULATION,
   WEEKDAY_LABELS,
 } from "../../worker-analysis/activity-metrics";
-import { CANONICAL_MESSAGE_CATEGORIES } from "../../canonical-v2/schema";
+import {
+  CANONICAL_EVENT_SCHEMA_VERSION,
+  CANONICAL_MANIFEST_SCHEMA_VERSION,
+  CANONICAL_MESSAGE_CATEGORIES,
+  METRIC_DEFINITION_VERSIONS,
+  type CanonicalMessageCategory,
+} from "../../canonical-v2/schema";
 import type { DatasetId, Generation } from "../../desktop/ipc-contract";
+import {
+  REPLY_INTERVAL_BIN_DEFINITIONS,
+  REPLY_INTERVAL_DATE_BOUNDARY,
+  REPLY_INTERVAL_DEFINITION_VERSION,
+  REPLY_INTERVAL_EXCLUDED_GAP_RULE,
+  REPLY_INTERVAL_FILTER_BEHAVIOR,
+  REPLY_INTERVAL_UNIT,
+  REPLY_SESSION_METRICS_SCHEMA_VERSION,
+  SESSION_INITIATOR_DEFINITION_VERSION,
+  SESSION_OPENING_DATE_BOUNDARY,
+} from "../../worker-analysis/reply-session-metrics";
+import {
+  STAGE7_DEFINITION_VERSIONS,
+  STAGE7_METRICS_SCHEMA_VERSION,
+} from "../../worker-analysis/stage7-metrics";
 
 export const SYNTHETIC_REPORT_DATASET_ID = "dat_000000000000000000000000000000f1" as DatasetId;
 export const SYNTHETIC_REPORT_GENERATION = 1 as Generation;
@@ -207,4 +233,231 @@ export function syntheticBetaAllYearsReportResult(): CanonicalAnalysisResult {
     stage7: { ...annual.stage7, filters },
     replySessions: { ...annual.replySessions, filters },
   } as unknown as CanonicalAnalysisResult;
+}
+
+function detailedCategoryCounts(): Record<CanonicalMessageCategory, number> {
+  return Object.fromEntries(
+    CANONICAL_MESSAGE_CATEGORIES.map((category) => [category, category === "text" ? 8 : 0]),
+  ) as Record<CanonicalMessageCategory, number>;
+}
+
+function detailedEmptyReplyStats() {
+  return {
+    count: 0,
+    meanSeconds: null,
+    p25Seconds: null,
+    medianSeconds: null,
+    p75Seconds: null,
+    p90Seconds: null,
+    bins: REPLY_INTERVAL_BIN_DEFINITIONS.map((bin) => ({ ...bin, count: 0 })),
+  };
+}
+
+function detailedFilters(): CanonicalAnalysisFilters {
+  return {
+    startDate: "2025-01-01",
+    endDate: "2025-01-04",
+    sender: "both",
+    selectedYear: null,
+    sessionThresholdHours: 6,
+  };
+}
+
+/**
+ * A complete, validator-safe fixture for the Detailed shell only.
+ * It remains synthetic and intentionally independent from the Annual Recap DTO fixture above.
+ */
+export function syntheticBetaDetailedResult(): CanonicalAnalysisResult {
+  const filters = detailedFilters();
+  const categoryCountsValue = detailedCategoryCounts();
+  const emptyStats = detailedEmptyReplyStats();
+  const queryKey = canonicalQueryKey(SYNTHETIC_REPORT_DATASET_ID, SYNTHETIC_REPORT_GENERATION, filters);
+  const hourlyCounts = Array.from({ length: 24 }, (_, hour) => (hour === 20 ? 8 : 0));
+  const weekdayCounts = WEEKDAY_LABELS.map((_, index) => (index < 2 ? 4 : 0));
+  const wordValues = [
+    { token: "report", count: 8, ratePer10000: 5_000 },
+    { token: "synthetic", count: 8, ratePer10000: 5_000 },
+  ];
+
+  return {
+    schemaVersion: ANALYTICS_RESULT_SCHEMA_VERSION,
+    datasetSchemaVersion: CANONICAL_EVENT_SCHEMA_VERSION,
+    sessionId: null,
+    datasetId: SYNTHETIC_REPORT_DATASET_ID,
+    generation: SYNTHETIC_REPORT_GENERATION,
+    metricDefinitionVersions: METRIC_DEFINITION_VERSIONS,
+    queryKey,
+    filters,
+    dataset: {
+      schemaVersion: CANONICAL_MANIFEST_SCHEMA_VERSION,
+      eventCount: 8,
+      userMessageCount: 8,
+      eligibleTextCount: 8,
+      systemEventCount: 0,
+      chunkCount: 1,
+      totalBytes: 0,
+      warningCount: 0,
+      messageCategoryCounts: categoryCountsValue,
+      unknownSenderCount: 0,
+      minimumCalendarDate: filters.startDate,
+      maximumCalendarDate: filters.endDate,
+      pseudonymous: true,
+    },
+    index: {
+      indexedRecordCount: 8,
+      eligibleTextCodePointCount: 64,
+      tokenCount: 16,
+      distinctTokenCount: 2,
+      typedArrayBytes: 0,
+    },
+    aggregate: {
+      eventCount: 8,
+      userMessageCount: 8,
+      eligibleTextCount: 8,
+      systemEventCount: 0,
+      messageCategoryCounts: categoryCountsValue,
+      senderCounts: { owner: 4, other: 4 },
+      unknownSenderCount: 0,
+      eligibleTextCodePointCount: 64,
+      tokenCount: 16,
+    },
+    activity: {
+      schemaVersion: ACTIVITY_METRICS_SCHEMA_VERSION,
+      timePolicy: ACTIVITY_TIME_POLICY,
+      population: ACTIVITY_USER_MESSAGE_POPULATION,
+      trends: {
+        daily: [
+          { key: "2025-01-01", count: 2, partial: false },
+          { key: "2025-01-02", count: 2, partial: false },
+          { key: "2025-01-03", count: 2, partial: false },
+          { key: "2025-01-04", count: 2, partial: false },
+        ],
+        monthly: [{ key: "2025-01", count: 8, partial: true }],
+        yearly: [{ key: "2025", count: 8, partial: true }],
+      },
+      senderComparison: {
+        filterBehavior: "ignores-global-sender-filter",
+        denominator: 8,
+        owner: { sender: "owner", count: 4, share: 0.5 },
+        other: { sender: "other", count: 4, share: 0.5 },
+      },
+      hourActivity: {
+        sender: filters.sender,
+        denominator: 8,
+        buckets: hourlyCounts.map((count, hour) => ({ hour, count, share: count / 8 })),
+      },
+      weekdayActivity: {
+        sender: filters.sender,
+        denominator: 8,
+        buckets: WEEKDAY_LABELS.map((weekday, index) => ({
+          weekday,
+          count: weekdayCounts[index] ?? 0,
+          share: (weekdayCounts[index] ?? 0) / 8,
+        })),
+      },
+      chatActivity: {
+        sender: filters.sender,
+        totalChatDays: 4,
+        longestStreakLength: 4,
+        longestStreaks: [{ startDate: filters.startDate, endDate: filters.endDate, length: 4 }],
+      },
+    },
+    stage7: {
+      schemaVersion: STAGE7_METRICS_SCHEMA_VERSION,
+      filters,
+      definitionVersions: STAGE7_DEFINITION_VERSIONS,
+      wordEvolution: {
+        schemaVersion: STAGE7_METRICS_SCHEMA_VERSION,
+        definitionVersion: STAGE7_DEFINITION_VERSIONS.wordEvolution,
+        sender: filters.sender,
+        vocabulary: wordValues.map((value) => value.token),
+        years: [{ year: 2025, partial: true, totalTokenCount: 16, values: wordValues }],
+      },
+      averageLength: {
+        schemaVersion: STAGE7_METRICS_SCHEMA_VERSION,
+        definitionVersion: STAGE7_DEFINITION_VERSIONS.averageLength,
+        sender: filters.sender,
+        overall: { count: 8, sum: 64, mean: 8, median: 8, p90: 10 },
+        owner: { count: 4, sum: 32, mean: 8, median: 8, p90: 10 },
+        other: { count: 4, sum: 32, mean: 8, median: 8, p90: 10 },
+      },
+      yearlyKeywords: {
+        schemaVersion: STAGE7_METRICS_SCHEMA_VERSION,
+        definitionVersion: STAGE7_DEFINITION_VERSIONS.yearlyKeywords,
+        sender: filters.sender,
+        activeYear: 2025,
+        selection: "explicit",
+        years: [{
+          year: 2025,
+          partial: true,
+          mode: "frequency-fallback",
+          omissionReason: null,
+          minCount: 5,
+          minDistinctMessages: 3,
+          maxResults: 20,
+          keywords: [{
+            token: "report",
+            count: 8,
+            yearTokenTotal: 16,
+            restCount: 0,
+            restTokenTotal: 0,
+            distinctMessageFrequency: 8,
+            score: null,
+          }],
+        }],
+      },
+      summary: {
+        schemaVersion: STAGE7_METRICS_SCHEMA_VERSION,
+        definitionVersion: STAGE7_DEFINITION_VERSIONS.summary,
+        activeYear: 2025,
+        clauses: [],
+        omissions: [],
+      },
+      messageTypes: {
+        schemaVersion: STAGE7_METRICS_SCHEMA_VERSION,
+        definitionVersion: STAGE7_DEFINITION_VERSIONS.messageTypes,
+        sender: filters.sender,
+        denominator: 8,
+        eligibleTextCount: 8,
+        systemDiagnosticCount: 0,
+        categories: CANONICAL_MESSAGE_CATEGORIES.map((category) => ({
+          category,
+          count: category === "text" ? 8 : 0,
+          share: category === "text" ? 1 : 0,
+        })),
+      },
+    },
+    replySessions: {
+      schemaVersion: REPLY_SESSION_METRICS_SCHEMA_VERSION,
+      replyIntervals: {
+        schemaVersion: REPLY_SESSION_METRICS_SCHEMA_VERSION,
+        definitionVersion: REPLY_INTERVAL_DEFINITION_VERSION,
+        unit: REPLY_INTERVAL_UNIT,
+        thresholdHours: filters.sessionThresholdHours,
+        filterBehavior: REPLY_INTERVAL_FILTER_BEHAVIOR,
+        dateBoundary: REPLY_INTERVAL_DATE_BOUNDARY,
+        excludedGapRule: REPLY_INTERVAL_EXCLUDED_GAP_RULE,
+        overall: emptyStats,
+        directions: [
+          { direction: "owner-to-other", from: "owner", to: "other", responder: "other", stats: emptyStats },
+          { direction: "other-to-owner", from: "other", to: "owner", responder: "owner", stats: emptyStats },
+        ],
+      },
+      conversationSessions: {
+        schemaVersion: REPLY_SESSION_METRICS_SCHEMA_VERSION,
+        definitionVersion: SESSION_INITIATOR_DEFINITION_VERSION,
+        thresholdHours: filters.sessionThresholdHours,
+        filterBehavior: REPLY_INTERVAL_FILTER_BEHAVIOR,
+        openingDateBoundary: SESSION_OPENING_DATE_BOUNDARY,
+        sensitivityChanged: false,
+        sessionCount: 4,
+        shareDenominator: 4,
+        initiatorCounts: {
+          owner: { initiator: "owner", count: 2, share: 0.5 },
+          other: { initiator: "other", count: 2, share: 0.5 },
+          unknown: { initiator: "unknown", count: 0, share: 0 },
+        },
+      },
+    },
+  };
 }

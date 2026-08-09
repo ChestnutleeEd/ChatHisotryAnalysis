@@ -9,12 +9,17 @@ import {
   type RepresentedYearOption,
 } from "./report-state";
 import {
+  ArtworkFrame,
   BaseCard,
   Badge,
   BetaButton,
   HighlightSentence,
+  Metric,
   MethodologyDisclosure,
+  Navigation,
   QueryChips,
+  Scene,
+  Surface,
 } from "./primitives";
 import type { BetaRecapSkeletonViewModel } from "./view-model";
 import type { BetaReportViewModelV1 } from "./report-contract";
@@ -25,6 +30,18 @@ import type {
   WordFrequencyRole,
 } from "../../worker-analysis/word-frequency-contract";
 import { BetaWordEvidenceSections } from "./BetaWordEvidenceSections";
+import annualOpeningHero from "../../assets/beta/art/annual-opening-hero-v1.webp";
+import closingPoster from "../../assets/beta/art/closing-poster-v1.webp";
+
+const REPORT_SCENES = [
+  { key: "opening", label: "开场", section: "opening" },
+  { key: "activity", label: "规模", section: "active-days" },
+  { key: "rhythm", label: "节奏", section: "peak-month" },
+  { key: "comparison", label: "双方", section: "sender-share" },
+  { key: "conversation", label: "会话", section: "sessions" },
+  { key: "language", label: "词汇", section: "frequent-words" },
+  { key: "closing", label: "收束", section: "summary-share" },
+] as const satisfies readonly { key: string; label: string; section: BetaReportSectionId }[];
 
 export interface BetaAnnualReportProps {
   readonly viewModel: BetaRecapSkeletonViewModel | BetaReportViewModelV1;
@@ -81,16 +98,37 @@ function ReportNavigator({
   readonly onRestoreFullRange: () => void;
 }) {
   const currentSection = BETA_REPORT_SECTIONS.find((section) => section.id === selectedSection) ?? BETA_REPORT_SECTIONS[0];
+  const currentScene = REPORT_SCENES.find((scene) => scene.key === currentSection?.scene) ?? REPORT_SCENES[0];
   return (
-    <nav className="beta-report-navigation" aria-label="年度报告导航" data-testid="beta-report-navigator">
+    <Navigation label="年度报告导航" className="beta-report-navigation" data-testid="beta-report-navigator">
       <div className="beta-report-navigation-context" aria-live="polite">
-        <span>报告导航</span>
-        <strong>{currentSection?.title ?? "开场"}</strong>
+        <span>年度回顾</span>
+        <strong>{currentScene.label}</strong>
         <small>{currentSection?.order ?? 1} / {BETA_REPORT_SECTIONS.length}</small>
       </div>
+      <ol className="beta-report-progress" aria-label="七个报告场景">
+        {REPORT_SCENES.map((scene, index) => {
+          const isCurrent = scene.key === currentScene.key;
+          return (
+            <li key={scene.key} className={isCurrent ? "is-current" : undefined}>
+              <button
+                type="button"
+                aria-current={isCurrent ? "step" : undefined}
+                aria-label={`第 ${index + 1} 个场景：${scene.label}`}
+                onClick={() => onSectionChange(scene.section)}
+              >
+                <span aria-hidden="true">{index + 1}</span>
+                <em>{scene.label}</em>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
       <label className="beta-report-control-field beta-report-control-year">
         <span>回顾范围</span>
         <select
+          name="reportRange"
+          autoComplete="off"
           value={committedRangeValue(reportState, analyticsResult)}
           disabled={pending}
           onChange={(event) => onRangeChange(event.currentTarget.value)}
@@ -107,6 +145,8 @@ function ReportNavigator({
       <label className="beta-report-control-field beta-report-control-section">
         <span>跳转章节</span>
         <select
+          name="reportSection"
+          autoComplete="off"
           value={selectedSection}
           onChange={(event) => onSectionChange(event.currentTarget.value as BetaReportSectionId)}
         >
@@ -117,10 +157,12 @@ function ReportNavigator({
           ))}
         </select>
       </label>
-      <BetaButton className="beta-report-restore-action" variant="tertiary" disabled={pending} onClick={onRestoreFullRange}>
-        恢复全部数据范围
-      </BetaButton>
-    </nav>
+      <div className="beta-report-navigation-actions">
+        <BetaButton className="beta-report-restore-action" variant="tertiary" disabled={pending} onClick={onRestoreFullRange}>
+          恢复全部数据范围
+        </BetaButton>
+      </div>
+    </Navigation>
   );
 }
 
@@ -168,6 +210,7 @@ export function BetaAnnualReport({
     onWordRoleChange !== undefined;
   return (
     <section
+      id="beta-main-content"
       className="beta-report"
       data-beta-mode="annual-recap"
       data-fixture-kind={viewModel.fixtureKind}
@@ -191,7 +234,7 @@ export function BetaAnnualReport({
         </p>
       ) : null}
 
-      <BaseCard id="opening" variant="hero" className="beta-report-hero">
+      <Scene id="opening" scene="opening" className="beta-report-hero beta-card beta-card-hero" data-surface-role="report">
         <div className="beta-report-hero-copy">
           <div className="beta-home-kicker">
             <Badge tone="beta">年度聊天报告</Badge>
@@ -204,16 +247,22 @@ export function BetaAnnualReport({
           <h1 id="beta-report-heading" className="beta-type-display" tabIndex={-1}>{viewModel.displayYear}</h1>
           <p className="beta-type-report-lead">{viewModel.headline}</p>
           <QueryChips chips={viewModel.queryChips} />
+          <Metric
+            className="beta-report-hero-metric"
+            label={viewModel.metricLabel}
+            value={viewModel.metricValue}
+            unit={viewModel.metricUnit}
+            description={viewModel.metricDefinition}
+          />
         </div>
-        <div className="beta-report-hero-metric" aria-label={`${viewModel.metricLabel} ${viewModel.metricValue} ${viewModel.metricUnit}`}>
-          <span className="beta-type-metadata">{viewModel.metricLabel}</span>
-          <strong className="beta-type-metric">{viewModel.metricValue}</strong>
-          <span className="beta-type-metric-unit">{viewModel.metricUnit}</span>
+        <div className="beta-report-hero-art">
+          <ArtworkFrame src={annualOpeningHero} width={1536} height={1024} loading="eager" className="beta-opening-artwork" />
+          <p className="beta-artwork-caption">抽象的时间与节奏记录</p>
         </div>
         <a className="beta-next-cue" href="#messages" onClick={() => onSectionChange("messages")}>
           下一节：消息
         </a>
-      </BaseCard>
+      </Scene>
 
       <div className="beta-report-scenes">
         <BaseCard id="messages" variant="metric" className="beta-report-metric-scene">
@@ -251,9 +300,11 @@ export function BetaAnnualReport({
           <span key={section.id} id={section.id} className="beta-report-section-anchor" aria-hidden="true" />
         ))}
 
-        {BETA_REPORT_SECTIONS.filter((section) => section.order >= 15 && (!hasWordEvidence || section.id !== "word-cloud")).map((section) => (
+        {BETA_REPORT_SECTIONS.filter((section) => section.order >= 15 && section.id !== "summary-share" && (!hasWordEvidence || section.id !== "word-cloud")).map((section) => (
           <span key={section.id} id={section.id} className="beta-report-section-anchor" aria-hidden="true" />
         ))}
+
+        <ClosingScene onOpenDetailed={onOpenDetailed} />
 
         <BaseCard variant="privacy" className="beta-report-map-card">
           <div className="beta-report-map-heading">
@@ -290,6 +341,47 @@ export function BetaAnnualReport({
   );
 }
 
+function ClosingScene({
+  onOpenDetailed,
+  methodology,
+  privacyLabel = "本地聚合结果 · 不含消息正文或联系人身份",
+}: {
+  readonly onOpenDetailed: () => void;
+  readonly methodology?: readonly { readonly id: string; readonly label: string; readonly value: string }[];
+  readonly privacyLabel?: string;
+}) {
+  return (
+    <Scene id="summary-share" scene="closing" className="beta-closing-scene" aria-labelledby="beta-closing-heading">
+      <div className="beta-closing-copy">
+        <p className="beta-type-eyebrow">总结与分享 · 16</p>
+        <h2 id="beta-closing-heading" className="beta-type-heading">把这段本地记录留在手边</h2>
+        <p className="beta-type-report-lead">回顾在这里收束；你的范围、指标和表达边界仍由本地已提交结果决定。</p>
+        <p className="beta-type-body">这份 Beta 先提供可读的年度回顾。分享与导出的位置已经预留，但当前不会声称这些功能可用。</p>
+        <Surface role="subtle" className="beta-closing-share-slot">
+          <div>
+            <Badge tone="partial">尚未提供</Badge>
+            <strong>分享与导出</strong>
+          </div>
+          <p>后续批次会在不上传原始内容的前提下接入。</p>
+        </Surface>
+        {methodology !== undefined ? (
+          <MethodologyDisclosure summary="查看范围、分母与表达边界" chips={["UTC+08:00", "本地聚合", "非评价性"]}>
+            <ul className="beta-methodology-facts">
+              {methodology.map((fact) => <li key={fact.id}><strong>{fact.label}</strong><span>{fact.value}</span></li>)}
+            </ul>
+          </MethodologyDisclosure>
+        ) : null}
+        <p className="beta-core-privacy-note">{privacyLabel}</p>
+        <BetaButton variant="secondary" onClick={onOpenDetailed}>进入详细分析</BetaButton>
+      </div>
+      <div className="beta-closing-art">
+        <ArtworkFrame src={closingPoster} width={1122} height={1402} className="beta-closing-poster" />
+        <p className="beta-artwork-caption">抽象的累积与继续</p>
+      </div>
+    </Scene>
+  );
+}
+
 function BetaCoreAnnualReport({
   viewModel,
   reportState,
@@ -307,10 +399,10 @@ function BetaCoreAnnualReport({
   onOpenDetailed,
   onWordRoleChange,
 }: BetaAnnualReportProps & { readonly viewModel: BetaReportViewModelV1 }) {
-  const opening = viewModel.sections[0];
   const canRenderWordEvidence = analyticsResult !== undefined && wordRole !== undefined && onWordRoleChange !== undefined;
   return (
     <section
+      id="beta-main-content"
       className="beta-report beta-report-core"
       data-beta-mode="annual-recap"
       aria-labelledby="beta-report-heading"
@@ -336,19 +428,6 @@ function BetaCoreAnnualReport({
         <p className="beta-report-scope-banner" role="note">{viewModel.metadata.partialLabel}</p>
       ) : null}
 
-      <header className="beta-core-report-header">
-        <div>
-          <div className="beta-home-kicker">
-            <Badge tone="beta">年度聊天报告</Badge>
-            <Badge tone="privacy">{viewModel.privacy.localOnlyLabel}</Badge>
-          </div>
-          <p className="beta-type-eyebrow">{viewModel.metadata.scopeLabel}</p>
-          <h1 id="beta-report-heading" className="beta-type-display" tabIndex={-1}>{viewModel.metadata.scopeLabel}</h1>
-          <p className="beta-type-report-lead">{opening?.lead ?? "当前范围回顾"}</p>
-          <QueryChips chips={viewModel.metadata.queryChips} />
-        </div>
-      </header>
-
       <BetaCoreReportSections viewModel={viewModel} />
 
       {canRenderWordEvidence ? (
@@ -365,25 +444,11 @@ function BetaCoreAnnualReport({
         <BetaUnavailableReportSections />
       )}
 
-      <BaseCard id="summary-share" variant="privacy" className="beta-core-summary-card">
-        <div className="beta-core-card-heading">
-          <div>
-            <p className="beta-type-eyebrow">总结与分享 · 16</p>
-            <h2 className="beta-type-heading">这份回顾如何被带走？</h2>
-          </div>
-          <Badge tone="partial">尚未提供</Badge>
-        </div>
-        <p className="beta-type-report-lead">当前 Beta 只呈现本地聚合指标；分享卡片与导出会在后续批次处理。</p>
-        <MethodologyDisclosure summary="查看范围、分母与表达边界" chips={["UTC+08:00", "本地聚合", "非评价性"]}>
-          <ul className="beta-methodology-facts">
-            {viewModel.methodology.map((fact) => (
-              <li key={fact.id}><strong>{fact.label}</strong><span>{fact.value}</span></li>
-            ))}
-          </ul>
-        </MethodologyDisclosure>
-        <p className="beta-core-privacy-note">{viewModel.privacy.badgeLabel} · 不含消息正文或联系人身份。</p>
-        <BetaButton variant="secondary" onClick={onOpenDetailed}>进入详细分析</BetaButton>
-      </BaseCard>
+      <ClosingScene
+        onOpenDetailed={onOpenDetailed}
+        methodology={viewModel.methodology}
+        privacyLabel={`${viewModel.privacy.badgeLabel} · 不含消息正文或联系人身份。`}
+      />
     </section>
   );
 }

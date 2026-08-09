@@ -50,7 +50,7 @@ import { DesktopDashboard } from "./DesktopDashboard";
 import { BetaAnnualReport } from "./beta/BetaAnnualReport";
 import { BetaHome } from "./beta/BetaHome";
 import { BetaModeNavigation } from "./beta/BetaModeNavigation";
-import { Badge, BetaButton, QueryChips, StatusPill } from "./beta/primitives";
+import { Badge, BetaButton, QueryChips, SkipLink, StatusPill } from "./beta/primitives";
 import type { BetaReportSectionId } from "./beta/report-sections";
 import {
   applyGlobalReportRange,
@@ -1530,6 +1530,7 @@ export function DesktopImportPanel() {
 
   return (
     <main className="desktop-app beta-enabled" aria-busy={isBusy}>
+      <SkipLink />
       {onboardingOpen ? (
         <div className="desktop-dialog-layer">
           <section className="desktop-dialog" role="dialog" aria-modal="true" aria-labelledby="privacy-onboarding-heading" aria-describedby="privacy-onboarding-copy">
@@ -1577,7 +1578,7 @@ export function DesktopImportPanel() {
       ) : null}
 
       {analyticsResult === undefined ? (
-        <section className="desktop-workflow-card" aria-labelledby="desktop-selection-heading">
+        <section id="beta-main-content" className="desktop-workflow-card" aria-labelledby="desktop-selection-heading" tabIndex={-1}>
           <div className="desktop-workflow-heading">
             <div>
               <p className="dashboard-eyebrow">01 / START</p>

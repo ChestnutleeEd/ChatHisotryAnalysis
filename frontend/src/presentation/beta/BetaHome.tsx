@@ -1,4 +1,4 @@
-import { BaseCard, Badge, BetaButton, QueryChips } from "./primitives";
+import { Badge, BetaButton, QueryChips, Scene, Surface } from "./primitives";
 import type { BetaHomeViewModel } from "./view-model";
 
 export function BetaHome({
@@ -15,8 +15,8 @@ export function BetaHome({
   readonly onRestoreFullRange: () => void;
 }) {
   return (
-    <section className="beta-home" data-beta-mode="home" aria-labelledby="beta-home-heading">
-      <BaseCard variant="hero" className="beta-home-hero">
+    <section id="beta-main-content" className="beta-home" data-beta-mode="home" aria-labelledby="beta-home-heading" tabIndex={-1}>
+      <Scene scene="home" className="beta-home-hero">
         <div className="beta-home-copy">
           <div className="beta-home-kicker">
             <Badge tone="beta">Beta 年度回顾</Badge>
@@ -40,8 +40,8 @@ export function BetaHome({
             </BetaButton>
           ) : null}
         </div>
-        <aside className="beta-home-folio" aria-label="当前分析摘要">
-          <span className="beta-folio-number">01</span>
+        <Surface role="elevated" className="beta-home-folio" aria-label="当前分析摘要">
+          <p className="beta-type-eyebrow">当前范围</p>
           <p className="beta-type-title">{viewModel.scopeLabel}</p>
           <p className="beta-type-secondary">{viewModel.messageCountLabel}</p>
           <p className="beta-type-metadata">
@@ -49,8 +49,9 @@ export function BetaHome({
               ? `${viewModel.representedYears.length} 个有消息的年份`
               : "当前范围暂无有消息的年份"}
           </p>
-        </aside>
-      </BaseCard>
+          <span className="beta-home-summary-mark" aria-hidden="true" />
+        </Surface>
+      </Scene>
     </section>
   );
 }

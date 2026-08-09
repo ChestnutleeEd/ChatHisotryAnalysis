@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-import { BetaButton } from "./primitives";
+import { BetaButton, SkipLink } from "./primitives";
 import { BetaWordCloud } from "./BetaWordCloud";
 import { syntheticBetaWordCloudFrequency } from "./synthetic-word-cloud-fixture";
 import type { WordFrequencyRole } from "../../worker-analysis/word-frequency-contract";
@@ -17,6 +17,7 @@ export function BetaWordCloudBrowserHarness() {
   );
   return (
     <main className="desktop-app beta-enabled" data-testid="beta-word-cloud-harness">
+      <SkipLink href="#word-cloud" />
       <header className="desktop-app-header">
         <div className="beta-product-identity">
           <p className="beta-type-eyebrow">浏览器合成验收</p>

@@ -10,8 +10,10 @@ import { BetaModeNavigation } from "../src/presentation/beta/BetaModeNavigation"
 import {
   BaseCard,
   BetaButton,
+  ArtworkFrame,
   MethodologyDisclosure,
   QueryChips,
+  SkipLink,
 } from "../src/presentation/beta/primitives";
 import {
   BETA_REPORT_SECTION_IDS,
@@ -96,6 +98,21 @@ describe("Beta B1a shared presentation semantics", () => {
     expect(disclosure).toContain("<details");
     expect(disclosure).toContain("<summary");
     expect(disclosure).toContain("完整方法");
+  });
+
+  it("keeps shell skip navigation and decorative artwork measurable", () => {
+    const skipLink = renderToStaticMarkup(createElement(SkipLink));
+    expect(skipLink).toContain('href="#beta-main-content"');
+
+    const artwork = renderToStaticMarkup(createElement(ArtworkFrame, {
+      src: "/synthetic-art.webp",
+      width: 1536,
+      height: 1024,
+    }));
+    expect(artwork).toContain('alt=""');
+    expect(artwork).toContain('aria-hidden="true"');
+    expect(artwork).toContain('width="1536"');
+    expect(artwork).toContain('height="1024"');
   });
 
   it("classifies engineering identities away from the primary user surface", () => {
@@ -185,28 +202,34 @@ describe("Beta B1a annual report skeleton", () => {
   });
 
   it("defines scoped responsive/focus/static reduced-motion CSS contracts", () => {
-    const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+    const entryCss = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+    const css = readFileSync(new URL("../src/presentation/beta/styles.css", import.meta.url), "utf8");
+    expect(entryCss).toContain('@import "./presentation/beta/styles.css";');
     expect(css).toContain(".desktop-app.beta-enabled {");
-    expect(css).toContain("--beta-color-canvas: #f4efe6");
-    expect(css).toContain("--beta-radius-hero: 24px");
+    expect(css).toContain("--beta-color-canvas: #F3F4F2");
+    expect(css).toContain("--beta-color-report: #F7F3EA");
+    expect(css).toContain("--beta-color-primary: #1F4D3F");
+    expect(css).toContain("--beta-radius-art: 24px");
     expect(css).toContain("--beta-depth-raised:");
-    expect(css).toContain("font-size: clamp(40px, 5.4vw, 72px)");
-    expect(css).toContain("font-size: clamp(36px, 5.2vw, 64px)");
+    expect(css).toContain("grid-template-columns: minmax(0, 7fr) minmax(280px, 5fr)");
+    expect(css).toContain(".beta-artwork-frame");
+    expect(css).toContain("font-size: clamp(48px, 5.6vw, 72px)");
     expect(css).toContain("min-height: 44px");
     expect(css).toContain(".desktop-app.beta-enabled .beta-button");
     expect(css).toContain(".desktop-app.beta-enabled .beta-button:disabled");
     expect(css).toContain(".desktop-app.beta-enabled button:focus-visible");
     expect(css).toContain("@media (max-width: 760px)");
+    expect(css).toContain("@media (max-width: 599px)");
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
     expect(css).toContain("scroll-behavior: auto !important");
   });
 
   it("keeps primary, privacy, success, focus, and disabled pairs above their frozen contrast floors", () => {
-    expect(contrastRatio("#ffffff", "#1738a8")).toBeGreaterThanOrEqual(4.5);
-    expect(contrastRatio("#176b45", "#eaf6ef")).toBeGreaterThanOrEqual(4.5);
-    expect(contrastRatio("#176b5b", "#eaf5f1")).toBeGreaterThanOrEqual(4.5);
-    expect(contrastRatio("#005fcc", "#f4efe6")).toBeGreaterThanOrEqual(3);
-    expect(contrastRatio("#75716b", "#e3ded6")).toBeGreaterThanOrEqual(3);
+    expect(contrastRatio("#FFFFFF", "#1F4D3F")).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio("#276749", "#E9F1ED")).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio("#1F4D3F", "#E9F1ED")).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio("#005FCC", "#F3F4F2")).toBeGreaterThanOrEqual(3);
+    expect(contrastRatio("#737A74", "#ECEDE9")).toBeGreaterThanOrEqual(3);
   });
 });
 

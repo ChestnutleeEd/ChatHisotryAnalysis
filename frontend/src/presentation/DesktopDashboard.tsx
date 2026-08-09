@@ -849,8 +849,8 @@ export function DesktopDashboard({
 
   const activePanelIndex = routeIndex(route);
   return (
-    <section className="dashboard-shell" aria-label="本地分析结果 Dashboard" aria-busy={pending}>
-      <header className="dashboard-header">
+    <section id="beta-main-content" className="dashboard-shell dashboard-content-shell" aria-label="本地分析结果 Dashboard" aria-busy={pending} tabIndex={-1}>
+      <header className="dashboard-header dashboard-shell-header">
         <div>
           <p className="dashboard-eyebrow">LOCAL ANALYSIS / DETAILED</p>
           <h1>分析 Dashboard</h1>
@@ -861,11 +861,11 @@ export function DesktopDashboard({
           <button className="dashboard-button" type="button" onClick={onAnalyzeOtherFiles}>分析其他文件</button>
         </div>
       </header>
-      <form className="dashboard-filter-bar dashboard-filter-toolbar" aria-labelledby="dashboard-filters-heading" onSubmit={submitFilters}>
+      <form className="dashboard-filter-bar dashboard-filter-toolbar dashboard-query-bar" aria-labelledby="dashboard-filters-heading" onSubmit={submitFilters}>
         <div className="dashboard-filter-heading"><h2 id="dashboard-filters-heading">全局筛选</h2><span>应用后才会提交新本地结果</span></div>
-        <label>开始日期<input type="date" value={draftFilters.startDate} min={result.dataset.minimumCalendarDate} max={result.dataset.maximumCalendarDate} aria-invalid={filterErrors.startDate !== undefined || filterErrors.range !== undefined} aria-describedby={filterErrors.startDate !== undefined ? "dashboard-start-error" : filterErrors.range !== undefined ? "dashboard-range-error" : undefined} onChange={(event) => updateDraft({ startDate: event.currentTarget.value })} /></label>
-        <label>结束日期<input type="date" value={draftFilters.endDate} min={result.dataset.minimumCalendarDate} max={result.dataset.maximumCalendarDate} aria-invalid={filterErrors.endDate !== undefined || filterErrors.range !== undefined} aria-describedby={filterErrors.endDate !== undefined ? "dashboard-end-error" : filterErrors.range !== undefined ? "dashboard-range-error" : undefined} onChange={(event) => updateDraft({ endDate: event.currentTarget.value })} /></label>
-        <label>发送方<select value={draftFilters.sender} onChange={(event) => updateDraft({ sender: event.currentTarget.value as CanonicalAnalysisFilters["sender"] })}><option value="both">owner 与 other</option><option value="owner">仅 owner</option><option value="other">仅 other</option></select></label>
+        <label>开始日期<input name="startDate" autoComplete="off" type="date" value={draftFilters.startDate} min={result.dataset.minimumCalendarDate} max={result.dataset.maximumCalendarDate} aria-invalid={filterErrors.startDate !== undefined || filterErrors.range !== undefined} aria-describedby={filterErrors.startDate !== undefined ? "dashboard-start-error" : filterErrors.range !== undefined ? "dashboard-range-error" : undefined} onChange={(event) => updateDraft({ startDate: event.currentTarget.value })} /></label>
+        <label>结束日期<input name="endDate" autoComplete="off" type="date" value={draftFilters.endDate} min={result.dataset.minimumCalendarDate} max={result.dataset.maximumCalendarDate} aria-invalid={filterErrors.endDate !== undefined || filterErrors.range !== undefined} aria-describedby={filterErrors.endDate !== undefined ? "dashboard-end-error" : filterErrors.range !== undefined ? "dashboard-range-error" : undefined} onChange={(event) => updateDraft({ endDate: event.currentTarget.value })} /></label>
+        <label>发送方<select name="sender" autoComplete="off" value={draftFilters.sender} onChange={(event) => updateDraft({ sender: event.currentTarget.value as CanonicalAnalysisFilters["sender"] })}><option value="both">owner 与 other</option><option value="owner">仅 owner</option><option value="other">仅 other</option></select></label>
         <button className="dashboard-button dashboard-button-primary" type="submit" disabled={pending || filtersEqual(draftFilters, result.filters)}>应用筛选</button>
         {filterErrors.startDate !== undefined ? <p id="dashboard-start-error" className="dashboard-field-error" role="alert">{filterErrors.startDate}</p> : null}
         {filterErrors.endDate !== undefined ? <p id="dashboard-end-error" className="dashboard-field-error" role="alert">{filterErrors.endDate}</p> : null}
@@ -877,7 +877,7 @@ export function DesktopDashboard({
       </div>
       {pending ? <div className="dashboard-pending" role="status" aria-live="polite"><strong>正在本地更新统计</strong><span>上一次完整结果仍可阅读；当前筛选未完成前不能导出。</span></div> : null}
       <DashboardNavigation route={route} onRouteChange={handleRouteChange} />
-      <div ref={headingRef} id={`dashboard-panel-${activePanelIndex}`} role="tabpanel" aria-labelledby={`dashboard-tab-${activePanelIndex}`} tabIndex={-1} aria-label={route} className="dashboard-panel-wrap">
+      <div ref={headingRef} id={`dashboard-panel-${activePanelIndex}`} role="tabpanel" aria-labelledby={`dashboard-tab-${activePanelIndex}`} tabIndex={-1} aria-label={route} className="dashboard-panel-wrap dashboard-content-canvas">
         {route === "Overview" ? <OverviewPage model={model} onNavigate={handleRouteChange} /> : null}
         {route === "Trends" ? <TrendsPage result={result} /> : null}
         {route === "Comparison" ? <ComparisonPage result={result} /> : null}

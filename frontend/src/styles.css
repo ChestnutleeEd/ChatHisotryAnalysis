@@ -1,3 +1,5 @@
+@import "./presentation/beta/styles.css";
+
 :root {
   --accent: #c66b3d;
   --accent-ink: #48190a;
@@ -2155,6 +2157,7 @@ footer a {
 
 /* Beta B1a: scoped Editorial Almanac foundation. Browser v1 and the existing
    Detailed Dashboard keep their current selectors until the separate B1b. */
+/* legacy beta visual layer retained for history; active rules live in presentation/beta/styles.css
 .desktop-app.beta-enabled {
   --beta-color-canvas: #f4efe6;
   --beta-color-report: #fbf8f2;
@@ -3494,9 +3497,11 @@ footer a {
     transition-duration: 0.01ms !important;
   }
 }
+*/
 
 /* Beta B2: core facts rendered as editorial scenes. These selectors consume
    the B1a tokens and do not introduce another card or chart system. */
+/* legacy beta visual layer retained for history; active rules live in presentation/beta/styles.css
 .desktop-app.beta-enabled .beta-report-core {
   display: grid;
   gap: clamp(28px, 5vw, 64px);
@@ -3822,10 +3827,12 @@ footer a {
     gap: var(--beta-space-1);
   }
 }
+*/
 
 /* Screenshot-driven Beta refinement: keep the Editorial Almanac tokens, then
    tighten hierarchy, disclosure, and natural content flow without changing
    analytics or control semantics. */
+/* legacy beta visual layer retained for history; active rules live in presentation/beta/styles.css
 .desktop-app.beta-enabled .beta-report-navigation {
   top: 10px;
   gap: 8px 10px;
@@ -4154,8 +4161,10 @@ footer a {
 .desktop-app.beta-enabled .beta-word-cloud-list-disclosure .beta-word-cloud-list-wrap {
   padding-top: 8px;
 }
+*/
 
 /* B1b Detailed Analysis shared presentation uplift. */
+/* legacy beta visual layer retained for history; active rules live in presentation/beta/styles.css
 .desktop-app.beta-enabled .dashboard-shell {
   max-width: 1120px;
   padding: clamp(20px, 3vw, 34px);
@@ -4164,7 +4173,9 @@ footer a {
   background: var(--beta-color-report);
   box-shadow: var(--beta-depth-raised);
 }
+*/
 
+/* legacy beta visual layer retained for history; active rules live in presentation/beta/styles.css
 .desktop-app.beta-enabled .dashboard-header {
   margin-bottom: 18px;
   padding-bottom: 16px;
@@ -4634,3 +4645,4 @@ footer a {
     padding: 11px 12px;
   }
 }
+*/

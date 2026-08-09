@@ -3,9 +3,11 @@ import type { CSSProperties } from "react";
 import type {
   BetaLocalizedReportSectionV1,
   BetaLocalizedVisualV1,
+  BetaLocalizedMetricV1,
   BetaReportViewModelV1,
 } from "./report-contract";
-import { BaseCard, Badge, StatusPill } from "./primitives";
+import { ArtworkFrame, BaseCard, Badge, Metric, QueryChips, Scene, StatusPill } from "./primitives";
+import annualOpeningHero from "../../assets/beta/art/annual-opening-hero-v1.webp";
 
 const SCENE_LABELS = {
   opening: "开场与消息",
@@ -119,7 +121,75 @@ function Visual({
   );
 }
 
-function CoreSection({ section }: { readonly section: BetaLocalizedReportSectionV1 }) {
+function CoreOpeningSection({
+  section,
+  scopeLabel,
+  queryChips,
+  dominantMetric,
+}: {
+  readonly section: BetaLocalizedReportSectionV1;
+  readonly scopeLabel: string;
+  readonly queryChips: BetaReportViewModelV1["metadata"]["queryChips"];
+  readonly dominantMetric: BetaLocalizedMetricV1 | null;
+}) {
+  return (
+    <Scene
+      id="opening"
+      scene="opening"
+      className={`beta-core-card beta-core-opening beta-core-card-${section.status.toLowerCase()}`}
+      data-section-status={section.status.toLowerCase()}
+      data-card-variant="hero"
+      aria-labelledby="beta-report-heading"
+    >
+      <div className="beta-core-opening-copy">
+        <div className="beta-home-kicker">
+          <Badge tone="beta">年度聊天报告</Badge>
+          <Badge tone="privacy">仅本地呈现 · 不上传</Badge>
+          {section.status === "PARTIAL" ? <Badge tone="partial">部分日期范围</Badge> : null}
+        </div>
+        <p className="beta-type-eyebrow">{section.eyebrow} · {String(section.order).padStart(2, "0")}</p>
+        <h1 id="beta-report-heading" className="beta-type-display" tabIndex={-1}>{scopeLabel}</h1>
+        <p className="beta-type-report-lead">{section.lead}</p>
+        <QueryChips chips={queryChips} />
+        {section.scopeNote !== null ? <p className="beta-core-scope-note">{section.scopeNote}</p> : null}
+        {dominantMetric !== null ? (
+          <Metric
+            className="beta-report-hero-metric"
+            label={dominantMetric.label}
+            value={dominantMetric.value}
+            unit={dominantMetric.unit}
+            description="post-dedup 用户消息；当前报告只显示本地聚合结果。"
+          />
+        ) : null}
+        {section.details.length > 0 ? (
+          <dl className="beta-core-opening-details">
+            {section.details.map((detail) => <div key={detail.label}><dt>{detail.label}</dt><dd>{detail.value}</dd></div>)}
+          </dl>
+        ) : null}
+        <a className="beta-next-cue" href="#messages">下一节：消息</a>
+      </div>
+      <div className="beta-core-opening-art">
+        <ArtworkFrame src={annualOpeningHero} width={1536} height={1024} loading="eager" className="beta-opening-artwork" />
+        <p className="beta-artwork-caption">抽象的时间与节奏记录</p>
+      </div>
+    </Scene>
+  );
+}
+
+function CoreSection({
+  section,
+  scopeLabel,
+  queryChips,
+  dominantMetric,
+}: {
+  readonly section: BetaLocalizedReportSectionV1;
+  readonly scopeLabel: string;
+  readonly queryChips: BetaReportViewModelV1["metadata"]["queryChips"];
+  readonly dominantMetric: BetaLocalizedMetricV1 | null;
+}) {
+  if (section.id === "opening") {
+    return <CoreOpeningSection section={section} scopeLabel={scopeLabel} queryChips={queryChips} dominantMetric={dominantMetric} />;
+  }
   const variant = cardVariant(section);
   return (
     <BaseCard
@@ -137,7 +207,6 @@ function CoreSection({ section }: { readonly section: BetaLocalizedReportSection
         {section.status === "READY" ? null : <StatusPill tone={statusTone(section.status)}>{section.statusLabel}</StatusPill>}
       </div>
       <p className="beta-type-report-lead">{section.lead}</p>
-      {section.scopeNote !== null && section.id === "opening" ? <p className="beta-core-scope-note">{section.scopeNote}</p> : null}
       {section.metric !== null ? (
         <div className="beta-core-metric" aria-label={section.metric.accessibleLabel}>
           <span className="beta-type-metadata">{section.metric.label}</span>
@@ -150,7 +219,7 @@ function CoreSection({ section }: { readonly section: BetaLocalizedReportSection
         <details className="beta-core-details-disclosure">
           <summary>查看明细</summary>
           <dl className="beta-core-details">
-            {section.scopeNote !== null && section.id !== "opening" ? (
+            {section.scopeNote !== null ? (
               <div><dt>当前范围</dt><dd>{section.scopeNote}</dd></div>
             ) : null}
             {section.details.map((detail) => (
@@ -172,6 +241,7 @@ export function BetaCoreReportSections({
   readonly viewModel: BetaReportViewModelV1;
 }) {
   const scenes = ["opening", "activity", "rhythm", "comparison"] as const;
+  const dominantMetric = viewModel.sections.find((section) => section.id === "messages")?.metric ?? null;
   return (
     <div className="beta-core-report-scenes">
       {scenes.map((scene) => {
@@ -179,7 +249,15 @@ export function BetaCoreReportSections({
         return sections.length === 0 ? null : (
           <section key={scene} className={`beta-core-scene beta-core-scene-${scene}`} aria-labelledby={`beta-core-scene-${scene}-heading`}>
             <h2 id={`beta-core-scene-${scene}-heading`} className="beta-core-scene-heading">{SCENE_LABELS[scene]}</h2>
-            {sections.map((section) => <CoreSection key={section.id} section={section} />)}
+            {sections.map((section) => (
+              <CoreSection
+                key={section.id}
+                section={section}
+                scopeLabel={viewModel.metadata.scopeLabel}
+                queryChips={viewModel.metadata.queryChips}
+                dominantMetric={dominantMetric}
+              />
+            ))}
           </section>
         );
       })}
