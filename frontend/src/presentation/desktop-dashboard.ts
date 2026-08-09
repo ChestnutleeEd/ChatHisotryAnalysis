@@ -76,7 +76,11 @@ export interface DashboardViewModel {
       readonly share: number | null;
     }[];
   };
-  readonly wordRanking: readonly { readonly token: string; readonly count: number }[];
+  readonly wordRanking: readonly {
+    readonly token: string;
+    readonly count: number;
+    readonly ratePer10000: number;
+  }[];
   readonly activeKeywordYear: {
     readonly year: number;
     readonly partial: boolean;
@@ -254,9 +258,17 @@ export function createDashboardViewModel(
       wordCounts.set(cell.token, (wordCounts.get(cell.token) ?? 0) + cell.count);
     }
   }
+  const totalTokenCount = result.stage7.wordEvolution.years.reduce(
+    (total, year) => total + year.totalTokenCount,
+    0,
+  );
   const wordRanking = [...wordCounts.entries()]
     .sort((left, right) => right[1] - left[1] || compareCodePoints(left[0], right[0]))
-    .map(([token, count]) => ({ token, count }));
+    .map(([token, count]) => ({
+      token,
+      count,
+      ratePer10000: totalTokenCount === 0 ? 0 : (count * 10_000) / totalTokenCount,
+    }));
   const replyMedians = result.replySessions.replyIntervals.directions.map((direction) => ({
     responder: direction.responder,
     seconds: direction.stats.medianSeconds,

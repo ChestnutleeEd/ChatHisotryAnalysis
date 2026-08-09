@@ -432,12 +432,12 @@ describe("desktop dataset source through the production Worker handler", () => {
       }),
     );
     expect((markup.match(/role="tab"/gu) ?? []).length).toBe(8);
-    expect(markup).toContain("全局筛选");
+    expect(markup).toContain("编辑筛选");
     expect(markup).toContain("dashboard-tab-rail");
     expect(markup).toContain("dashboard-filter-toolbar");
     expect(markup).toContain('aria-label="当前已提交分析范围"');
     expect(markup).toContain("查看逐年明细");
-    expect(markup).toContain("查看关键词明细");
+    expect(markup).toContain("查看关键词统计明细");
     expect(markup).not.toMatch(/<details[^>]+open(?:=|\s|>)/u);
     expect(markup).toContain("方法与隐私");
     expect(markup).toContain("所有处理均在本地完成");

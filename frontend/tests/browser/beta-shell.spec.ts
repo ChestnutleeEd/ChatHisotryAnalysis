@@ -16,3 +16,72 @@ test("renders synthetic Detailed shell without result validation errors", async 
   await expect(page.getByRole("heading", { name: "概览", exact: true })).toBeVisible();
   expect(consoleErrors).toEqual([]);
 });
+
+test("keeps all eight Detailed routes, committed query context, and responsive overflow intact", async ({ page }) => {
+  const consoleErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") {
+      consoleErrors.push(message.text());
+    }
+  });
+  page.on("pageerror", (error) => consoleErrors.push(error.message));
+
+  await page.setViewportSize({ width: 1180, height: 760 });
+  await page.goto("/?fixture=beta-detailed");
+
+  const routes = [
+    "Overview",
+    "Trends",
+    "Comparison",
+    "Activity",
+    "Words & Years",
+    "Message Types",
+    "Replies & Sessions",
+    "Export",
+  ];
+  await expect(page.getByRole("tab", { name: "Overview", exact: true })).toHaveCount(1);
+  await expect(page.getByRole("tab")).toHaveCount(routes.length);
+
+  for (const route of routes) {
+    const tab = page.getByRole("tab", { name: route, exact: true });
+    await tab.click();
+    await expect(tab).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("tabpanel", { name: route })).toBeVisible();
+    if (route !== "Overview") {
+      await expect(page.getByRole("tabpanel", { name: route })).toBeFocused();
+    }
+  }
+
+  const appliedSummary = page.locator(".dashboard-applied-summary");
+  const applyQuery = page.getByRole("button", { name: "应用筛选", exact: true });
+  await expect(applyQuery).toBeDisabled();
+  await page.locator('input[name="startDate"]').fill("2025-01-02");
+  await expect(applyQuery).toBeEnabled();
+  await expect(appliedSummary).toContainText("2025-01-01 → 2025-01-04");
+  await applyQuery.click();
+  await expect(appliedSummary).toContainText("2025-01-01 → 2025-01-04");
+
+  await page.getByRole("tab", { name: "Words & Years", exact: true }).click();
+  const methodology = page.locator("details.dashboard-words-methodology");
+  await expect(methodology).not.toHaveAttribute("open");
+  await methodology.locator("summary").click();
+  await expect(methodology).toHaveAttribute("open", "");
+
+  await page.getByRole("tab", { name: "Overview", exact: true }).click();
+  await page.getByRole("tab", { name: "Overview", exact: true }).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("tab", { name: "Trends", exact: true })).toBeFocused();
+  await expect(page.getByRole("tab", { name: "Trends", exact: true })).toHaveAttribute("aria-selected", "true");
+
+  for (const width of [1180, 760, 380]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    await expect.poll(() => page.evaluate(() => document.body.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  }
+
+  await page.setViewportSize({ width: 760, height: 900 });
+  await page.evaluate(() => { document.documentElement.style.zoom = "2"; });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await page.evaluate(() => { document.documentElement.style.zoom = ""; });
+  expect(consoleErrors).toEqual([]);
+});
