@@ -2,9 +2,9 @@
 
 ### Repository baseline used by this design
 
-Planning was performed on branch `feat/implement-local-chat-wordcloud-mvp` at `6fa9495f3a67077aa8270754f9d2fd7968ee8b8e` (`fix: validate multi-year canonical dataset handoff`) with a clean initial workspace and upstream `0/0`. `data/private` is ignored by `.gitignore:4`; only `git check-ignore -v data/private` was run against that boundary. No private source, aggregate, filename, or path was read.
+Visual re-architecture planning was re-baselined on branch `feat/implement-local-chat-wordcloud-mvp` at full HEAD `78ab06ba1fdcd3d2a3283d42ba7a5201ea81cc4c` (`feat: refine beta annual recap visual experience`) with a clean workspace and upstream `0/0`. `data/private` is ignored by `.gitignore:4`; only `git check-ignore -v data/private` was run against that boundary. No private source, aggregate, screenshot content, filename, or path was read or used in an art prompt.
 
-OpenSpec 1.6.0 reports two existing changes as artifact-complete but task-in-progress: `implement-local-chat-wordcloud-mvp` (144/176) and `productize-local-chat-analysis-desktop` (90/102). In the latter, product tasks 1.1–12.6 and 12.9 are checked, real-data authorization gates 12.7 and 12.8 are unchecked, and D.1–D.10 are unchecked Release hardening. The older word-cloud change has checked preprocessing tests numbered 12.7/12.8 but unchecked browser/capacity/final stages; those same numbers are unrelated to the productization real-data gates and are not changed here.
+OpenSpec 1.6.0 reports this change artifact-complete with `57/79` tasks before this re-plan. B1a, B1b, B2, B3, B4, the annual-scope/Clean Mode hotfix, and the screenshot refinement are checked; B5 motion/share, B6 packaged acceptance, and deferred work remain unchecked. The new Visual Re-architecture and Design System v2 stage blocks B5 and B6 but is not a Release-hardening blocker.
 
 ### Existing architecture
 
@@ -21,11 +21,11 @@ OpenSpec 1.6.0 reports two existing changes as artifact-complete but task-in-pro
 
 Stakeholders are ordinary users seeking a readable local annual recap, advanced users retaining detailed analytics, implementation agents working in bounded Luna Max batches, and reviewers protecting privacy/data correctness.
 
-### Packaged Alpha visual findings that Beta must correct
+### Packaged Beta visual findings that v2 must correct
 
-The current desktop CSS establishes accessibility and a functional Swiss light theme, but most workflow cards, status panels, Dashboard shells, filters, charts, tables, methodology panels, buttons, and controls share the same white fill, 1px gray outline, and near-square geometry. Information is therefore grouped by repeated boxes rather than depth, typography, spacing, or content hierarchy. The packaged Alpha also exposes duplicated workflow success copy, long plain-text scope lines, visually prominent generation/schema labels, native-looking form controls, a flat text-only tab rail, dense technical tables, and a `Words & Years` page whose engineering trace is expanded by default.
+The current production presentation is implemented through `BetaAnnualReport`, `BetaCoreReportSections`, `BetaWordEvidenceSections`, `BetaWordCloud`, `BetaHome`, `BetaModeNavigation`, `primitives.tsx`, `DesktopDashboard`, and 4,636 lines of global `styles.css`. `BaseCard` turns every variant into an `article`; rhythm/comparison scenes use equal-width grids; `BetaCoreReportSections` routes nearly every visual through the same horizontal bar grammar; and later B2/refinement/B1b CSS layers override earlier B1a tokens in place. Detailed Overview renders eight KPI cards whose definition copy competes with the value, while Annual opening and closing have no image asset or poster composition.
 
-These findings are accepted product evidence for visual planning. Beta must correct them through shared presentation primitives and scoped CSS, while leaving all existing metrics, tabs, filter commit behavior, Worker queries, exports, accessibility semantics, and error/recovery behavior intact.
+Manual packaged Beta acceptance describes the result as visually unattractive, misaligned, card-dependent, and too similar to a styled data Dashboard. The root problem is system composition rather than one color or radius: unstable grid spans, too many simultaneous hierarchy levels, excessive serif display, uniform chart grammar, multiple navigation layers, visually similar vocabulary modes, weak scene transitions, and no memorable artwork. V2 corrects these presentation roots while preserving every accepted product/data contract.
 
 ## Goals / Non-Goals
 
@@ -36,7 +36,8 @@ These findings are accepted product evidence for visual planning. Beta must corr
 - Keep canonical data and tokenization in the Worker boundary, keep report assembly out of React render, and keep file destinations in Rust authority.
 - Make frequent words, distinctive yearly keywords, sample insufficiency, partial calendar scope, sender-filter exceptions, timezone, and session-threshold effects understandable without relational or psychological claims.
 - Produce a deterministic, responsive, local word cloud plus equivalent accessible list and fixed-size exports.
-- Make B1a small enough to show a runnable Beta shell with the shared visual foundation, refined App Shell/workflow status, a synthetic hero, one metric card, one narrative card, and methodology disclosure. Land the existing eight-route Dashboard uplift separately as B1b so it cannot block populated report cards or the word-frequency path.
+- Keep the completed B1a–B4 functionality as a protected baseline and make each V1–V3 presentation batch small enough for focused screenshot review and rollback.
+- Replace the rejected first visual pass with one coherent Design System v2, seven-scene Annual composition, generated-art asset strategy, modern Detailed workspace, fixed responsive rules, and screenshot-based human acceptance before B5/B6.
 
 **Non-Goals:**
 
@@ -46,6 +47,7 @@ These findings are accepted product evidence for visual planning. Beta must corr
 - Dark-mode implementation in the first Beta; only semantic token names and contrast-ready pairs are reserved.
 - Possible-name filtering, accurate person-name detection, automatic contact naming, English stemming/lemmatization, or hiding all uppercase abbreviations in first Beta.
 - Chapter PNG and long/multipage export as first-Beta blockers.
+- Any production React/CSS/asset edit, image generation, commit, or push in the Sol xHigh visual-planning batch.
 
 ## Decisions
 
@@ -335,204 +337,198 @@ Canvas is chosen for screen and export performance and bounded hit testing. SVG 
 
 The determinism contract is intentionally split: geometry/order/omitted ranks are byte-equal for equal v1 inputs across supported JS runtimes because they use synthetic metrics and integer policy; rendered glyph pixels are required to match only within the same packaged application, supported macOS platform/font availability, and version. Cross-macOS/WebView pixel identity is not a Beta promise. Canvas fit-down plus safety margins protect collision/bounds when system glyph metrics vary.
 
-### 9. Frozen visual system
+### 9. Design System v2 and deep visual re-architecture
 
-The selected direction remains **“本地数据年鉴 / Editorial Almanac”**. Its precise language is editorial, personal, calm, tactile, data-rich, contemporary desktop, and premium but restrained. Warm neutral canvas, clean white cards, ink typography, cobalt structure, coral highlights, and very subtle tonal panels create the relationship between Annual Recap and Detailed Analysis. Warm paper does not mean that every surface is yellow. Enterprise dashboard, Bootstrap admin, raw HTML, cyberpunk, gaming UI, neumorphism, large gradients, heavy Material shadows, and glassmorphism are explicitly rejected.
+Design System v2 supersedes the rejected B1a/B2/B1b visual decisions while preserving all data and interaction semantics. The product direction is **“Private Data Atelier”**: Annual Recap is consumer editorial storytelling—premium, calm, cinematic, neutral, and memorable—while Detailed Analysis is a precise modern data workspace. Both use the same semantic tokens and interaction primitives; Annual uses larger composition, sparse serif headlines, and artwork, while Detailed uses compact all-sans information density. The signature move is a quiet “data current”: a recurring abstract field of dots, lines, cut-paper planes, and negative space that begins in the opening artwork, appears only at major scene transitions, frames vocabulary, and resolves in the closing poster.
 
-One alternative remains **“Swiss Data Ledger”**, an exact extension of the current white/IKB/orange Dashboard. It is the supporting language for Detailed Analysis, but it is not sufficient for the consumer-facing report. Both modes share primitives; Annual Recap uses more editorial scale, tonal section backgrounds, and narrative cards, while Detailed Analysis remains denser and more tool-like.
+Rejected directions remain enterprise BI, finance-terminal density, neon AI, cyber-security iconography, glassmorphism, gratuitous 3D, cartoons, children’s illustration, fake screenshots, fake avatars, romantic/personality imagery, and imagery in every metric card. Generated art is editorial structure, never generated content.
 
-#### 9.1 Color roles
+#### 9.1 Root visual diagnosis
 
-```text
-color.canvas                 #F4EFE6  app background
-color.report                 #FBF8F2  elevated report surface
-color.surface.standard       #FFFFFF  default card/control surface
-color.surface.inset          #EEE8DE  inset/subtle grouping
-color.surface.highlight      #EEF2FF  cobalt narrative highlight
-color.surface.coral          #FFF0EA  restrained emphasis
-color.surface.privacy        #EAF5F1  privacy/local callout
-color.surface.success        #EAF6EF  completed workflow
-color.surface.warning        #FFF5E5  partial/attention
-color.text.primary           #181B20
-color.text.secondary         #555B65
-color.text.muted             #737984
-color.text.inverse           #FFFFFF
-color.border.subtle          #D8D1C7
-color.border.strong          #8A8378
-color.primary-data           #1738A8
-color.owner                  #1738A8
-color.other                  #E65F3D
-color.highlight              #E65F3D
-color.chart.3                #20806B
-color.chart.4                #A56A12
-color.chart.5                #7357A8
-color.success                #176B45
-color.warning                #8A5600
-color.error                  #B42318
-color.partial                #7A5A16
-color.privacy                #176B5B
-color.focus                  #005FCC
-```
-
-One screen or card should normally use one structural accent and at most one supporting highlight in addition to semantic status colors. Section-specific tonal surfaces may vary between report chapters, but saturated palette colors must not compete simultaneously. Owner/Other are fixed to cobalt/coral across both modes and always have direct labels plus geometry, pattern, or position.
-
-#### 9.2 Typography component patterns
-
-Font stacks stay offline and system-owned: display/headings use `Iowan Old Style, Baskerville, Songti SC, STSong, serif`; UI/body use `Helvetica Neue, Avenir Next, PingFang SC, Hiragino Sans GB, sans-serif`; metrics use the UI stack with `font-variant-numeric: tabular-nums`; dense developer metadata may use `ui-monospace, SFMono-Regular, Menlo, monospace`. System availability may select different Han/Latin faces across supported macOS versions, so exact line breaks are not acceptance evidence; overflow, hierarchy, readable measure, and stable fallback are.
-
-```text
-type.eyebrow       12px / 16px / 700 / .08em tracking
-type.display       clamp(40px, 5.4vw, 72px) / 1.00 / 600 / -.04em
-type.heading       clamp(30px, 3.6vw, 44px) / 1.08 / 600 / -.028em
-type.title         22px / 1.25 / 650 / -.012em
-type.report-lead   clamp(19px, 2.0vw, 26px) / 1.4 / 500 / -.01em
-type.body          16px / 1.6 / 400
-type.secondary     14px / 1.5 / 400
-type.metadata      12px / 1.4 / 600
-type.metric        clamp(36px, 5.2vw, 64px) / .98 / 650 / -.035em / tabular
-type.metric-unit   14px / 1.2 / 600
-```
-
-These are CSS roles, not ten required React components. `body`, `secondary`, and `metadata` normally share semantic elements plus scoped modifier classes; dedicated components are justified only where structure/accessibility is repeated (`ReportLead`, `MetricNumber`), not for every font token.
-
-An eyebrow is a quiet capsule or letter-spaced label on a tonal/transparent surface, not an isolated large blue uppercase line. Internal section numbering such as `05 / WORDS & YEARS` may remain in Detailed Analysis at low contrast but is not a primary Annual Recap element. Display headings carry page identity such as “你的 2025”; `report-lead` carries one short natural-language conclusion and must be visually stronger than body text. A metric is a dedicated number/unit composition, optionally followed by a compact delta badge; it is never styled as an ordinary `h2`.
-
-Body copy has a maximum readable measure of `72ch`, with preferred narrative measure `58–68ch`. Full-width sentences across the 1120px content column are prohibited. Metadata is represented as chips rather than one prose line. Generation IDs, schema names, DTO versions, `canonical dataset`, and Worker terminology are not normal metadata.
-
-Visible technical information is classified:
-
-| Class | Examples | Default treatment |
+| Area | Root cause | V2 correction |
 |---|---|---|
-| `USER_VISIBLE` | year, sender scope, UTC+08, active filters, threshold, counts, partial/insufficient state | Main UI, chips, labels, conclusions |
-| `METHOD_ONLY` | population definition, log-odds name, denominator, keyword thresholds, algorithm/version short labels | Collapsed methodology disclosure |
-| `DEVELOPER_ONLY` | schema IDs, result generation, query key, Worker DTO, canonical/internal IDs | Hidden from normal UI; optional developer details only |
+| Layout | Equal `repeat(3, 1fr)` grids, auto-fit helpers, arbitrary spans, and long Chinese headings in narrow cards create unstable weight and dead space. | Explicit 12/8/4-column grids and named spans per scene/component; content controls height. |
+| Hierarchy | Eyebrow, serif heading, lead, metric, definition, chart, status, and disclosure often compete at similar scale. | One dominant element per scene; methodology and secondary definitions move behind disclosure. |
+| Cards | `BaseCard` turns nearly every logical section into a rounded `article`, then charts/details add more inset rectangles. | Scene canvas carries primary composition directly; cards remain only for secondary support. |
+| Typography | Serif appears in product, page, scene, lead, list, and chart headings; metrics and explanations are insufficiently separated. | Serif only for Annual opening, major scene headline, and closing statement; all controls/charts/Detailed copy use sans. |
+| Charts | One blue horizontal/vertical bar grammar represents unrelated concepts inside beige boxes. | Seven explicit chart archetypes with purpose-specific geometry, annotation, density, and exact fallback. |
+| Navigation | Home, app modes, sticky report form, year selector, chapter selector, and Dashboard tabs compete. | Three visibly distinct levels: app mode, compact scene progress, subordinate Detailed section rail. |
+| Vocabulary | Frequent Words, Keywords, and cloud fallback all read as ranked lists. | Editorial ranking, typographic keyword constellation, and full-width cloud climax receive distinct compositions. |
+| Annual | Opening is title/metric/card only; scenes read as a responsive admin grid; closing is an unavailable status card. | Seven authored scenes, generated opening/closing art, transitions, and a planned B5 share slot. |
+| Detailed | Overview has eight large cards with value plus methodology paragraphs; chart/table/card wrappers dominate. | Concise metric anatomy, grouped overview, compact query bar/rail, and method disclosures. |
+| CSS | One 4,636-line global file contains chronological B1a/B2/refinement/B1b overrides. | V1 groups v2 tokens/base primitives, Annual scenes, Detailed workspace, and responsive rules into clearly ordered scoped layers; file split is optional and behavior-neutral. |
 
-#### 9.3 Surface hierarchy, borders, radii, and depth
+#### 9.2 Semantic color v2
 
-The six semantic surface roles are:
-
-1. `surface.canvas`: application background, no border or shadow;
-2. `surface.report`: broad elevated Annual Recap sheet, tonal separation plus `surface-raised` depth;
-3. `surface.card`: standard white or tonal content card, normally no full border;
-4. `surface.inset`: embedded table/filter/method block using tonal fill and no shadow;
-5. `surface.highlight`: narrative/metric emphasis using a restrained cobalt or coral tint and optional accent rail;
-6. `surface.status`: success/warning/error/privacy callout using icon, text, and semantic tint.
-
-Depth tokens are `surface-flat: none`, `surface-raised: 0 3px 14px rgb(24 27 32 / .08)`, and `surface-overlay: 0 18px 48px rgb(24 27 32 / .14)`. Annual cards use flat or raised only; overlay is reserved for dialogs/popovers. Borders are primarily for interactive controls, table separators, selected state, focus support, and occasional subtle card distinction. A full 1px outline on every nested section is forbidden.
+The application uses one neutral canvas and explicit semantic roles rather than chapter-by-chapter blue/pink/beige fills. Artwork uses tonal derivatives of the same moss/clay/ochre family and never introduces an unrelated neon palette.
 
 ```text
-radius.compact-control 10px
-radius.control         12px
-radius.card            18px
-radius.hero            24px
-radius.overlay         20px
-radius.pill            999px
+color.app-canvas       #F3F4F2
+color.report-canvas    #F7F3EA
+color.section-canvas   #E9E4D8
+color.elevated         #FCFBF8
+color.card             #FFFFFF
+color.inset            #ECEDE9
+color.subtle           #F4F5F2
+color.border           #D6D7D2
+color.divider          #C8CAC3
+color.text-primary     #171A18
+color.text-secondary   #535A55
+color.text-tertiary    #737A74
+color.accent-primary   #1F4D3F
+color.accent-secondary #C8603C
+color.owner            #254B9B
+color.other            #C95D46
+color.success          #276749
+color.warning          #916300
+color.error            #B42318
+color.focus            #005FCC
 ```
 
-These six roles are design tokens/class modifiers, not six React components. A single surface primitive or ordinary semantic markup may select a role; behavior-specific components are introduced only when they own repeated accessibility or interaction. Annual Recap primary cards normally use radius ≥16px. Nested cards must change tone, spacing, or divider treatment rather than repeat another complete border box. Tables may have one subtle outer boundary and header/between-group separators, but not a hard grid around every cell.
+Owner/Other remain stable across both modes and always carry direct labels plus side/shape/pattern. Status colors are never decorative accents. The artwork palette is bounded to `#E8DCC7` sand, `#8B9D83` sage, `#B08B6E` clay, `#C66B3D` terracotta, `#C08E3A` ochre, `#606C38` moss, and `#2F342C` ink, with enough quiet negative space for React overlays. Full dark mode remains deferred; light assets must have a hide/neutral-CSS fallback and must not be auto-inverted.
 
-#### 9.4 Text containers, badges, chips, and disclosures
+#### 9.3 Typography v2
 
-- `Badge`: compact 24–28px high capsule for 本地处理、离线、Beta、部分年份、数据不足; semantic icon plus text where state matters.
-- `Chip`: 30–34px high interactive or read-only pill for year, sender, timezone, filter, session threshold, role, raw/per-10k; selected chips use filled/tinted state and not color alone.
-- `StatusPill`: concise state such as 分析中、已完成、部分年份、暂无数据; duplicate prefix copy such as “当前状态：结果已准备好” is removed.
-- `HighlightSentence`: `report-lead` on a subtle tinted surface with a 3px accent rail or 20px icon; emphasized phrase may use stronger weight/color, but the whole paragraph is not saturated.
-- `MethodologyDisclosure`: collapsed `<details>` or equivalent disclosure with icon, one-sentence summary, method chips, and secondary inset surface. Full existing methodology stays available only after deliberate expansion.
+All stacks remain offline system stacks. Annual display uses `Iowan Old Style, Baskerville, Songti SC, STSong, serif`; shared UI uses `Helvetica Neue, Avenir Next, PingFang SC, Hiragino Sans GB, sans-serif`; technical detail may use system monospace. Exact line breaks are not acceptance evidence.
 
-#### 9.5 Button system
+| Role | Default | Use |
+|---|---|---|
+| Display XL | `clamp(56px, 7vw, 88px)/.96`, 600 serif | Annual opening year/range only |
+| Display | `clamp(44px, 5vw, 64px)/1.02`, 600 serif | Closing statement or one major editorial line |
+| Scene Heading | `clamp(34px, 4vw, 48px)/1.08`, 600 serif | Annual major scenes only |
+| Section Heading | `clamp(26px, 2.8vw, 34px)/1.16`, 700 sans | Annual sub-sections and Detailed pages |
+| Card Heading | `18px/1.35`, 700 sans | Secondary cards only |
+| Metric Hero | `clamp(64px, 9vw, 112px)/.88`, 680 tabular sans | One dominant Annual metric |
+| Metric | `clamp(32px, 4vw, 52px)/.96`, 680 tabular sans | Supporting metric/Detailed KPI |
+| Body Large | `18px/1.6`, 450 sans | One short Annual lead |
+| Body | `15px/1.65`, 400 sans | Main explanatory copy |
+| Secondary | `13px/1.55`, 400 sans | Supporting text |
+| Label | `12px/1.3`, 650 sans | Controls and chart labels; no forced uppercase Chinese |
+| Metadata | `11px/1.45`, 600 sans | Scope/technical metadata |
+| Caption | `12px/1.5`, 400 sans | Chart/table captions |
+| Tabular Number | inherited sans + `tabular-nums` | All comparable numbers |
 
-All standard buttons use 44px minimum height, 12px radius, 16–20px horizontal padding, 600 weight, 8px icon gap, and `motion.fast` state transitions. Hero CTAs may use 48px height and 22px horizontal padding. Every style defines default, hover, active, `focus-visible`, disabled, and loading states; loading preserves width and exposes an accessible name/status.
+Serif is prohibited in Detailed Analysis, controls, metrics, charts, tables, methodology, badges, and ranking rows. A metric card contains Label → Metric + Unit → one small descriptor; definitions longer than two lines move to disclosure. Body measure is ≤72ch and Annual leads prefer 42–58ch.
 
-- `Primary`: filled cobalt with inverse text; used for 查看年度聊天报告、应用筛选、生成分享图.
-- `Secondary`: neutral/tonal surface with strong text and optional subtle border; used for 进入详细分析、重新选择年份.
-- `Tertiary/Ghost`: transparent or inset-tonal background without default box border; used for 查看统计口径、隐私说明.
-- `Destructive/Exit`: quiet ghost by default with error color only on deliberate hover/focus; 退出应用 never competes with the main CTA.
+#### 9.4 Grid and spacing v2
 
-Disabled buttons retain ≥3:1 component contrast, remove misleading hover, expose `aria-disabled`/native disabled semantics, and have adjacent explanation when the reason is not obvious. Not every action may use the same bordered rectangle.
+| Breakpoint | Canvas/grid | Outer margin | Gutter |
+|---|---|---:|---:|
+| Wide `≥1440` | max 1280px, 12 columns | 64px | 24px |
+| Standard `960–1439` including 1180×760 | max 1120px, 12 columns | 24–40px | 20px |
+| Compact `600–959` including ~760 | 8 columns | 20px | 16px |
+| Narrow `<600` including ~380 | 4 columns | 16px | 12px |
 
-#### 9.6 Form controls and filter toolbar
+Approved desktop compositions are `12`, `8+4`, `7+5`, `6+6`, and `4+4+4` only when all three labels are short/equal. Long Chinese headings never enter a 4-column card. Annual scene span defaults are Opening `7+5`, Scale `8+4`, Rhythm `12`, Balance `6+6`, Conversation `7+5`, Vocabulary `5+7` then cloud `12`, Closing `5+7`. Detailed KPI uses 4-column spans only for compact label/value/descriptor anatomy; long or technical metrics span 6.
 
-Native input/select semantics may remain where WebView accessibility is more reliable, but the surrounding visual system is fixed. Date, select, text input, checkbox/toggle, and segmented controls use a 44px minimum control height, 12px radius, 12px vertical/14px horizontal content padding where applicable, 14px UI text, 6px label gap, strong focus ring, explicit validation text/icon, and visually distinct disabled/read-only states. Labels remain visible; placeholders do not replace labels.
+Spacing tokens are `4, 8, 12, 16, 24, 32, 48, 64, 96, 128`. Annual component/card/section/scene gaps are `16/24/48/96` at Standard, increasing scene gaps to 128 at Wide and reducing to `16/20/32/64` at Compact and `12/16/24/48` at Narrow. Detailed uses component/card/section gaps `8/16/32–48`.
 
-The global filter becomes a compact `FilterToolbar`, not a full-width bordered form. At 1180px it groups Date range, Sender, Session threshold, and Apply in one wrapping raised/inset surface. Apply remains an explicit primary button and preserves existing Worker commit semantics. After commit, `QueryChips` show `[2022–2026] [双方] [UTC+08] [Session 6h]` plus `[已筛选]` when bounds differ from dataset scope. The previous prose scope line and visible result generation are removed from normal presentation.
+#### 9.5 Surfaces, radius, border, shadow, and primitives
 
-#### 9.7 Navigation hierarchy
+Scene canvas is allowed and preferred at `0` radius, `0` border, and `0` shadow. `Surface` roles are canvas, elevated, card, inset, subtle, and semantic status; they are token choices, not six React components. Controls use 8px radius, small panels 10–12px, supporting cards 14–16px, artwork frames 20–24px, and pills only for compact state/filter tokens. Shadow is limited to elevated sticky/overlay surfaces (`0 8px 24px rgb(23 26 24 / 8%)`); grouping normally comes from composition, tone, whitespace, and hairline dividers.
 
-App-level mode navigation and Dashboard section navigation are visually distinct:
+Planned primitives are `Scene`, `SectionHeader`, `Metric`, `MetricGroup`, `Surface`, `Inset`, `ChartFrame`, `Disclosure`, `Navigation`, `ToggleChip`, and `ArtworkFrame`. `BaseCard` may remain as a compatibility wrapper for supporting content but MUST NOT own every logical section or always render `article`. Dedicated components are allowed only when structure/accessibility materially differs, such as word-cloud Canvas/list or B5 export preview.
 
-- `ModeSegmentedControl`: Annual Recap / Detailed Analysis, 44px high, 12px container radius, tinted track, filled active segment, direct `aria-current`/selected semantics, and no horizontal scrolling at 1180px.
-- `DashboardTabRail`: the existing eight routes in a 44px minimum-height rail with clear active indicator, hover/focus states, roving keyboard behavior, and horizontal overflow with visible edge fade/scroll cue. It remains subordinate to mode navigation.
-- `ReportChapterNav`: compact sticky year/chapter navigation with current section label and progress; it must not resemble either mode segmentation or Dashboard tabs.
+#### 9.6 Generated art direction and privacy boundary
 
-#### 9.8 App Shell and workflow status
+Generated artwork is `stylized-concept` raster imagery: abstract editorial cut-paper planes, print-like grain, calm geometry, dots, paths, pulse intervals, density fields, closed spatial containers, and negative space. It may suggest accumulation, time, local computation, conversation cadence, and private/local containment without locks, shields, crossed-out clouds, chat bubbles with text, app screenshots, people, avatars, photos, mascots, relationships, emotions, or psychological metaphors. It contains no embedded text, numbers, years, keywords, contact/company names, real statistics, paths, filenames, screenshots, or user/private evidence. All actual labels/data remain React/Canvas/SVG layers.
 
-The App Shell groups product identity, current local/privacy state, primary context, and secondary actions. The top area contains one product title, a quiet “本地处理 · 不上传” privacy badge, current mode/context, and subdued Privacy/Exit actions. `LOCAL CHAT ANALYSIS / DESKTOP ALPHA` may become a low-weight Beta/product badge but must not dominate the title.
+The built-in image generation capability is the default V1/V2 path. It does not accept a repository destination or guaranteed exact output dimensions, so each candidate is generated first, reviewed visually, then copied from the tool-owned output into the repository and locally cropped/resampled only if source quality permits. CLI/model fallback is out of scope unless separately requested. Each generated raster receives 2–4 independent candidates, one targeted refinement at a time, a quality comparison, compression, package/offline validation, and a delete-if-mediocre decision. Simple divider geometry remains deterministic CSS/SVG; a generated transition is retained only when its texture materially improves the scene.
 
-A successful workflow collapses to one soft success row: check icon, “分析完成”, compact dataset range/message summary, and local completion badge. It must not repeat the same state in eyebrow, heading, and sentence. Detailed workflow panels appear only during processing, error, cleanup/recovery, or when the user expands diagnostics. Internal generation stays `DEVELOPER_ONLY`.
+Repository destination during implementation: `frontend/src/assets/beta/art/`. Review masters stay outside production or in a documented non-bundled review location; only selected optimized assets enter the bundle. Preferred shipping format is WebP for opaque art and PNG only when lossless/transparency is materially required. No runtime generation API, remote URL, CDN, remote font, or network fetch is permitted.
 
-#### 9.9 Annual Recap composition and card variants
+#### 9.7 Generated asset inventory
 
-Annual Recap is not “Dashboard cards with nicer colors”. Every chapter prioritizes one dominant idea, one dominant metric or visualization, and one short explanation in this order:
+Target resolution is a post-generation acceptance/crop target, not a promise about the built-in generator's output arguments.
+
+| Asset ID | Scene/purpose | Priority / generate | Ratio and target | Ship target | Desktop / compact behavior | Dark/accessibility/fallback |
+|---|---|---|---|---|---|---|
+| `annual-opening-hero` | Opening; first-screen data landscape with overlay-safe negative space | HIGH / yes, 3–4 candidates | 3:2 master, accept ≥2400×1600 | WebP ≤450 KiB | 7-column artwork; crop to 4:3 at Compact, 5:4 at Narrow with focal point preserved | Decorative `alt=""`, `aria-hidden`; hide in future dark mode unless alternate exists; CSS line/dot field fallback |
+| `scene-transition-rhythm` | Scale→Rhythm cadence break | MEDIUM / conditional raster texture; CSS/SVG geometry first | 3:1, ≥1800×600 | WebP ≤180 KiB | full-bleed band; crop center and reduce opacity at Compact; hide at Narrow if noisy | Decorative; neutral divider fallback |
+| `scene-transition-vocabulary` | Conversation→Vocabulary density transition | MEDIUM / conditional, 2–3 candidates | 3:1, ≥1800×600 | WebP ≤180 KiB | edge texture only; shorter crop at Compact/Narrow | Decorative; CSS dot-density fallback |
+| `vocabulary-background` | Vocabulary/word-cloud edge frame; never behind dense glyph center | MEDIUM / yes, 2–3 candidates | 16:9, ≥1920×1080 | WebP ≤260 KiB | low-contrast perimeter crop; reposition rather than scale text area | Decorative; remove background while keeping cloud/list intact |
+| `closing-poster` | Closing poster and future B5 visual language | HIGH / yes, 3–4 candidates | 4:5, ≥1600×2000 | WebP ≤420 KiB | 7-column portrait; Compact 1:1 crop or full-width 4:5 below copy | Decorative; CSS poster field fallback; all privacy/share text remains DOM |
+| `home-decoration` | Optional Home focal balance after opening/closing pass | LOW / yes only after V1 review | 4:3, ≥1600×1200 | WebP ≤260 KiB | right-side 5 columns; hide at Narrow | Decorative; Home remains complete without it |
+
+Reusable generation brief skeleton:
 
 ```text
-quiet eyebrow or chapter label
-→ narrative headline / report lead
-→ hero metric or visualization
-→ concise explanatory metadata chips
-→ optional details disclosure
+Use case: stylized-concept
+Asset type: local desktop Annual Recap editorial artwork
+Primary request: abstract editorial data landscape suggesting time, accumulation, exchange rhythm, and local/private containment
+Style/medium: matte cut-paper and print-like raster illustration, restrained grain, premium low-noise finish
+Composition/framing: requested asset ratio; generous negative space for UI overlay; no baked data
+Color palette: only the Design System v2 artwork palette
+Constraints: generic and synthetic; no text, numbers, logos, watermark, real data, people, avatars, chat UI, locks, shields, romantic or psychological imagery
+Avoid: neon AI, glossy 3D, photorealism, cyber-security iconography, decorative clutter
 ```
 
-No chapter card may place ten competing primary numbers. The logical sections vary composition using these semantic variants:
+#### 9.8 Annual Recap seven-scene architecture
 
-- `hero-card`: 24px radius, year/display heading, one lead, one primary metric/visual, directional scroll cue;
-- `metric-card`: one tabular metric, unit, short definition, optional delta badge;
-- `split-card`: two related roles or concepts with a shared headline, no nested border duplication;
-- `chart-card`: header, primary insight, chart, direct legend/annotations, optional details;
-- `word-card`: ranked terms/keywords with restrained tonal surface and accessible list;
-- `narrative-card`: quote-like highlighted sentence with accent rail/icon, no fake quotation marks;
-- `summary-card`: keepsake composition prepared for fixed PNG export;
-- `privacy-callout`: privacy-toned icon, short warning, and optional disclosure.
+Sixteen logical sections remain ordered and accessible, but are recomposed into seven authored scenes:
 
-Implementation uses one `BaseCard`/surface primitive plus semantic variant classes or data attributes. It MUST NOT create eight polymorphic card components merely to mirror this list; specialized `SummaryCard` or word-cloud composition is added only when structure/behavior differs materially.
+| Scene | Logical sections | Purpose / dominant visual | Composition and supporting detail | Artwork / disclosure |
+|---|---|---|---|---|
+| 01 Opening | Opening | Identify range with one sentence, one dominant message metric, and generated data landscape | Hero Split `7+5`; year/range + lead + Metric Hero overlay beside artwork; no white outer card | `annual-opening-hero`; scope/method chips are secondary; next-scene link |
+| 02 Scale | Messages, Active Days, Longest Streak | Establish magnitude without 3–5 metric cards | Giant Metric on `8`; two supporting metrics and a small activity/streak timeline on `4` | Direct scene canvas; exact tied intervals in one disclosure |
+| 03 Rhythm | Peak Month, Peak Weekday, Peak Hour | Tell one time-distribution story | Full-width month Landscape Chart; weekday Distribution Strip and hour strip below | Optional rhythm transition; exact tables collapsed once for the scene |
+| 04 Balance | Sender Share, Message Length, Message Types | Compare anonymous roles and message form without identity inference | Metric Pair `6+6` for Owner/Other plus comparison bar; compact length/types support | No people/avatar art; direct role labels/patterns; details collapsed |
+| 05 Conversation | Sessions, Replies | Explain session count, initiation balance, reply interval | Editorial Split `7+5`: session Giant Metric/initiator balance left, reply distribution right | Methodology never primary; threshold chip and sample counts visible |
+| 06 Vocabulary | Frequent Words, Distinctive Keywords, Word Cloud | Create the visual climax while preserving semantic distinction | Frequent Words editorial ranking `5`; keyword typographic constellation `7`; full-width Word Cloud hero below | Vocabulary perimeter art only; Clean Mode ToggleChip; full lists/method in disclosures |
+| 07 Closing | Summary and Share | Resolve the story with local/privacy statement and future share position | Poster Closing `5+7`: concise conclusion/CTA beside `closing-poster`; B5 share slot reserved | Generated poster; current UI does not show a large “尚未提供” card; Detailed CTA remains |
 
-Visual dimensions are responsive defaults, not pixel gates: chapter gap defaults to `clamp(40px, 6vw, 72px)` and narrows toward 32–48px; internal card gap defaults to 24px; content groups use 16/24/32px; hero target height uses content plus a bounded `clamp(360px, 58vh, 500px)` and is removed at zoom/narrow layouts; charts target 220–280px according to content; user-table rows default to 52px but may compact toward the 44px interactive/readability floor. Radius tokens remain defaults. Hard acceptance is hierarchy, reachability, no clipping/overflow, accessible target/focus/contrast, and unchanged semantics—not exact screenshots or forced empty space.
+Composition archetypes are Hero Split, Giant Metric, Editorial Split, Landscape Chart, Metric Pair, Metric Triptych only for truly equal short metrics, Vocabulary Mosaic, and Poster Closing. Opening, cloud hero, and Closing intentionally avoid traditional card containers.
 
-#### 9.10 Detailed Dashboard visual uplift
+#### 9.9 Navigation v2
 
-Detailed Analysis keeps every route, metric, chart alternative, filter, query, export, loading/error/recovery state, and keyboard behavior. This work belongs only to non-blocking B1b. Safe changes are scoped CSS, wrappers, presentation-only semantic markup, lightweight extraction of markup with identical props/callbacks, and native/accessibly controlled disclosure state. B1b may change typography, spacing, colors, radii, surfaces, buttons, control wrappers, filter toolbar, tabs, tables, chart containers, badges, status, disclosures, and metadata hierarchy.
+The App Shell exposes three peer destinations—Home, Annual Recap, Detailed Analysis—in one quiet product navigation. The active mode uses text weight plus a 2px indicator and `aria-current`; it is not a second card or large segmented pill. Annual report navigation is a ≤52px desktop sticky bar containing a compact year selector, current scene label, and seven-step progress rail/dots. Logical-section anchors remain addressable through an accessible chapter picker/disclosure, but sixteen options are not permanently visible. Arrow/Home/End behavior, native select labels, anchor `scroll-margin-top`, visible focus, and focus return remain.
 
-B1b MUST NOT change Worker requests/protocols, `CanonicalAnalysisResult` or export DTOs, callback signatures or call timing, `canonicalQueryKey`, filter validation/commit, selected-year or threshold lifecycle, metric computation/order/values, route identity, pending-result retention, cancellation/stale suppression, result publication, or export payload/authority. Any desired uplift that cannot preserve those boundaries is deferred; it does not silently become a behavior refactor.
+At Compact/Narrow, the report bar becomes one row with year + current scene + chapter button; the expanded picker is in normal flow or an accessible popover that never covers focused content. Detailed section navigation is a subordinate tab/rail and never resembles app-mode or report-progress navigation.
 
-Allowed shared uplift includes:
+#### 9.10 Vocabulary experience v2
 
-- replace repeated full-outline containers with surface hierarchy and section spacing;
-- apply the shared typography/button/control/chip/navigation/status system;
-- convert the plain scope line into QueryChips while keeping exact context available;
-- restyle existing tab semantics as `DashboardTabRail`;
-- place charts in the fixed chart-card anatomy;
-- use collapsed methodology summaries while retaining full text;
-- demote schema/generation/definition IDs according to classification;
-- keep dense engineering information accessible through deliberate disclosure.
+- **Frequent Words**: editorial top ranking with oversized top 3, proportional measure line, count/rate switch, and exact accessible list; it communicates “most often”.
+- **Distinctive Keywords**: 4–6 typographic keyword highlights of varying but bounded emphasis, each with short statistical context; it communicates “most characteristic of the year”, never “most frequent”.
+- **Word Cloud**: full-width climax surface using the unchanged deterministic geometry; controls, scope, explanation, and accessible list trigger sit outside the Canvas. Generated art is limited to perimeter/frame and cannot reduce contrast or available geometry.
+- **Clean Mode**: a semantic `ToggleChip` labelled `✓ 净化常用词` / `净化常用词`, with native checkbox/switch semantics, visible focus, reversible state, concise explanation, and independent custom-hidden management in disclosure.
 
-`Words & Years` has a fixed default hierarchy: Section Summary → Key Visualization → Primary Ranking → Year Comparison → collapsed “查看逐年明细” table → collapsed “查看统计口径”. This is presentation-only markup reordering over the same `model/result` values. The two disclosure controls may own only local open/closed UI state; they do not fetch, recompute, filter, rerank, or alter callbacks. All current ranking, yearly values, keyword trace, summary trace, methodology, and engineering fields remain available. If this cannot be achieved without changing the existing data lifecycle, that subtask is deferred from B1b rather than changing behavior.
+#### 9.11 Detailed Analysis v2
 
-#### 9.11 Tables and chart containers
+Detailed Analysis becomes `Header → Query Bar → Section Rail → Content`. The header is compact, all-sans, and contains title/context/local state plus secondary “分析其他文件”. The Query Bar keeps date range, sender, session threshold, explicit Apply, validation, and committed QueryChips in one systematic wrapping row. The eight existing sections remain unchanged and keyboard reachable.
 
-User-facing tables default to a 14px stronger header, 52px comfortable rows, 16px cell padding, subtle alternate/hover tone, muted secondary fields, tabular right-aligned numbers, and sparse horizontal separators; they may compact to a readable 44px floor when 1180×760 or zoom constraints require it. Dense methodology tables may use 40px rows and 12px padding. Wide tables get a labelled horizontal-scroll region, persistent first/context column where practical, and edge fade or explicit scroll cue; useful long tables may have a sticky header. A grid border around every cell is prohibited.
+Overview is recomposed around one dominant selected-message metric, an Activity metric pair, one Owner/Other comparison, and one Replies/Sessions group; it is not eight equal cards. Each metric contains Label, Metric, Unit, one ≤2-line descriptor, and optional text-link navigation. Definitions, denominator language, filter exceptions, and schema details move to section methodology/developer disclosures. Standard charts use compact headers and direct insight; tables are used only when exact comparison needs them.
 
-Every chart card uses Header → Primary Insight → Chart → Legend/Annotations → Optional Details. The primary insight is natural language, not a schema ID. Charts use owner/other semantic colors plus the three supporting palette colors as needed, with direct labels, numeric values, and non-color distinctions. Blue + gray is not the universal chart treatment. Exact accessible table/list data remains available.
+`Words & Years` remains Summary → Key Visualization → Primary Ranking → Year Comparison → collapsed yearly table → collapsed methodology, but ranking, keyword evidence, and trace are visually differentiated. User tables use 44–48px rows in the 1180×760 workspace; technical tables may be denser inside a labelled disclosure. Presentation changes cannot alter any prop, callback timing, route, query, metric, pending/stale behavior, or export authority.
 
-#### 9.12 Responsive, states, and dark-mode boundary
+#### 9.12 Chart language v2
 
-Spacing scale is 4, 8, 12, 16, 24, 32, 48, 64, 72, 96. Report content max width is 1120px; readable prose is 720px/72ch. Focus ring is 3px with 3px offset; icon sizes are 16/20/24px; minimum interactive target is 44×44px. Skeletons use inset surfaces with a static block under reduced motion. Empty states use badge/status, title, reason, and one recovery action. Errors use icon, title, text, and semantic tint rather than a heavy full outline.
+| Archetype | Purpose/density | Labels and annotation | Accessible fallback |
+|---|---|---|---|
+| Hero Chart | One Annual scene conclusion; sparse | direct value/peak/tie annotation, minimal grid | sentence + exact list/table |
+| Standard Chart | Detailed comparison/trend; medium | axis/units, direct legend, primary insight | exact labelled table |
+| Micro Chart | Support one metric; very sparse | endpoint/peak only | descriptor with exact values |
+| Comparison Bar | Owner/Other | direct labels, counts/shares, fixed sides/pattern | two-row definition list/table |
+| Distribution Strip | Weekday/hour | all buckets, selected peak/ties, no heavy axes | ordered exact table |
+| Timeline | Streak/year/activity | start/end, partial marks, gaps | chronological list/table |
+| Rank Bars | Words/message types | rank, token/category, value, proportional line | ordered list/table |
 
-At 1180×760, Home is not crowded, both mode actions are visible, Annual Recap hero shows year + core conclusion + one main number + navigation/scroll cue, filter actions remain accessible, tab overflow is understandable, and the page has no horizontal scroll. At ≤760px CSS width or 200% zoom, toolbar groups and cards collapse to one column, navigation remains usable, and no fixed element covers focus. Dark mode remains explicitly token-reserved and deferred; B1 must not add a partial dark palette or toggle.
+Blue bars are not the universal default. Gridlines are hairlines and only where reading values requires them; zero baselines and units remain explicit. Chart color never carries meaning alone.
 
-#### 9.13 CSS architecture and dependency policy
+#### 9.13 Responsive and artwork behavior
 
-The repository currently imports one global `frontend/src/styles.css` and already scopes desktop rules beneath `.desktop-app`. Beta follows that architecture: CSS custom properties live beneath `.desktop-app.beta-enabled` (with intentional shared product primitives beneath `.desktop-app`), report rules beneath `.beta-report`, and Dashboard-uplift rules beneath `.desktop-app .dashboard-*`. No unprefixed Beta selector may restyle browser-v1. A separate imported Beta CSS file is acceptable only as file organization; it still uses these scope roots and does not introduce CSS Modules, Tailwind, CSS-in-JS, styled-components, or a UI framework.
+Wide keeps generous negative space and maximum artwork presence. Standard 1180×760 is the primary composition gate and must show Opening as one near-complete viewport. Compact ~760 collapses 12-column compositions to the named 8-column arrangement rather than auto-fit; artwork may move below copy, crop, or reduce opacity. Narrow ~380 uses 4 columns, one content flow, no sticky multi-row toolbar, no horizontal page scroll, full-width controls, and optional decorative art hiding. Three-column desktop layouts never simply squeeze into narrow auto-fit cards.
 
-Minimal inline SVG may provide icons with visible labels or accessible names. B1–B5 add no full icon library, remote asset/font, UI kit, motion library, or word-cloud dependency. Existing ECharts may continue existing charts; the Beta cloud uses the local deterministic layout/Canvas pipeline.
+Every major scene has an explicit crop/hide rule in the inventory/scene tables. Artwork uses explicit dimensions/aspect ratio to prevent layout shift; opening assets load eagerly from the local bundle and below-fold assets lazily where supported. The UI remains complete if any decorative asset is removed.
+
+#### 9.14 Accessibility and visual acceptance
+
+Semantic HTML precedes ARIA. Icon-only controls require names; every form control has a visible label; actions use buttons and navigation uses links/buttons with the correct semantics. Focus uses a 3px high-contrast `:focus-visible` ring; compound controls use `:focus-within`. Headings remain ordered, anchors receive `scroll-margin-top`, interactive targets are at least 44×44px, and 200% zoom cannot create two-dimensional page scroll or covered focus. Images have explicit width/height; generated decorative assets use empty alt and `aria-hidden`, while all real information exists as DOM/Canvas data plus text. Charts retain exact alternatives. Motion uses only transform/opacity and respects reduced motion; no `transition: all`.
+
+Each implementation batch captures the fixed set: Home, Annual Opening, Scale, Rhythm, Balance, Conversation, Frequent Words, Keywords, Word Cloud, Closing, Detailed Overview, and Detailed Words & Years. Review each image independently and the sequence as a story. Each category is scored `PASS`, `NEEDS POLISH`, or `FAIL`: Hierarchy, Alignment, Consistency, Density, Rhythm, Balance, Readability, Contrast, Scanability, Composition, Story Progression, Artwork Integration, Chart Clarity, and Navigation Clarity. Any `FAIL`, inaccessible control, unclear data meaning, obvious AI artifact, or broken 1180/760/380 crop blocks the batch; `NEEDS POLISH` must be recorded and resolved or explicitly accepted before the next batch.
+
+#### 9.15 CSS and dependency boundary
+
+V2 retains scoped CSS beneath `.desktop-app.beta-enabled`, `.beta-report`, and explicit Dashboard roots; browser-v1 cannot inherit Beta rules. V1 may split the Beta/Detailed presentation layers into imported local CSS files to end chronological overrides, but MUST NOT add CSS Modules, Tailwind, CSS-in-JS, styled-components, a UI kit, or a new runtime dependency. Minimal deterministic SVG/CSS handles simple lines/dividers; generated raster assets handle only editorial texture/artwork. Existing word-cloud geometry, ECharts dependencies, analytics, and host authority remain unchanged.
 
 ### 10. Motion and scroll narrative
 
@@ -550,7 +546,7 @@ Chapter entry is opacity + 12px translate using `IntersectionObserver` once per 
 
 `prefers-reduced-motion: reduce` disables transforms, counting, chart drawing, cloud stagger, smooth scroll, and cross-fades; final content appears immediately. Missing `IntersectionObserver`, Canvas animation failure, tab backgrounding, or low frame rate yields the same static final view. No large animation framework is added; CSS, Web Animations API, and existing React state suffice. Layout/analytics Workers remain off the main thread and animation work is limited to transform/opacity.
 
-B1a/B1b do not build a motion abstraction for future use. They only ensure that content, focus, navigation, and meaning are complete in a static state and that any incidental CSS transition respects `prefers-reduced-motion`. The motion tokens/observer/reveals are introduced in B5 when they have a concrete consumer.
+V1–V3 do not build a new motion abstraction. They ensure content, focus, navigation, artwork fallbacks, and meaning are complete in a static state and that incidental transitions respect `prefers-reduced-motion`. The motion tokens/observer/reveals remain in B5 when they have a concrete consumer.
 
 ### 11. Sharing and export authority
 
@@ -611,29 +607,27 @@ React tests cover Home/default CTA, single/multiple/empty years, mode switching,
 
 Rust/IPC tests first prove the one-use lease plus top-level opaque-binary request without base64/nested number arrays, then cover committed result/generation fencing, 1200×1500 PNG dimensions/signature/chunks/10MiB limit, forbidden metadata, generic names, lease replay/expiry, save cancellation, atomic replace/failure cleanup, and no renderer destination. Packaged Beta acceptance later uses synthetic vertical fixtures for `.app`, prototype `.dmg`, offline/no-account/no-network flows. Only the user may separately authorize and perform real-data checks; agents do not execute them.
 
-### 15. Luna Max implementation stages
+### 15. Luna Max implementation stages after visual-plan freeze
 
-| Stage | Goal | Main scope and dependency | Running UI | Acceptance | Model |
-|---|---|---|---|---|---|
-| B1a | Visual Foundation, App Shell and Annual Recap Skeleton | scoped custom properties/classes; semantic type/surface/BaseCard/control/status primitives; App Shell/workflow; Home; static logical-section/report-scene shell; synthetic hero/metric/narrative; no Dashboard-wide uplift | Yes | user first sees the runnable recap shell; 1180×760/narrow/a11y/static-state gates | Luna Max |
-| B1b | Shared Detailed Dashboard Visual Uplift | presentation-only wrappers/CSS, tab rail/filter toolbar, Words & Years disclosures, table/chart treatments; depends B1a but blocks only B6 | Yes | exact props/callback/query/DTO/value/export/stale behavior remains unchanged | Luna Max |
-| B2 | Presentation facts, locale presenter and core annual cards | `BetaReportQuery/Dto`, semantic adapter, fixed `zh-CN` presenter, report cache, logical sections 1–12; depends B1a/current Worker fields, not B1b | Yes | user first sees populated Annual Recap core metrics; exact semantic/template/empty/stale tests | Luna Max |
-| B3 | Scoped word-frequency Worker DTO and list-first word sections | envelope/per-item contract, ranked per-scope candidate pool, built-in-policy denominator, raw+per-10k fields, custom presentation hiding, logical sections 13–14; depends B1a/current token index, may run parallel with B2 | Yes, list-first | no temporary B2 token adapter, no retokenization/source read, deterministic/cancel/privacy tests | Luna Max |
-| B4 | Deterministic word cloud | seedless layout Worker, synthetic metrics, Canvas/bounded list, buckets/cache, logical section 15; depends B3 and B1a, not B1b | Yes | user first sees a real selected-scope word cloud; geometry/collision/a11y/diagnostic-performance tests | Luna Max |
-| B5 | Summary/share scene, motion and two fixed PNG exports | logical section 16, motion/reduced motion, fixed 1200×1500 renderers, opaque binary lease/save contract; depends B2 and B4 | Yes | static fallback, privacy, raw IPC, PNG/save fencing tests | Luna Max |
-| B6 | Packaged Beta acceptance | synthetic integration, `.app`, prototype `.dmg`, offline, docs; depends B1b and B5 | Packaged | packaged launch and synthetic vertical pass; no real data | Luna Max |
+B1a–B4 and the correctness/refinement work are the protected functional baseline. Visual implementation is split into three mandatory batches; no batch rewrites analytics, Worker DTOs, canonical v2, Clean Mode semantics, keyword scoring, word-cloud geometry, query identities, or export authority.
+
+| Stage | Scope / likely files | Generated assets | Acceptance and stop point | Model |
+|---|---|---|---|---|
+| V1 — Design System v2 + Shell + Generated Asset Foundation | v2 tokens/type/grid/primitives; optional scoped CSS reorganization; App Shell/Home; app navigation; compact Annual progress navigation; Detailed header/query/rail shell. Likely: `styles.css` or new imported scoped Beta CSS, `primitives.tsx`, `BetaModeNavigation.tsx`, `BetaHome.tsx`, `BetaAnnualReport.tsx`, presentation-only parts of `DesktopImportPanel.tsx`/`DesktopDashboard.tsx`, tests. | Generate 3–4 `annual-opening-hero` and `closing-poster` candidates; review, keep only selected optimized local files; evaluate Home asset. | Type/lint/scoped browser/a11y/offline pass; screenshots Home, Opening, navigation, Detailed shell at 1180/760/380 and 200% zoom. Stop for human visual acceptance before V2. | Luna Max |
+| V2 — Annual Recap Recomposition | seven scenes; composition archetypes; Scale/Rhythm/Balance/Conversation; distinct vocabulary modes; unchanged word-cloud Canvas geometry with new frame; progressive disclosure; closing poster/share slot. Likely: `BetaAnnualReport.tsx`, `BetaCoreReportSections.tsx`, `BetaWordEvidenceSections.tsx`, `BetaWordCloud.tsx`, `report-sections.ts`, scoped CSS, browser tests. | Generate/review conditional transition and vocabulary assets; integrate selected opening/closing assets; delete low-quality variants. | Full 10-image Annual screenshot set, rubric, keyboard/chart fallback/crop/offline/package-preview checks. Stop for second human visual acceptance before V3. | Luna Max |
+| V3 — Detailed Analysis Recomposition | compact Header/Query Bar/Section Rail; Overview metric regrouping; concise metric anatomy; chart/table language; Words & Years; methodology; message types/replies/sessions/export presentation. Likely: `DesktopDashboard.tsx`, scoped Dashboard CSS, existing Dashboard/browser tests. | None by default; generated art does not enter analytical cards. | Detailed Overview and Words & Years screenshots plus all eight route regressions; exact query/callback/value/export/stale parity. Stop for third human visual acceptance before B5. | Luna Max |
+| B5 — Story Motion and Privacy-Safe PNG Sharing | existing deferred motion, summary/share behavior, fixed PNG rendering and bounded host save authority | Reuse the accepted closing visual language; do not generate data-bearing export pixels | May begin only after V1–V3 are accepted; static/reduced-motion/privacy/IPC tests | Luna Max |
+| B6 — Packaged Synthetic Beta Acceptance | existing `.app`/`.dmg`, offline and synthetic acceptance | Verify only repository-owned optimized assets are bundled and zero remote requests occur | May begin only after V3 and B5; packaged visual screenshot/rubric pass | Luna Max |
 
 ```text
-B1a ─┬─→ B2 ─────────┐
-     ├─→ B3 → B4 ────┼─→ B5 ──┐
-     └─→ B1b ────────────────→ B6
+protected B1a–B4 baseline → V1 → human stop → V2 → human stop → V3 → human stop → B5 → B6
 ```
 
-B1a owns only the stable logical-section ID/order registry and typed composition slots. B2 fills sections 1–12 in core report modules; B3 fills sections 13–14 in separate word-evidence modules; B4 fills section 15; B5 fills section 16. B2 and B3 may therefore proceed independently after B1a without editing one temporary token adapter or the same implementation seam. B1b never blocks report facts or the cloud. Each implementation batch ends with scoped tests, `openspec validate beta-annual-recap-visual-experience --strict`, `git diff --check`, privacy/diff review, exact-path staging (never `git add ./-A/--all`), one intentional commit/push, clean workspace, and upstream `0/0`. Those Git actions are future implementation tasks, not actions in this planning batch. Sol High is reserved for contract/privacy re-freezing or a discovered cross-module conflict.
+Every future implementation batch uses exact-path review/staging, synthetic data only, strict OpenSpec validation, `git diff --check`, and offline/no-private checks. Commit/push instructions belong to the future implementation turn, not this planning batch. If visual changes require a data contract, word-cloud geometry, or privacy boundary change, that batch stops for Sol High re-planning instead of broadening scope.
 
-### 16. Screenshot-driven refinement backlog (recorded, not implemented by the hotfix)
+### 16. Visual planning freeze and change control
 
-The manual Beta screenshots establish the next UI-refinement scope: reduce the sticky year/chapter toolbar's weight and occlusion; replace the visually disconnected native-looking year select treatment; remove forced equal card heights and resulting empty space; consolidate repeated ready badges; collapse full month/weekday/hour/type tables behind progressive disclosure; reduce excessive serif display headings; restore editorial scene composition where cards have regressed into a dashboard; replace long Frequent Words/Keywords tables with a more readable progressive presentation; reduce dense tables; and stabilize Annual Recap scene rhythm. This backlog belongs to the later screenshot-driven UI refinement/B1b work and is intentionally not implemented in the annual-scope/Clean Mode hotfix.
+This document, the capability spec, and tasks are the implementation authority for V1–V3. The old “Screenshot-driven refinement backlog” is no longer a loose backlog; its issues are absorbed into v2 diagnosis, scene/grid/type/chart/navigation requirements, generated-asset briefs, and visual gates. V1 may refine exact CSS variable names or component extraction, and image review may reject every candidate, but it may not change scene purposes, data meaning, accessibility, privacy, or stop points without updating OpenSpec first. Low-quality AI artwork is removed and the documented CSS/SVG fallback is used.
 
 ## Risks / Trade-offs
 
@@ -647,21 +641,25 @@ The manual Beta screenshots establish the next UI-refinement scope: reduce the s
 - [Canvas is not intrinsically accessible] → Make it decorative in the accessibility tree and provide the same bounded ordered semantic list without per-glyph hidden DOM.
 - [Motion can harm performance or comprehension] → Uniform small tokens, transform/opacity only, one-shot observers, reduced-motion/static fallback, and main-thread long-task budget.
 - [Beta visual tokens could leak into browser-v1 or Dashboard styles] → Follow the existing stylesheet architecture but scope variables/classes beneath `.desktop-app.beta-enabled`, `.beta-report`, and explicit Dashboard selectors.
-- [Dashboard uplift could accidentally become a data-logic refactor or delay the recap] → Isolate it as B1b, retain exact component props/query callbacks/DTOs, and let only B6 depend on its completion.
+- [Detailed v2 could accidentally become a data-logic refactor] → Isolate it as V3, retain exact component props/query callbacks/DTOs, stop on any parity failure, and block B5/B6 until it passes.
 - [Reducing borders could weaken grouping or accessibility] → Replace borders with explicit surface tone, spacing, heading structure, and restrained depth; keep borders for controls, selected states, focus support, and table separators.
 - [Decorative hierarchy could hide methodology] → Collapse rather than delete methodology and engineering detail, preserve keyboard-accessible disclosures, and test that every current Words & Years field remains reachable.
 - [First-year data may be partial or sparse] → Never infer export completeness; label full/partial query scope and use explicit insufficient states.
 - [Long-image export could dominate delivery] → Defer chapter/long/multipage output; ship two fixed templates first.
+- [Generated art looks generic, noisy, or recognizably low-quality] → Generate multiple generic candidates, score them in context, keep none when quality is inadequate, and preserve a complete CSS/SVG fallback.
+- [Artwork leaks private evidence or bakes data into pixels] → Prompts contain only the frozen abstract brief and palette; no private source/screenshot/statistic/name/path is read or supplied; all user/year/data text stays in React/Canvas/SVG layers.
+- [Repository assets increase package weight or require network access] → Ship only optimized WebP/PNG under bounded per-asset targets, inspect the bundle, and run packaged zero-external-request acceptance.
+- [V2 CSS becomes another chronological override layer] → V1 establishes one ordered token/primitives/Annual/Detailed/responsive structure and removes superseded Beta declarations deliberately without bulk deletion or browser-v1 leakage.
 
 ## Migration Plan
 
-1. Add B1a behind a local code-level Beta route constant defaulting on for synthetic tests; do not migrate or delete existing Dashboard state. B1b may then uplift Detailed Analysis independently.
-2. Add locale-neutral presentation facts/adapters and the fixed `zh-CN` presenter against synthetic fixtures and existing result v3 before changing Worker output.
-3. In parallel with step 2 after B1a, version-add the scoped token-frequency request/envelope, preserve current result validation/browser-v1 protocols, and land sections 13–14 list-first without a temporary B2 token adapter.
-4. Add the seedless layout Worker/Canvas/bounded list for section 15; custom hiding remains presentation-only and Alpha Dashboard word tables remain unchanged.
-5. Add the 1200×1500 renderer plus one-use lease/opaque binary PNG-save authority alongside `export_aggregate`; retain existing formats and approved chart keys.
-6. Complete synthetic packaged acceptance after B1b and B5. Rollback at any stage is removal/disablement of the Beta entry while the detailed Dashboard and canonical result remain functional; no user data migration is required.
+1. Treat completed B1a–B4 functionality as the protected baseline; freeze current screenshots before presentation edits.
+2. Run V1 to install v2 tokens/grid/primitives, shell/navigation, and the reviewed opening/closing asset foundation; stop for human acceptance.
+3. Run V2 to recompose all Annual scenes and vocabulary/word-cloud framing without changing logical sections or geometry; stop for human acceptance.
+4. Run V3 to recompose Detailed Analysis without changing props, queries, metrics, routes, or exports; stop for human acceptance.
+5. Resume B5 only after all three visual gates, then add the 1200×1500 renderer plus one-use lease/opaque binary save authority and deferred motion.
+6. Complete B6 synthetic packaged acceptance. Rollback for V1–V3 is removal of the v2 presentation/selected art while the prior Detailed Dashboard, report data contracts, and deterministic cloud remain functional; no user data migration is required.
 
 ## Open Questions
 
-No product or architecture question blocks implementation. During B4, measured packaged WebView fit-down may require a `beta-wordcloud-layout.v2`; changing synthetic geometry requires a version/key bump and Sol High review, not an unversioned tweak. During B5, the raw-body contract test precedes renderer integration; inability to carry a ≤10 MiB opaque PNG stops that batch for a bounded transport correction rather than falling back to base64/JSON bytes or granting renderer filesystem access.
+No product or architecture question blocks V1. Asset selection is deliberately a quality gate rather than an open product question: if no candidate passes, use the frozen fallback. During B5, the raw-body contract test still precedes renderer integration; inability to carry a ≤10 MiB opaque PNG stops that batch for a bounded transport correction rather than falling back to base64/JSON bytes or granting renderer filesystem access. Word-cloud geometry is frozen and is not reopened by visual framing.

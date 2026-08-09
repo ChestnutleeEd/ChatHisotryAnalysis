@@ -259,179 +259,141 @@ The Beta word cloud SHALL use Canvas for screen and export, zero-degree text, of
 - **WHEN** Canvas or animation cannot render
 - **THEN** the same bounded selected ranked list and compact textual/bar summary remain available and no selected-cloud information is lost
 
-### Requirement: Frozen visual system and dark-mode boundary
-Annual Recap SHALL implement the selected “本地数据年鉴 / Editorial Almanac” direction and semantic color, type, spacing, width, surface, card, radius, border, depth, control, grid, focus, skeleton, empty, error, warning, success, privacy, partial, and disabled roles in `design.md`. Numeric visual dimensions marked as defaults/targets SHALL respond within their frozen bounds rather than act as pixel gates. The visual result SHALL be editorial, personal, calm, tactile, data-rich, contemporary, and restrained; it MUST NOT resemble an enterprise/admin template, raw HTML, cyberpunk/gaming UI, neumorphism, heavy Material elevation, large-gradient theme, or glassmorphism system. First Beta SHALL reserve semantic token structure for dark mode but SHALL NOT implement a dark palette or toggle.
+### Requirement: Design System v2 visual direction and token contract
+Annual Recap SHALL use the “Private Data Atelier” consumer-editorial direction and Detailed Analysis SHALL use its denser modern-data-workspace mode. Both SHALL share the semantic color, typography, grid, spacing, surface, radius, border, shadow, focus, state, control, and component roles frozen in `design.md`. The product MUST NOT resemble an enterprise/admin template, finance terminal, neon AI interface, cyber-security icon set, cartoon/game UI, glassmorphism, neumorphism, heavy Material elevation, or image-filled card gallery. Full dark mode SHALL remain deferred; v2 MUST NOT ship an incomplete dark toggle or auto-invert light artwork.
 
-Beta SHALL follow the current stylesheet architecture using scoped CSS custom properties/classes beneath `.desktop-app.beta-enabled`, `.beta-report`, and explicit Dashboard selectors. It MUST NOT leak unprefixed Beta rules into browser-v1 or add CSS Modules, Tailwind, CSS-in-JS, a UI/component framework, icon pack, animation library, word-cloud dependency, remote asset, or remote font.
-
-#### Scenario: Render at target window
-- **WHEN** the application is 1180×760
-- **THEN** Home is uncrowded, both mode actions remain visible, the report hero shows its year, primary conclusion, dominant metric and navigation/scroll cue, filter actions remain reachable, and no horizontal page scrolling is required
-
-#### Scenario: Render narrow or zoomed
-- **WHEN** CSS content narrows to 760 pixels or the user zooms to 200 percent
-- **THEN** cards and controls collapse to one column, focus is not covered, and charts retain text alternatives
-
-#### Scenario: Distinguish roles without color
-- **WHEN** owner and other data are compared
-- **THEN** both direct labels and geometry/pattern accompany the role colors
-
-#### Scenario: Reject an unfinished dark mode
-- **WHEN** B1 implements semantic visual tokens
-- **THEN** it does not expose a dark-mode toggle or incomplete dark palette and leaves full dark mode non-blocking
-
-### Requirement: Semantic typography and engineering-label hierarchy
-The interface SHALL implement the eyebrow, display, heading, title, report-lead, body, secondary, metadata, metric, and metric-unit CSS roles frozen in `design.md`. Display text SHALL use the responsive 40–72px clamp and metrics the 36–64px clamp, with narrower wrapping governed by available space. These roles MUST NOT force one React component per token; body/secondary/metadata normally use semantic markup plus scoped classes. Narrative conclusions SHALL use `report-lead` rather than ordinary paragraph styling. Visible labels SHALL be classified as `USER_VISIBLE`, `METHOD_ONLY`, or `DEVELOPER_ONLY`; generation, query keys, schema/DTO IDs, Worker terminology, and canonical/internal IDs MUST NOT carry primary visual weight. System-font differences MAY change exact wrapping, but MUST NOT cause clipping or hierarchy loss.
-
-#### Scenario: Scan the annual hero
-- **WHEN** a user first views a populated annual hero
-- **THEN** the year display, narrative lead, dominant tabular metric, unit, and concise metadata are visibly distinct without relying only on font size or blue text
-
-#### Scenario: Present an eyebrow
-- **WHEN** Annual Recap or a Dashboard section uses a context label
-- **THEN** it appears as a quiet capsule or letter-spaced label and engineering numbering such as `05 / WORDS & YEARS` is not a primary Annual Recap element
-
-#### Scenario: Demote developer metadata
-- **WHEN** a normal user views Home, Annual Recap, workflow success, or Dashboard overview
-- **THEN** result generation, schema IDs, query keys, Worker DTO labels, and canonical terminology are absent from primary content and remain available only through methodology/developer disclosure where needed
-
-#### Scenario: Constrain text measure
-- **WHEN** body or methodology summary text is rendered in the 1120px content column
-- **THEN** readable text measure does not exceed 72ch and narrative copy prefers the 58–68ch range
-
-### Requirement: Six-level surface, border, radius, and depth system
-The UI SHALL distinguish application canvas, elevated report, standard card, inset/subtle, highlight/accent, and semantic status/callout roles using the frozen fills, spacing, radius, and depth tokens. These are six semantic token/class roles, not six required React components. Radius values are responsive defaults; Annual primary cards normally remain at least 16px while controls and pills retain clear interactive shape. Full borders SHALL be reserved for controls, selected/focus states, table separation, and occasional subtle distinction; nested sections MUST NOT repeat complete outlined rectangles at every level.
-
-#### Scenario: Group ordinary content
-- **WHEN** a report section contains a card, nested details, and a chart
-- **THEN** hierarchy is created by tone, spacing, heading structure and at most restrained raised depth rather than three nested white rectangles with gray outlines
-
-#### Scenario: Use depth tokens
-- **WHEN** a card, report sheet, dialog, or popover is rendered
-- **THEN** it uses only surface-flat, surface-raised, or surface-overlay for the approved role and no Annual Recap card uses overlay/heavy Material elevation
-
-#### Scenario: Preserve interactive boundaries
-- **WHEN** a control is focused, selected, invalid, or disabled
-- **THEN** its boundary and state remain perceivable even though non-interactive content no longer uses pervasive borders
-
-### Requirement: Badges, chips, status pills, highlight sentences, and disclosures
-The visual foundation SHALL provide reusable Badge, Chip, StatusPill, HighlightSentence, and MethodologyDisclosure patterns with the dimensions and purposes frozen in `design.md`. Current query context SHALL be presented as structured chips for date/year, sender, UTC+08, session threshold, and filtered state rather than one long prose line. Full methodology MUST remain available through a collapsed accessible disclosure.
-
-#### Scenario: Present committed query context
-- **WHEN** a filtered result is committed
-- **THEN** compact chips show its date/year scope, sender, UTC+08, session threshold, and filtered status without exposing generation as ordinary metadata
-
-#### Scenario: Present a narrative conclusion
-- **WHEN** a chapter has a validated sentence such as its peak month or peak hour
-- **THEN** the sentence uses a restrained tinted HighlightSentence with an accent rail or icon and one emphasized phrase rather than an unstyled white-background paragraph
-
-#### Scenario: Open methodology
-- **WHEN** a user activates the methodology disclosure
-- **THEN** the complete existing method information becomes keyboard and screen-reader accessible while the collapsed state retains a short summary and method chips
-
-### Requirement: Button and form-control hierarchy
-The shared visual foundation SHALL implement Primary, Secondary, Tertiary/Ghost, and Destructive/Exit button roles with approved usage, at least 44px height, 12px radius, consistent horizontal padding, 600 weight, icon gap, and default/hover/active/focus-visible/disabled/loading states. Date input, select, segmented control, checkbox/toggle, and text input MAY retain native semantics but SHALL use the shared label, wrapper, height, radius, spacing, focus, validation, and disabled presentation.
-
-#### Scenario: Compare action priorities
-- **WHEN** Home or a report export panel displays multiple actions
-- **THEN** the primary filled action, secondary tonal action, tertiary disclosure action, and quiet Exit action are visually and semantically distinguishable
-
-#### Scenario: Preserve accessible native control
-- **WHEN** a native date or select control is more reliable in the packaged WebView
-- **THEN** its native semantics remain while its visible label, wrapper, dimensions, focus, error, and disabled states conform to the Beta system
-
-#### Scenario: Show loading and disabled states
-- **WHEN** a button is loading or unavailable
-- **THEN** it preserves layout, exposes accessible state and reason, has no misleading hover, and retains at least 3:1 component contrast
-
-### Requirement: Two-level navigation and compact filter toolbar
-App-level Annual Recap/Detailed Analysis navigation SHALL use the frozen high-level segmented pattern. The existing eight Dashboard routes SHALL use a subordinate tab rail with clear active, hover, focus, keyboard, and horizontal-overflow behavior. The global filter SHALL become a compact wrapping FilterToolbar containing date range, sender, session threshold, and explicit Apply action. Visual redesign MUST NOT change explicit Worker query commit semantics.
-
-#### Scenario: Distinguish navigation levels
-- **WHEN** Detailed Analysis is active
-- **THEN** the app mode segmented control and Dashboard tab rail have visibly different hierarchy and selected-state treatment
-
-#### Scenario: Overflow Dashboard tabs
-- **WHEN** all eight Dashboard tabs do not fit
-- **THEN** the tab rail remains keyboard operable and shows an edge fade or explicit cue that horizontal navigation is available
-
-#### Scenario: Apply filters explicitly
-- **WHEN** a user edits a date, sender, or threshold control
-- **THEN** no Worker query is committed until the user activates the Primary Apply button, after which QueryChips represent the committed result
-
-### Requirement: Refined App Shell and workflow status
-The App Shell SHALL organize product identity, local/privacy status, primary context, and secondary actions without scattering them across competing bordered controls. “本地处理 / 不上传” SHALL be a privacy badge or status indicator. Exit SHALL remain visually subordinate. A successful workflow SHALL show one concise success composition and MUST NOT repeat the same state in an eyebrow, heading, and sentence; detailed workflow panels SHALL appear only while processing, error, cleanup/recovery, or expanded diagnostics are relevant.
-
-#### Scenario: Show completed workflow
-- **WHEN** analysis reaches a committed ready state
-- **THEN** the shell shows one check icon, “分析完成”, compact range/message context, and local completion badge without also repeating “当前状态：结果已准备好”
-
-#### Scenario: Show active or failed workflow
-- **WHEN** analysis is processing, cancelling, failed, or requires recovery
-- **THEN** a detailed semantic workflow/status surface presents progress or actions without changing existing cancel/retry/reselect behavior
-
-#### Scenario: De-emphasize Exit
-- **WHEN** Exit appears beside normal navigation or analysis actions
-- **THEN** it uses the quiet destructive/ghost role and does not visually compete with the primary annual-report CTA
-
-### Requirement: Annual Recap composition and card variants
-Every visual scene SHALL prioritize one dominant idea, one dominant metric or visualization, and one short explanation using the frozen eyebrow → narrative lead → hero metric/visualization → metadata → optional details order. The report SHALL express hero, metric, split, chart, word, narrative, summary, and privacy semantic variants through one lightweight `BaseCard`/surface primitive plus modifiers; specialized components are required only for materially different behavior/accessibility. It MUST NOT implement eight polymorphic components merely to mirror variant names. Logical sections MUST NOT all use the same white bordered card or present ten competing primary numbers.
-
-#### Scenario: Render the opening viewport
-- **WHEN** a populated annual report opens at 1180×760
-- **THEN** a 24px-radius hero visibly communicates the year, one core conclusion, one dominant metric or visual, and the next navigation/scroll affordance within a two-second visual scan
-
-#### Scenario: Render different chapter purposes
-- **WHEN** metric, comparison, chart, word, narrative, summary, and privacy chapters are present
-- **THEN** they use the appropriate distinct card variants while retaining one shared product system
-
-#### Scenario: Maintain chapter rhythm
-- **WHEN** the user scrolls consecutive chapters
-- **THEN** chapter gaps, hero height, card spacing, chart height, radii, and table density use the responsive defaults/bounds in `design.md`, with no forced empty space, clipping, covered focus, or loss of hierarchy at 1180×760, narrow layout, or 200% zoom
-
-### Requirement: Detailed Dashboard visual uplift without semantic change
-Beta B1b SHALL visually unify Detailed Analysis with the App Shell through scoped CSS, presentation-only wrappers/markup, shared typography, spacing, color, radius, surfaces, buttons, controls, chips, status, filter toolbar, tab rail, tables, chart cards, disclosures, and metadata hierarchy. It MUST preserve all eight routes, metrics, charts/alternatives, props, callback signatures/timing, Worker request/protocol/result DTO, canonical query identity, filter validation/explicit commit, selected-year/threshold lifecycle, metric values/order, pending-result retention, cancellation/stale publication, exports/payloads, loading/error/recovery behavior, and Worker semantics. Any visual change that cannot preserve these boundaries SHALL be deferred rather than converted into behavior work. B1b SHALL NOT block B2–B5.
-
-#### Scenario: Compare before and after behavior
-- **WHEN** the visual uplift is applied to Detailed Analysis
-- **THEN** identical synthetic inputs, filters, thresholds, routes, pending transitions, and export actions produce the same analytical behavior and values
-
-#### Scenario: Share the product language
+#### Scenario: Compare product modes
 - **WHEN** a user switches between Annual Recap and Detailed Analysis
-- **THEN** controls, chips, status, navigation quality, typography, and semantic colors clearly belong to one product while Detailed Analysis remains denser and tool-oriented
+- **THEN** semantic colors, controls, status, and interaction quality clearly belong to one product while Annual is spacious/editorial and Detailed is compact/all-sans
 
-#### Scenario: Keep all Dashboard sections
-- **WHEN** Detailed Analysis loads after B1b
-- **THEN** Overview, Trends, Comparison, Activity, Words & Years, Message Types, Replies & Sessions, and Export remain present and keyboard reachable
+#### Scenario: Preserve non-color meaning
+- **WHEN** owner/other or any semantic state is shown
+- **THEN** direct labels and geometry/pattern/state text accompany color and satisfy the v2 contrast contract
 
-### Requirement: Progressive Words & Years hierarchy
-The default `Words & Years` view SHALL present Section Summary, Key Visualization, Primary Ranking, Year Comparison, a collapsed “查看逐年明细” table, and a collapsed “查看统计口径” disclosure in that order. This SHALL be presentation-only reordering over the same props/model/result; disclosure controls may own only local open/closed UI state and MUST NOT fetch, filter, rerank, recompute, or change callbacks. All current Top-20 values, yearly token cells, keyword methodology fields, trace values, summary traces, and definitions SHALL remain reachable; no data or metric semantics may be deleted or rewritten.
+### Requirement: Typography v2 hierarchy
+The interface SHALL implement Display XL, Display, Scene Heading, Section Heading, Card Heading, Metric Hero, Metric, Body Large, Body, Secondary, Label, Metadata, Caption, and Tabular Number exactly as bounded in `design.md`. Serif SHALL appear only in the Annual opening hero, major Annual scene headings, and closing editorial statement. Detailed Analysis, controls, metrics, charts, tables, labels, methodology, and ranking rows SHALL use sans. Metric support text MUST NOT compete with values; a metric's visible descriptor SHALL be concise and longer definitions SHALL move to disclosure.
+
+#### Scenario: Scan Annual opening
+- **WHEN** a populated Annual opening renders
+- **THEN** range/year, one editorial sentence, one Metric Hero, and artwork establish a clear order without multiple competing display headings
+
+#### Scenario: Scan Detailed metric
+- **WHEN** Detailed Overview renders a metric
+- **THEN** Label, Metric, Unit, ≤2-line descriptor, and optional navigation are legible in sans while methodology is absent from the primary card
+
+### Requirement: Predictable responsive grid and spacing v2
+V2 SHALL use the named 12-column Wide/Standard, 8-column Compact, and 4-column Narrow grids, outer margins, gutters, approved spans, and spacing tokens in `design.md`. It MUST NOT use auto-fit or arbitrary widths for major composition. Long Chinese headings MUST NOT be placed in a 4-column desktop card. At 1180×760 the opening SHALL read as one near-complete composition; at ~760, ~380, and 200% zoom the layout SHALL preserve order, focus, labels, and alternatives without horizontal page scroll.
+
+#### Scenario: Render standard Annual
+- **WHEN** the viewport is 1180×760
+- **THEN** Opening uses the frozen `7+5` split and later scenes use their named spans without arbitrary equal-card grids or forced equal heights
+
+#### Scenario: Render compact and narrow
+- **WHEN** the content is ~760 or ~380 CSS pixels wide or zoom reaches 200%
+- **THEN** each major scene follows its explicit reflow/crop/hide strategy and no multi-column desktop grid is merely squeezed via auto-fit
+
+### Requirement: Reduced card dependency and component system v2
+Primary scene composition SHALL be allowed directly on a borderless/radius-zero scene canvas. Supporting cards SHALL use the v2 card/surface roles and MUST NOT contain repeated full-border rounded rectangles at every level. Implementation SHALL plan around `Scene`, `SectionHeader`, `Metric`, `MetricGroup`, `Surface`, `Inset`, `ChartFrame`, `Disclosure`, `Navigation`, `ToggleChip`, and `ArtworkFrame`; it MUST NOT create one component per typography token or per logical section. `BaseCard` MAY remain for compatibility but MUST NOT force every logical section to render as an `article` card.
+
+#### Scenario: Compose a major scene
+- **WHEN** Opening, Word Cloud, or Closing is rendered
+- **THEN** the scene can carry text, data, and artwork directly without an outer white card or nested card-on-panel-on-card structure
+
+#### Scenario: Preserve interaction boundaries
+- **WHEN** a control is selected, focused, disabled, invalid, or loading
+- **THEN** its boundary and state remain visible even though non-interactive content uses fewer borders and shadows
+
+### Requirement: Generated artwork and offline asset boundary
+V1/V2 SHALL treat generated artwork as first-class editorial structure using the asset inventory, palette, prompt boundary, crop rules, file targets, fallbacks, and review workflow in `design.md`. Every prompt MUST be generic, synthetic, abstract, and free of real chat text, keywords, contacts, company names derived from chat, statistics, filenames, paths, screenshots, or private evidence. Artwork MUST NOT bake year, metrics, words, chart data, or user-specific content into pixels. Selected assets SHALL be optimized repository-owned local files under the planned Beta asset directory and bundled offline; runtime generation APIs, remote URLs, CDN files, remote fonts, and network fetches are prohibited.
+
+#### Scenario: Generate candidate artwork
+- **WHEN** V1 or V2 produces an opening, transition, vocabulary, closing, or Home candidate
+- **THEN** it generates 2–4 generic variants as separate built-in image-generation calls, reviews them in layout context, keeps only passing optimized candidates, and uses the documented CSS/SVG fallback if none pass
+
+#### Scenario: Package artwork offline
+- **WHEN** the packaged application renders Annual Recap without network access
+- **THEN** every selected artwork loads from the repository bundle with explicit dimensions and no external request, while the UI remains complete if decorative art is hidden
+
+#### Scenario: Keep data separate from art
+- **WHEN** a user changes year, sender, filters, Clean Mode, or report facts
+- **THEN** React/Canvas/SVG data layers update independently and the same generic artwork remains reusable
+
+### Requirement: Seven-scene Annual Recap architecture v2
+The sixteen logical sections SHALL remain in their fixed accessible order but SHALL be composed into Opening, Scale, Rhythm, Balance, Conversation, Vocabulary, and Closing using the purposes, dominant visuals, spans, supporting information, artwork, and disclosure strategies in `design.md`. Opening SHALL contain range/year, one strong sentence, one strong metric, and generated hero artwork. Scale SHALL combine messages/days/streak; Rhythm SHALL unify month/weekday/hour; Balance SHALL unify anonymous role share/length/types; Conversation SHALL unify sessions/initiator/replies; Vocabulary SHALL distinguish three word modes and make Word Cloud the visual climax; Closing SHALL use a poster composition, local/privacy statement, B5 share slot, and Detailed CTA rather than a large unavailable card.
+
+#### Scenario: Read the complete Annual story
+- **WHEN** all sixteen logical sections have sufficient synthetic data
+- **THEN** seven visually distinct scenes preserve all headings, metrics, sources, empty states, filter exceptions, and details in the frozen order
+
+#### Scenario: Render the first viewport
+- **WHEN** Annual Recap opens at 1180×760
+- **THEN** range/year, one sentence, one dominant metric, and `annual-opening-hero` form one coherent near-viewport composition without a dashboard-card grid
+
+#### Scenario: Reach Closing before B5
+- **WHEN** Summary/Share behavior is still deferred
+- **THEN** Closing presents the accepted poster/privacy/CTA structure and a reserved share position without claiming sharing exists or centering “尚未提供” as the visual conclusion
+
+### Requirement: Navigation v2 hierarchy
+App-level Home/Annual/Detailed navigation SHALL be visually primary and quiet. Annual report navigation SHALL use a ≤52px desktop sticky bar with compact year selection, current scene label, and seven-scene progress plus an accessible logical-section picker. Detailed section navigation SHALL remain subordinate. Each level SHALL have distinct selected-state treatment, keyboard operation, visible focus, labelled controls, safe `scroll-margin-top`, and Compact/Narrow behavior that does not cover focused content.
+
+#### Scenario: Navigate Annual by keyboard
+- **WHEN** a keyboard user changes year, advances scenes, or opens the logical chapter picker
+- **THEN** focus remains visible, the committed scope stays correlated, the current scene is announced, and the sticky bar does not obscure the target heading
+
+#### Scenario: Distinguish three levels
+- **WHEN** Detailed Analysis is active
+- **THEN** app mode, report progress, and the eight-section Detailed rail cannot be mistaken for one another
+
+### Requirement: Vocabulary experience v2 distinction
+Frequent Words SHALL use an editorial frequency ranking, Distinctive Keywords SHALL use bounded typographic highlights with statistical context, and Word Cloud SHALL use the unchanged deterministic geometry as a full-width climax with external controls/explanation/list trigger. Clean Mode SHALL use an accessible reversible `ToggleChip`; custom hidden words SHALL remain separately reviewable. Generated vocabulary art SHALL be decorative perimeter/frame content only and MUST NOT reduce cloud contrast, available geometry, or accessible alternatives.
+
+#### Scenario: Compare three vocabulary modes
+- **WHEN** Frequent Words, Distinctive Keywords, and Word Cloud are viewed consecutively
+- **THEN** their composition communicates frequency, annual distinctiveness, and overall lexical landscape respectively rather than presenting three similar ranked tables
+
+#### Scenario: Toggle Clean Mode
+- **WHEN** the user toggles the semantic Clean Mode chip
+- **THEN** native state, focus, label, reversibility, analytical invariants, and list/cloud correlation remain intact
+
+### Requirement: Detailed Analysis workspace v2 without semantic change
+Detailed Analysis SHALL use `Header → Query Bar → Section Rail → Content`, all-sans typography, compact systematic controls, concise metric anatomy, grouped Overview composition, purpose-specific charts, progressive methodology, and controlled table density. It MUST preserve all eight routes, props, callbacks/timing, Worker requests/protocols/results, canonical query identity, filter validation/explicit Apply, selected-year/threshold lifecycle, metric values/order, pending retention, stale suppression, loading/error/recovery, and export payload/authority. Overview MUST NOT render eight equal cards whose primary content includes long methodology paragraphs.
+
+#### Scenario: Recompose Overview
+- **WHEN** Detailed Overview renders
+- **THEN** one dominant selected-message metric, an Activity pair, Owner/Other comparison, and Replies/Sessions group are scannable, while definitions and schema detail remain in disclosure
+
+#### Scenario: Preserve behavior
+- **WHEN** identical synthetic inputs, filters, thresholds, routes, pending transitions, and export actions run before and after V3
+- **THEN** analytical values, keys, calls, states, and outputs remain equivalent
 
 #### Scenario: Open Words & Years
-- **WHEN** a user first enters the section
-- **THEN** summary, key visualization, ranking, and year comparison are visible while the dense yearly trace table and full methodology are collapsed
+- **WHEN** the user enters Words & Years
+- **THEN** Summary, Key Visualization, Primary Ranking, Year Comparison, collapsed yearly details, and collapsed methodology appear in that order with every existing field still reachable
 
-#### Scenario: Inspect engineering detail
-- **WHEN** a user expands yearly details or methodology
-- **THEN** every previously available engineering field and exact table value remains accessible with appropriate method/developer classification
+### Requirement: Chart language v2 and exact alternatives
+The UI SHALL implement Hero Chart, Standard Chart, Micro Chart, Comparison Bar, Distribution Strip, Timeline, and Rank Bars according to their frozen purpose, density, labels, annotations, grid, and accessible fallback. Unrelated data MUST NOT default to the same blue horizontal/vertical bar in a beige panel. Every chart SHALL expose a title, primary insight, direct labels/units, non-color meaning, and an exact list/table alternative.
 
-### Requirement: Table and chart visual treatments
-User-facing tables SHALL default to stronger headers, comfortable 52px rows, 16px cell padding, subtle alternate/hover tones, muted secondary fields, sparse separators, and right-aligned tabular numbers; constrained layouts MAY compact toward a readable 44px floor. Dense methodology tables MAY use 40px rows and 12px padding. Wide tables SHALL expose labelled horizontal scrolling plus an edge cue and sticky header where useful. Every chart card SHALL contain Header, Primary Insight, Chart, Legend/Annotations, and Optional Details, use semantic and supporting colors with direct labels/values, and retain an exact accessible table/list.
+#### Scenario: Read Rhythm
+- **WHEN** the Annual Rhythm scene is rendered
+- **THEN** month is the primary Landscape/Hero chart and weekday/hour are subordinate distribution strips with one combined exact-data disclosure
 
-#### Scenario: Read a normal table
-- **WHEN** a user-facing ranking or comparison table is rendered
-- **THEN** it uses comfortable density, balanced columns, tabular numeric alignment, and no hard border grid around every cell
+#### Scenario: Read without color or Canvas
+- **WHEN** color perception, Canvas rendering, or visual chart inspection is unavailable
+- **THEN** sentence summaries, labels, geometry/pattern where present, and exact lists/tables communicate all values
 
-#### Scenario: Read a dense methodology table
-- **WHEN** a user explicitly opens technical detail
-- **THEN** the table may use dense mode but retains header contrast, numeric alignment, labelled scrolling, keyboard reachability, and an overflow cue
+### Requirement: Visual screenshot acceptance and human stop gates
+V1, V2, and V3 SHALL each capture the fixed screenshot set applicable to the batch and score Hierarchy, Alignment, Consistency, Density, Rhythm, Balance, Readability, Contrast, Scanability, Composition, Story Progression, Artwork Integration, Chart Clarity, and Navigation Clarity as `PASS`, `NEEDS POLISH`, or `FAIL`. Home, Annual Opening, Scale, Rhythm, Balance, Conversation, Frequent Words, Keywords, Word Cloud, Closing, Detailed Overview, and Detailed Words & Years SHALL all be accepted before B5/B6. Any `FAIL`, inaccessible control, unclear data meaning, obvious generated-art defect, offline asset failure, or broken 1180/760/380 crop SHALL block the next batch. Each V batch SHALL stop for human review.
 
-#### Scenario: Read a chart without color
-- **WHEN** a chart compares owner, other, or additional categories
-- **THEN** its primary insight, labels, numeric values, geometry/pattern and exact accessible data communicate the result without relying on cobalt and gray alone
+#### Scenario: Finish V1
+- **WHEN** V1 automated checks pass
+- **THEN** Home, Opening, navigation, and Detailed shell screenshots are presented and implementation stops until human visual acceptance
+
+#### Scenario: Finish V2 or V3
+- **WHEN** the applicable full Annual or Detailed screenshot set is captured
+- **THEN** rubric results and unresolved polish are recorded and the next stage does not begin while any category is `FAIL`
 
 ### Requirement: Unified motion and reduced-motion behavior
-Motion introduced in B5 SHALL use the frozen fast/standard/emphasis/easing/stagger tokens. Chapters SHALL use one-shot non-blocking entry, numbers and charts SHALL reveal only after data is committed, and cloud words SHALL reveal in bounded rank batches. Motion MUST NOT start analytics, change data/layout, hide final information, or become required for correctness. Reduced motion SHALL show the final static state immediately. B1a/B1b SHALL establish no motion framework; they only guarantee complete static meaning and respect `prefers-reduced-motion` for incidental transitions.
+Motion introduced in B5 SHALL use the frozen fast/standard/emphasis/easing/stagger tokens. Chapters SHALL use one-shot non-blocking entry, numbers and charts SHALL reveal only after data is committed, and cloud words SHALL reveal in bounded rank batches. Motion MUST NOT start analytics, change data/layout, hide final information, or become required for correctness. Reduced motion SHALL show the final static state immediately. V1–V3 SHALL establish no new motion framework; they only guarantee complete static meaning and respect `prefers-reduced-motion` for incidental transitions.
 
 #### Scenario: Standard motion
 - **WHEN** motion is allowed and a committed chapter enters view
@@ -498,7 +460,7 @@ The implementation SHALL meet hard structural bounds: no source reread, no canon
 - **THEN** term count degrades through 100, 80, 60, 40, and 20 while the same bounded accessible candidate list remains available
 
 ### Requirement: Functional accessibility
-Home, mode/year/filter/session/role/metric/vocabulary/chapter/export/recovery controls SHALL be keyboard operable, visibly focused, programmatically named, and ordered. Report headings SHALL be semantic; dynamic states SHALL be announced; charts SHALL have summaries and exact lists/tables; cloud rank and frequency SHALL be screen-reader readable; color/size SHALL not be the sole signal; contrast SHALL meet WCAG 2.2 AA; zoom, narrow layout, and reduced motion SHALL pass acceptance.
+Home, mode/year/filter/session/role/metric/vocabulary/chapter/export/recovery controls SHALL be keyboard operable, visibly focused, programmatically named, and ordered. Report headings SHALL be semantic; anchored headings SHALL have safe scroll margin; dynamic states SHALL be announced; charts SHALL have summaries and exact lists/tables; cloud rank and frequency SHALL be screen-reader readable; color/size SHALL not be the sole signal; contrast SHALL meet WCAG 2.2 AA; zoom, narrow layout, and reduced motion SHALL pass acceptance. Generated decorative artwork SHALL use empty alt/`aria-hidden`, explicit dimensions, and no information that lacks a textual equivalent. Native semantic elements SHALL be preferred over ARIA, icon-only controls SHALL have accessible names, and animations MUST NOT use `transition: all`.
 
 #### Scenario: Keyboard annual flow
 - **WHEN** a keyboard-only user enters Home, selects a year, navigates chapters, opens methodology, edits custom-hidden preferences, and exports
@@ -507,6 +469,10 @@ Home, mode/year/filter/session/role/metric/vocabulary/chapter/export/recovery co
 #### Scenario: Announce asynchronous state
 - **WHEN** analysis/report/layout/export moves through loading, success, empty, insufficient, cancellation, or error
 - **THEN** an appropriate live region announces the state without exposing arbitrary error text or repeatedly reading animated intermediate values
+
+#### Scenario: Remove decorative artwork
+- **WHEN** generated artwork is hidden, fails to load, or is ignored by assistive technology
+- **THEN** every heading, metric, chart, control, scope label, privacy statement, and navigation affordance remains complete and understandable
 
 ### Requirement: Synthetic-only verification and packaged Beta boundary
 Automated and agent-run tests SHALL use synthetic fixtures only and SHALL cover the unit, Worker, layout, React, Rust/export, privacy, deterministic, cancellation, stale, responsive, motion, and accessibility matrices frozen in `design.md`. Final B6 SHALL validate the packaged `.app`, prototype `.dmg`, offline, no-account, and zero-external-request synthetic vertical. Real-data acceptance SHALL require separate user authorization and manual user execution.
@@ -520,7 +486,7 @@ Automated and agent-run tests SHALL use synthetic fixtures only and SHALL cover 
 - **THEN** the agent stops at the existing authorization boundary and does not execute productization 12.7/12.8 or legacy 13.10/15.10 without separate explicit authorization
 
 ### Requirement: Beta blockers and Release deferrals
-Beta acceptance SHALL fail for Dashboard regression, source reread, private-data access, network/upload dependency, canonical dataset in React state, main-thread tokenization, untestable nondeterministic cloud layout, privacy-leaking export, unusable 1180×760 layout, lost applied state, packaged startup failure, serious accessibility regression, or stale/cross-year display. Developer ID, notarization, stapling, Windows, auto-update, public Release, D.1–D.10, exhaustive inputs, full dark mode, possible-name filtering, advanced NER/NLP, all image formats, and Release-grade certification SHALL NOT be Beta blockers.
+Beta acceptance SHALL fail for Dashboard regression, source reread, private-data access, network/upload/runtime-art dependency, canonical dataset in React state, main-thread tokenization, changed word-cloud geometry, privacy-leaking export, unresolved visual-rubric `FAIL`, unusable 1180×760/760/380 layout, broken artwork crop/fallback, lost applied state, packaged startup failure, serious accessibility regression, or stale/cross-year display. B5 and B6 MUST remain blocked until V1–V3 human stop gates pass. Developer ID, notarization, stapling, Windows, auto-update, public Release, D.1–D.10, exhaustive inputs, full dark mode, possible-name filtering, advanced NER/NLP, all image formats, and Release-grade certification SHALL NOT be Beta blockers.
 
 #### Scenario: Detect stale year publication
 - **WHEN** a report displays metrics correlated to a year/query other than the current selection
@@ -529,3 +495,7 @@ Beta acceptance SHALL fail for Dashboard regression, source reread, private-data
 #### Scenario: Release hardening remains incomplete
 - **WHEN** all Beta synthetic requirements pass while D.1–D.10 remain unchecked
 - **THEN** Beta may be accepted as a local prototype without claiming formal Release readiness
+
+#### Scenario: Visual gate remains rejected
+- **WHEN** any V1–V3 screenshot category is `FAIL` or human acceptance has not occurred
+- **THEN** B5/B6 do not start even if functional automated tests are green

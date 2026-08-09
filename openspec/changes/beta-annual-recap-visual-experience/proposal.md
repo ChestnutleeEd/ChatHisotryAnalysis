@@ -1,8 +1,8 @@
 ## Why
 
-The Alpha desktop product already provides a complete, local, engineering-oriented analysis Dashboard, but ordinary users lack a clear annual-recap entry and story flow. Its current packaged UI also relies heavily on sharp white bordered rectangles, native-looking controls, repeated engineering/status labels, dense tables, and plain text hierarchy, so it reads as an administration surface rather than one coherent consumer desktop product. `Words & Years` exposes traceable top-word and yearly-keyword tables rather than a true annual word cloud, and the distinction between frequent words and distinctive yearly keywords is not yet presented in user language.
+The Beta now has the local desktop runtime, complete annual facts, Detailed Analysis, scoped vocabulary evidence, Clean Mode, and deterministic word cloud, but packaged visual acceptance rejected its presentation quality. Repeated cards, unstable column spans, excessive display type, uniform blue-bar charts, toolbar-like navigation, and almost no art direction make Annual Recap feel like a decorated Dashboard and Detailed Analysis feel like an engineering console.
 
-This Beta should land before Release hardening because it can reuse the accepted canonical-v2, Worker, query, privacy, lifecycle, and export-authority foundations while testing the product's user-facing value without expanding into signing, distribution, or cloud scope. A separate presentation layer also prevents visual storytelling concerns from weakening the existing analytical contracts.
+Visual re-architecture must therefore precede B5 sharing/motion and B6 packaged acceptance. The accepted analytics, privacy, query, vocabulary, word-cloud geometry, and export-authority contracts remain protected; this change refreezes only presentation architecture and a repository-owned generated-art pipeline.
 
 ## What Changes
 
@@ -16,7 +16,12 @@ This Beta should land before Release hardening because it can reuse the accepted
 - Synchronize the committed annual scope across the selector, report facts, core cards, scoped frequency DTO, yearly-keyword presentation, and word cloud; a pending selection never relabels retained evidence, and multi-year/all-years modes never retain a year-narrowed analytical result.
 - Add a default-on, one-click “净化常用词” presentation preference backed by a conservative versioned Chinese/English discourse lexicon. It filters and refills bounded display candidates only, composes with custom hidden words, and never changes tokenization, Stage 7, analytical ranks/scores, counts, rates, denominators, canonical query identity, or frequency DTO identity.
 - Add the frozen Beta visual, responsive, motion, reduced-motion, keyboard, ARIA, contrast, chart-alternative, loading, empty, error, and disabled-state system.
-- Add a shared visual foundation for Annual Recap, then land the low-risk Detailed Analysis uplift as a separate non-blocking B1b batch: semantic typography patterns, six semantic surface roles, restrained borders/depth, lightweight card variants, button hierarchy, form-control wrappers, badges/chips, app-mode navigation, Dashboard tab rail, compact filter toolbar, table/chart treatments, methodology disclosures, and status patterns.
+- Replace the first visual system with Design System v2: a semantic palette, a restrained serif/sans type hierarchy, predictable 12-column desktop grid, explicit spacing/surface/radius rules, fewer cards, and separate Annual/Detailed density modes.
+- Recompose the sixteen logical Annual sections into seven visual scenes—Opening, Scale, Rhythm, Balance, Conversation, Vocabulary, and Closing—without changing their order, facts, anchors, empty states, or word-cloud geometry.
+- Establish a formal generated-art direction and offline asset inventory for the Annual opening, transitions, vocabulary frame, closing poster, and optional Home decoration. Generated rasters remain generic, synthetic, text-free, data-free, locally optimized, and repository-owned; live generation, remote URLs, CDN assets, and private-data prompts are prohibited.
+- Recompose Detailed Analysis as a modern data workspace with a compact header/query bar/section rail, concise metric anatomy, chart hierarchy, progressive methodology, and predictable information density while preserving every route and analytical behavior.
+- Add a fixed screenshot set and a human visual acceptance rubric covering hierarchy, alignment, consistency, density, rhythm, balance, readability, contrast, scanability, composition, story progression, artwork integration, chart clarity, and navigation clarity.
+- Treat the completed B1a/B1b presentation as a functional baseline, then supersede its rejected visual decisions through three bounded v2 batches with human screenshot gates.
 - Refine the App Shell and workflow status so product identity, privacy/local state, current context, and secondary actions have distinct hierarchy; remove duplicate visible status statements and demote generation/schema/DTO labels to methodology or developer-only disclosure.
 - Reorganize `Words & Years` visually as summary → visualization → primary ranking → year comparison → collapsed detailed table → collapsed methodology without removing any data or changing metric semantics.
 - Add privacy-safe local PNG export for an annual summary card and a word cloud through a bounded renderer-to-host image contract and the existing native save authority.
@@ -32,13 +37,13 @@ This Beta should land before Release hardening because it can reuse the accepted
 - Rewriting Dashboard data logic or Worker query commit semantics as part of visual uplift; Beta may change typography, spacing, surfaces, controls, navigation styling, tables, charts, disclosures, badges, and metadata hierarchy only.
 - Executing private-data Stage 12.7/12.8, legacy Stage 13.10/15.10, or recording any private aggregate as implementation evidence.
 - Full dark mode, possible-name filtering or named-entity recognition, a general-purpose NLP pipeline, chapter-by-chapter PNG, or long/multipage report export in the first Beta.
-- The screenshot-driven B1b/Annual Recap visual refinement backlog (sticky toolbar weight, native select styling, forced equal heights, duplicate ready badges, over-expanded tables, excess serif hierarchy, dashboard-like cards, long vocabulary tables, density, and scene rhythm) is recorded but not implemented by this correctness hotfix.
+- Production React/CSS implementation and final image generation in this planning batch. Those changes are split into later Luna Max V1–V3 batches with mandatory human stop points.
 
 ## Capabilities
 
 ### New Capabilities
 
-- `beta-annual-recap`: Defines the Beta product information architecture, report semantics and chapters, presentation/word-cloud contracts, deterministic layout, local vocabulary policy, visual and motion system, accessible responsive behavior, privacy-safe sharing, performance budgets, and staged acceptance.
+- `beta-annual-recap`: Defines the Beta product information architecture, report semantics and chapters, presentation/word-cloud contracts, deterministic layout, local vocabulary policy, Design System v2, generated-art asset boundary, accessible responsive behavior, privacy-safe sharing, performance budgets, visual acceptance, and staged delivery.
 
 ### Modified Capabilities
 
@@ -46,8 +51,8 @@ None. The repository has no main `openspec/specs/` capability baseline, and this
 
 ## Impact
 
-- Planned frontend areas: `frontend/src/presentation/`, a new Beta presentation/report module, shared low-risk presentation primitives for the existing Dashboard, `frontend/src/worker-analysis/`, a new layout Worker, and explicitly scoped additions following the existing `frontend/src/styles.css` class/custom-property architecture.
+- Planned presentation areas for V1–V3: `frontend/src/presentation/beta/`, `frontend/src/presentation/DesktopDashboard.tsx`, the Beta-owned portions of `frontend/src/presentation/DesktopImportPanel.tsx`, scoped CSS currently housed in `frontend/src/styles.css`, browser acceptance tests, and a new repository-owned `frontend/src/assets/beta/art/` directory created only during implementation.
 - Planned host areas: compatible additions to `frontend/src/desktop/`, `src-tauri/src/ipc.rs`, `src-tauri/src/export.rs`, and `src-tauri/src/export_schema.rs` for a bounded opaque-binary presentation-PNG save authority; no broader filesystem, shell, HTTP, opener, updater, or window authority.
 - Planned tests use only existing or new synthetic fixtures under `frontend/tests/`, `src-tauri` tests, and packaged synthetic acceptance scripts.
-- Existing dependencies `React`, `ECharts`, `echarts-wordcloud`, `jieba-wasm`, Tauri 2, Rust, and the packaged PyInstaller `onedir` sidecar remain available. B1–B5 add no UI framework, CSS-in-JS system, icon pack, word-cloud library, animation framework, CDN, or remote font; the deterministic Beta layout does not rely on `echarts-wordcloud` random placement.
+- Existing dependencies `React`, `ECharts`, `echarts-wordcloud`, `jieba-wasm`, Tauri 2, Rust, and the packaged PyInstaller `onedir` sidecar remain available. V1–V3 add no UI framework, CSS-in-JS system, icon pack, word-cloud library, runtime image-generation client, animation framework, CDN, remote font, or remote image dependency; generated art is copied into and bundled from the repository only after review and optimization.
 - Production implementation is intentionally deferred to separate Luna Max batches; this change contains planning artifacts only.
