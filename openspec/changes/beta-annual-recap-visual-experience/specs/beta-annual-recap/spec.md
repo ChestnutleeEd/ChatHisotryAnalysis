@@ -83,6 +83,21 @@ Annual Recap and Detailed Analysis SHALL share the **committed** date range, sen
 - **WHEN** the user edits an unapplied filter, changes app mode, Dashboard route, report chapter, scroll position, raw/per-10k display, or custom-hidden preferences
 - **THEN** none of those UI-only transitions changes the committed canonical analytics key; only a successful explicit analytics Apply may publish a new committed key
 
+### Requirement: Committed annual scope synchronization
+The visible Annual Recap selection SHALL describe the currently committed analytical result, not an optimistic request. A year transition SHALL publish the selector, report query/DTO, core cards, scoped frequency DTO, distinctive-keyword year, cloud presentation, accessible list, and scope labels as one correlated scope. Retained prior evidence MAY remain available during refresh only while it retains its prior selector/scope label. A mismatched frequency DTO or late layout result MUST be suppressed. Selecting Multi-year Overview from a concrete year SHALL first restore the preserved `reportBaseRange` with `selectedYear=null`; selecting all years SHALL do the same. Route, chapter, scroll, metric display, clean mode, and custom-hidden state SHALL remain outside analytical identity.
+
+#### Scenario: Switch directly across annual scopes
+- **WHEN** the user commits Year A, then Year B, then all years from a multi-year `reportBaseRange`
+- **THEN** every published report/frequency/keyword/cloud identity matches Year A, then Year B, then the broad base range, without intersecting Year B with Year A or relabelling stale evidence
+
+#### Scenario: Open multi-year overview from an annual result
+- **WHEN** a concrete year is committed and the user selects Multi-year Overview
+- **THEN** the committed analytical bounds return to `reportBaseRange`, `selectedYear` is cleared, and the overview does not render year-narrowed cards, frequency evidence, or cloud data
+
+#### Scenario: Reject stale word evidence
+- **WHEN** a retained frequency DTO or layout result belongs to another base query, year, role, dataset, or generation
+- **THEN** it is not rendered under the current selector and cannot overwrite the current cloud/list presentation
+
 ### Requirement: Fixed annual narrative and logical-section contracts
 Annual Recap SHALL use the fixed logical order: Opening; Messages; Active Days; Longest Streak; Peak Month; Peak Weekday; Peak Hour; Sender Share; Message Length; Message Types; Sessions; Replies; Frequent Words; Distinctive Keywords; Word Cloud; Summary and Share. Each logical section SHALL define its user question, primary metric, template ID, supporting visual, source, empty/insufficient state, filter exception, export eligibility, and multi-year eligibility as frozen in `design.md`. Adjacent logical sections MAY share one responsive visual scene; sixteen full-screen cards are not required.
 
@@ -194,6 +209,25 @@ Custom hidden words SHALL be stored only in bounded versioned local application-
 #### Scenario: Reset custom words
 - **WHEN** the user chooses restore default filtering
 - **THEN** the custom set becomes empty, previously custom-hidden eligible tokens can return, and the fixed built-in policy remains active
+
+### Requirement: Vocabulary Clean Mode presentation preference
+Annual Recap SHALL provide a prominent “净化常用词” toggle, default-on, using the versioned local `beta-vocabulary-clean-presentation.v1` conservative Chinese/English function-word and discourse lexicon. Clean Mode SHALL be presentation-only and SHALL apply to Frequent Words, Distinctive Keywords, the word cloud, and its accessible list. The pipeline SHALL scan the bounded analytical candidates in their existing order, skip Clean Mode matches, then skip custom-hidden matches, and continue until the consumer's display limit or candidate exhaustion. It SHALL derive contiguous display ranks without changing analytical rank, score, count, rate, denominator, Stage 7, `canonicalQueryKey`, `frequencyDtoKey`, or Analytics Worker requests. Clean Mode state and custom-hidden state SHALL be independent local preferences.
+
+#### Scenario: Toggle clean presentation
+- **WHEN** Clean Mode changes on the same scoped frequency DTO
+- **THEN** the analytical DTO, count, rate, denominator, analytical rank, keyword score, canonical identity, and frequency identity remain byte-equivalent while the presentation candidates and layout digest may change
+
+#### Scenario: Refill after filtering
+- **WHEN** early analytical candidates contain clean-lexicon or custom-hidden matches
+- **THEN** presentation continues scanning later candidates in analytical order until the Frequent Words, Keywords, or Word Cloud display target is filled or the bounded candidate pool is exhausted
+
+#### Scenario: Compose independent filters
+- **WHEN** Clean Mode is enabled and custom hidden words are present
+- **THEN** both filters apply in clean-then-custom order; disabling Clean Mode preserves custom hidden words, and clearing custom hidden words preserves the Clean Mode preference
+
+#### Scenario: All-years keywords
+- **WHEN** no concrete year is committed
+- **THEN** the Distinctive Keywords presentation uses the existing unavailable/empty semantics and does not present a latest-year keyword list as an all-years claim
 
 ### Requirement: Deterministic layout Worker
 Word-cloud geometry SHALL be produced by a dedicated local Worker using `beta-wordcloud-layout.v1`, stable weight/count/Unicode sorting, exact-center fixed-phase integer Archimedean spiral, fixed rank/category palette mapping, versioned synthetic Han/Latin/mixed glyph rectangles, zero rotation, 16-pixel spatial-hash collision checks, and at most 4,096 attempts per word. V1 SHALL NOT use a seed or PRNG because no randomized choice remains. Canvas `measureText` MAY only shrink rendering to an assigned safety rectangle and MUST NOT alter Worker coordinates or layout identity. Layout MUST NOT use current time, `Math.random`, locale collation, network fonts, DOM layout, or analytics.

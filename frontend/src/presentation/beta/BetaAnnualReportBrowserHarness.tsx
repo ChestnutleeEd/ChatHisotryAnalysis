@@ -50,7 +50,10 @@ export function BetaAnnualReportBrowserHarness() {
     mode,
     year: mode === "annual" ? year : null,
   })), [mode, result, year]);
-  const frequency = useMemo(() => syntheticBetaWordCloudFrequency(year, wordRole), [wordRole, year]);
+  const frequency = useMemo(
+    () => syntheticBetaWordCloudFrequency(mode === "annual" ? year : null, wordRole),
+    [mode, wordRole, year],
+  );
   const representedYears = representedYearOptions([2024, 2025], { startDate: "2024-01-01", endDate: "2025-12-31" });
 
   function changeRange(value: string): void {

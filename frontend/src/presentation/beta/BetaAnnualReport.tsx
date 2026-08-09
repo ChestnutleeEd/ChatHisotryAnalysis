@@ -3,6 +3,7 @@ import {
   type BetaReportSectionId,
 } from "./report-sections";
 import {
+  committedReportSelection,
   reportSelectionValue,
   type BetaReportPresentationState,
   type RepresentedYearOption,
@@ -47,6 +48,17 @@ function isBetaReportViewModel(
   value: BetaAnnualReportProps["viewModel"],
 ): value is BetaReportViewModelV1 {
   return "schemaVersion" in value && value.schemaVersion === "chat-history-analysis.beta-report-view-model.v1";
+}
+
+function committedRangeValue(
+  reportState: BetaReportPresentationState,
+  analyticsResult: CanonicalAnalysisResult | undefined,
+): string {
+  return reportSelectionValue(
+    analyticsResult === undefined
+      ? reportState.selection
+      : committedReportSelection(reportState.selection, analyticsResult.filters),
+  );
 }
 
 export function BetaAnnualReport({
@@ -103,7 +115,7 @@ export function BetaAnnualReport({
         <label>
           <span>回顾范围</span>
           <select
-            value={reportSelectionValue(reportState.selection)}
+            value={committedRangeValue(reportState, analyticsResult)}
             disabled={pending}
             onChange={(event) => onRangeChange(event.currentTarget.value)}
           >
@@ -269,7 +281,7 @@ function BetaCoreAnnualReport({
         <label>
           <span>回顾范围</span>
           <select
-            value={reportSelectionValue(reportState.selection)}
+            value={committedRangeValue(reportState, analyticsResult)}
             disabled={pending}
             onChange={(event) => onRangeChange(event.currentTarget.value)}
           >

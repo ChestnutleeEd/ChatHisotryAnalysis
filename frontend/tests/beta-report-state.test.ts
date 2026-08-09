@@ -7,6 +7,7 @@ import {
 } from "../src/worker-analysis/analytics-contract";
 import {
   applyGlobalReportRange,
+  committedReportSelection,
   defaultRepresentedYear,
   initializeReportPresentationState,
   intersectRangeWithYear,
@@ -15,6 +16,7 @@ import {
   restoreDatasetReportRange,
   selectAllReportYears,
   selectMultiYearOverview,
+  selectMultiYearReportRange,
   selectReportYear,
   type DateRange,
 } from "../src/presentation/beta/report-state";
@@ -115,6 +117,25 @@ describe("Beta B1a reportBaseRange boundary", () => {
       selectedYear: null,
     });
     expect(all.state.selection).toEqual({ kind: "all-years" });
+  });
+
+  it("restores the broad committed range before publishing multi-year overview", () => {
+    const year = selectReportYear(initialState(), filters(), 2024)!;
+    const overview = selectMultiYearReportRange(year.state, year.filters);
+    expect(overview.filters).toMatchObject({
+      ...DATASET_RANGE,
+      selectedYear: null,
+    });
+    expect(overview.state.selection).toEqual({ kind: "multi-year-overview" });
+    expect(overview.state.reportBaseRange).toEqual(DATASET_RANGE);
+  });
+
+  it("derives the visible selector from committed analytics rather than an optimistic selection", () => {
+    const current = initialState();
+    const requested = selectReportYear(current, filters(), 2024)!;
+    expect(committedReportSelection(requested.state.selection, filters())).toEqual({ kind: "all-years" });
+    expect(committedReportSelection(requested.state.selection, requested.filters)).toEqual({ kind: "year", year: 2024 });
+    expect(committedReportSelection({ kind: "multi-year-overview" }, filters())).toEqual({ kind: "multi-year-overview" });
   });
 
   it("intersects partial broad ranges and rejects empty year intersections", () => {

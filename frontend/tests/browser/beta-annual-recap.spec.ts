@@ -25,11 +25,53 @@ test("renders synthetic Annual Recap core cards and preserves responsive semanti
   await expect(page.locator("#peak-weekday")).toContainText("星期一和星期二");
   await expect(page.getByTestId("beta-word-cloud-canvas")).toHaveAttribute("data-layout-state", "ready", { timeout: 15_000 });
 
+  const cleanToggle = page.locator(".beta-clean-mode-control input[type='checkbox']");
+  await expect(cleanToggle).toBeChecked();
+  await expect(page.locator("#frequent-words")).toContainText("本地版本");
+  await expect(page.locator("#frequent-words")).not.toContainText("但是");
+  await expect(page.locator("#distinctive-keywords")).toHaveAttribute("data-keyword-year", "2025");
+  await expect(page.locator("#word-cloud")).toHaveAttribute("data-clean-mode", "on");
+  await expect(page.locator("#word-cloud .beta-word-cloud-list")).toContainText("本地版本");
+
+  const meaningfulCount = await page.locator("#frequent-words .beta-word-ranking li", { hasText: "本地版本" }).textContent();
+  await cleanToggle.uncheck();
+  await expect(page.locator("#frequent-words")).toContainText("但是");
+  await expect(page.locator("#word-cloud")).toHaveAttribute("data-clean-mode", "off");
+  await expect(page.locator("#word-cloud .beta-word-cloud-list")).toContainText("但是");
+  await expect(page.locator("#frequent-words .beta-word-ranking li", { hasText: "本地版本" })).toContainText("350 次");
+  expect(meaningfulCount).toContain("350 次");
+  await cleanToggle.check();
+  await expect(page.locator("#frequent-words")).not.toContainText("但是");
+  await expect(page.getByTestId("beta-word-cloud-canvas")).toHaveAttribute("data-layout-state", "ready", { timeout: 15_000 });
+
   await page.getByLabel("回顾范围").selectOption("year:2024");
   await expect(page.locator("#beta-report-heading")).toHaveText("2024 年");
+  await expect(page.locator("#messages")).toContainText("824");
+  await expect(page.locator("#frequent-words")).toContainText("海边计划");
+  await expect(page.locator("#frequent-words")).not.toContainText("本地版本");
+  await expect(page.locator("#distinctive-keywords")).toHaveAttribute("data-keyword-year", "2024");
+  await expect(page.locator("#word-cloud .beta-word-cloud-list-heading")).toContainText("2024 年");
+  await expect(page.locator("#word-cloud .beta-word-cloud-list")).toContainText("海边计划");
   await expect(page.locator(".beta-report-scope-banner")).toHaveCount(0);
+
+  await page.getByLabel("回顾范围").selectOption("year:2025");
+  await expect(page.locator("#messages")).toContainText("1,248");
+  await expect(page.locator("#frequent-words")).toContainText("本地版本");
+  await expect(page.locator("#distinctive-keywords")).toHaveAttribute("data-keyword-year", "2025");
+  await expect(page.locator("#word-cloud .beta-word-cloud-list-heading")).toContainText("2025 年");
+
+  await page.getByLabel("回顾范围").selectOption("all-years");
+  await expect(page.getByLabel("回顾范围")).toHaveValue("all-years");
+  await expect(page.locator("#messages")).toContainText("2,072");
+  await expect(page.locator("#frequent-words")).toContainText("共同回顾");
+  await expect(page.locator("#distinctive-keywords")).toHaveAttribute("data-keyword-year", "all-years");
+  await expect(page.locator("#distinctive-keywords")).toContainText("全部年份范围不定义年度区分词");
+  await expect(page.locator("#distinctive-keywords .beta-keyword-ranking")).toHaveCount(0);
+  await expect(page.locator("#word-cloud .beta-word-cloud-list-heading")).toContainText("全部年份");
+
   await page.getByLabel("回顾范围").selectOption("multi-year-overview");
   await expect(page.getByLabel("回顾范围")).toHaveValue("multi-year-overview");
+  await expect(page.locator("#messages")).toContainText("2,072");
 
   await page.setViewportSize({ width: 520, height: 900 });
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);

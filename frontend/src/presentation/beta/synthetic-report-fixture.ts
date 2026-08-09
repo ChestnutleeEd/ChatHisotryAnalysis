@@ -17,6 +17,7 @@ function categoryCounts(): Record<string, number> {
 
 export function syntheticBetaAnnualReportResult(year: number): CanonicalAnalysisResult {
   const partial = year === 2025;
+  const scopedMessageCount = year === 2024 ? 824 : 1_248;
   const filters = {
     startDate: partial ? `${year}-02-01` : `${year}-01-01`,
     endDate: `${year}-12-31`,
@@ -52,8 +53,8 @@ export function syntheticBetaAnnualReportResult(year: number): CanonicalAnalysis
     filters,
     dataset: {
       schemaVersion: "chat-history-analysis.canonical-manifest.v2",
-      eventCount: 1_248,
-      userMessageCount: 1_248,
+      eventCount: scopedMessageCount,
+      userMessageCount: scopedMessageCount,
       eligibleTextCount: 930,
       systemEventCount: 0,
       chunkCount: 1,
@@ -73,8 +74,8 @@ export function syntheticBetaAnnualReportResult(year: number): CanonicalAnalysis
       typedArrayBytes: 0,
     },
     aggregate: {
-      eventCount: 1_248,
-      userMessageCount: 1_248,
+      eventCount: scopedMessageCount,
+      userMessageCount: scopedMessageCount,
       eligibleTextCount: 930,
       systemEventCount: 0,
       messageCategoryCounts: categoryCounts(),
@@ -146,10 +147,11 @@ export function syntheticBetaAnnualReportResult(year: number): CanonicalAnalysis
           year,
           mode: "frequency-fallback",
           keywords: [
-            { token: "本地", count: 86 },
-            { token: "版本", count: 70 },
-            { token: "计划", count: 58 },
-          ],
+            "但是", "然后", "所以", "这个", "已经", "就是", "其实", "还有", "the", "and",
+            ...(year === 2024
+              ? ["海边计划", "相册整理", "冬日散步", "旧城地图", "周末路线", "照片备份", "晚餐清单", "阅读笔记", "电影片单", "旅行手册"]
+              : ["本地版本", "年度报告", "词云布局", "发布计划", "测试矩阵", "界面修订", "离线分析", "范围同步", "性能记录", "隐私边界"]),
+          ].map((token, index) => ({ token, count: 100 - index * 3 })),
         }],
       },
     },
@@ -196,6 +198,11 @@ export function syntheticBetaAllYearsReportResult(): CanonicalAnalysisResult {
     ...annual,
     queryKey: canonicalQueryKey(SYNTHETIC_REPORT_DATASET_ID, SYNTHETIC_REPORT_GENERATION, filters),
     filters,
+    aggregate: {
+      ...annual.aggregate,
+      eventCount: 2_072,
+      userMessageCount: 2_072,
+    },
     activity: { ...annual.activity, filters },
     stage7: { ...annual.stage7, filters },
     replySessions: { ...annual.replySessions, filters },

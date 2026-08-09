@@ -3222,6 +3222,17 @@ footer a {
   font-weight: 650;
 }
 
+.desktop-app.beta-enabled .beta-clean-mode-control {
+  align-items: center;
+}
+
+.desktop-app.beta-enabled .beta-clean-mode-control small {
+  flex-basis: 100%;
+  color: var(--beta-color-text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
 .desktop-app.beta-enabled .beta-word-control-group input:checked + span {
   border-color: var(--beta-color-primary);
   background: var(--beta-color-highlight);

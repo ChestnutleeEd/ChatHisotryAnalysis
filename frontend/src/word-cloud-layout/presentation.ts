@@ -29,6 +29,7 @@ export function createWordCloudPresentation(
   metric: WordFrequencyMetric,
   wordLimit: number,
   minimumFrequency = 1,
+  cleanMode = true,
 ): WordCloudPresentationV1 {
   const dto = validateWorkerWordFrequencyDtoV1(value) as WorkerWordFrequencyDtoV1;
   if (
@@ -46,6 +47,7 @@ export function createWordCloudPresentation(
     customHiddenWords,
     metric,
     wordLimit,
+    cleanMode,
   );
   const items = presentation.items.filter((item) => item.count >= minimumFrequency);
   const words = sortLayoutWords(items.map((item) => ({

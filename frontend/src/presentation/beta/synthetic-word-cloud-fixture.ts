@@ -18,12 +18,12 @@ const FIXTURE_DATASET_ID =
 const FIXTURE_GENERATION = 1 as Generation;
 
 export function syntheticBetaWordCloudFrequency(
-  year: number,
+  year: number | null,
   role: WordFrequencyRole,
 ): WorkerWordFrequencyDtoV1 {
   const filters = {
-    startDate: `${year}-01-01`,
-    endDate: `${year}-12-31`,
+    startDate: year === null ? "2024-01-01" : year === 2025 ? "2025-02-01" : `${year}-01-01`,
+    endDate: year === null ? "2025-12-31" : `${year}-12-31`,
     sender: "both" as const,
     selectedYear: year,
     sessionThresholdHours: 6 as const,
@@ -33,15 +33,25 @@ export function syntheticBetaWordCloudFrequency(
     FIXTURE_GENERATION,
     filters,
   );
-  const denominator = 9_500;
-  const items = Array.from({ length: 42 }, (_, index) => {
+  const denominator = year === null ? 18_400 : year === 2024 ? 8_900 : 9_500;
+  const cleanWords = ["但是", "然后", "所以", "这个", "已经", "就是", "其实", "还有", "the", "and"];
+  const scopeWords = year === 2024
+    ? ["海边计划", "相册整理", "冬日散步", "旧城地图", "周末路线", "照片备份", "晚餐清单", "阅读笔记", "电影片单", "旅行手册"]
+    : year === 2025
+      ? ["本地版本", "年度报告", "词云布局", "发布计划", "测试矩阵", "界面修订", "离线分析", "范围同步", "性能记录", "隐私边界"]
+      : ["共同回顾", "年度趋势", "本地分析", "消息节奏", "长期计划", "内容主题", "时间分布", "双方词频", "离线报告", "数据年鉴"];
+  const candidateWords = [
+    ...cleanWords,
+    ...scopeWords,
+    ...Array.from({ length: 30 }, (_, index) => `synthetic${year ?? "all"}${String(index).padStart(2, "0")}`),
+  ];
+  const items = candidateWords.slice(0, 42).map((token, index) => {
     const count = 420 - index * 7 + (role === "owner" ? 18 : role === "other" ? 9 : 0);
-    const category = index % 3 === 0 ? "han" : index % 3 === 1 ? "latin" : "mixed";
-    const token = category === "han"
-      ? `本地${String.fromCodePoint(0x4e00 + index)}`
-      : category === "latin"
-        ? `report${String(index).padStart(2, "0")}`
-        : `版本v${String(index).padStart(2, "0")}`;
+    const category = /^[\p{Script=Han}]+$/u.test(token)
+      ? "han"
+      : /^[a-z]+$/u.test(token)
+        ? "latin"
+        : "mixed";
     return {
       normalizedToken: token,
       count,

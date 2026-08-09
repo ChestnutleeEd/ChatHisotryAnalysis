@@ -197,6 +197,29 @@ export function selectMultiYearOverview(
   };
 }
 
+export function selectMultiYearReportRange(
+  state: BetaReportPresentationState,
+  committedFilters: CanonicalAnalysisFilters,
+): ReportQueryTransition {
+  const allYears = selectAllReportYears(state, committedFilters);
+  return {
+    state: selectMultiYearOverview(allYears.state),
+    filters: allYears.filters,
+  };
+}
+
+export function committedReportSelection(
+  presentationSelection: BetaReportSelection,
+  committedFilters: CanonicalAnalysisFilters,
+): BetaReportSelection {
+  if (committedFilters.selectedYear !== null) {
+    return { kind: "year", year: committedFilters.selectedYear };
+  }
+  return presentationSelection.kind === "multi-year-overview"
+    ? presentationSelection
+    : { kind: "all-years" };
+}
+
 export function applyGlobalReportRange(
   state: BetaReportPresentationState,
   committedFilters: CanonicalAnalysisFilters,

@@ -3,6 +3,10 @@ import type {
   WorkerWordFrequencyDtoV1,
   WorkerWordFrequencyItemV1,
 } from "../../worker-analysis/word-frequency-contract";
+import {
+  BETA_VOCABULARY_CLEAN_PRESENTATION_VERSION,
+  isCleanVocabularyToken,
+} from "./clean-vocabulary";
 
 export const CUSTOM_HIDDEN_WORDS_STORAGE_KEY =
   "chat-history-analysis.beta.custom-hidden-words.v1";
@@ -10,6 +14,7 @@ export const CUSTOM_HIDDEN_WORDS_STORAGE_VERSION =
   "chat-history-analysis.custom-hidden-words.v1" as const;
 export const MAX_CUSTOM_HIDDEN_WORDS = 200;
 export const MAX_WORD_EVIDENCE_ITEMS = 20;
+export const MAX_KEYWORD_EVIDENCE_ITEMS = 10;
 
 export type WordFrequencyMetric = "raw-count" | "per-10000-eligible-tokens";
 
@@ -33,6 +38,8 @@ export interface WordFrequencyPresentation {
   readonly frequencyDtoKey: string | null;
   readonly items: readonly WordFrequencyPresentationItem[];
   readonly hiddenCandidateCount: number;
+  readonly cleanHiddenCandidateCount: number;
+  readonly customHiddenCandidateCount: number;
   readonly boundedPoolExhausted: boolean;
 }
 
@@ -173,6 +180,7 @@ export function createWordFrequencyPresentation(
   customHiddenWords: readonly string[],
   metric: WordFrequencyMetric,
   visibleLimit = MAX_WORD_EVIDENCE_ITEMS,
+  cleanMode = true,
 ): WordFrequencyPresentation {
   if (dto === undefined) {
     return {
@@ -184,11 +192,18 @@ export function createWordFrequencyPresentation(
       frequencyDtoKey: null,
       items: [],
       hiddenCandidateCount: 0,
+      cleanHiddenCandidateCount: 0,
+      customHiddenCandidateCount: 0,
       boundedPoolExhausted: false,
     };
   }
   const hidden = hiddenSet(customHiddenWords);
-  const visible = dto.items.filter((item) => !hidden.has(item.normalizedToken));
+  const afterClean = cleanMode
+    ? dto.items.filter((item) => !isCleanVocabularyToken(item.normalizedToken))
+    : dto.items;
+  const visible = afterClean.filter((item) => !hidden.has(item.normalizedToken));
+  const cleanHiddenCandidateCount = dto.items.length - afterClean.length;
+  const customHiddenCandidateCount = afterClean.length - visible.length;
   const items = visible.slice(0, visibleLimit).map((item, index) => ({
     displayToken: item.normalizedToken,
     normalizedToken: item.normalizedToken,
@@ -207,21 +222,34 @@ export function createWordFrequencyPresentation(
     year: dto.scope.year,
     frequencyDtoKey: dto.identity.frequencyDtoKey,
     items,
-    hiddenCandidateCount: dto.items.length - visible.length,
+    hiddenCandidateCount: cleanHiddenCandidateCount + customHiddenCandidateCount,
+    cleanHiddenCandidateCount,
+    customHiddenCandidateCount,
     boundedPoolExhausted:
-      dto.items.length > 0 && visible.length < visibleLimit && hidden.size > 0,
+      dto.items.length > 0 &&
+      visible.length < visibleLimit &&
+      cleanHiddenCandidateCount + customHiddenCandidateCount > 0,
   };
 }
 
 export function createKeywordPresentation(
   result: CanonicalAnalysisResult,
   customHiddenWords: readonly string[],
-  visibleLimit = MAX_WORD_EVIDENCE_ITEMS,
+  visibleLimit = MAX_KEYWORD_EVIDENCE_ITEMS,
+  cleanMode = true,
 ): KeywordPresentation {
   const evidence = result.stage7.yearlyKeywords;
-  const year = evidence.activeYear;
+  const year = result.filters.selectedYear;
+  if (year === null) {
+    return {
+      year: null,
+      mode: "unavailable",
+      explanation: "全部年份范围不定义年度区分词；请选择一个具体年份。",
+      items: [],
+    };
+  }
   const active = evidence.years.find((candidate) => candidate.year === year);
-  if (active === undefined) {
+  if (active === undefined || evidence.activeYear !== year) {
     return {
       year,
       mode: "unavailable",
@@ -232,6 +260,7 @@ export function createKeywordPresentation(
   const hidden = hiddenSet(customHiddenWords);
   const items = active.keywords
     .map((item, index) => ({ item, sourceRank: index + 1 }))
+    .filter(({ item }) => !cleanMode || !isCleanVocabularyToken(item.token))
     .filter(({ item }) => !hidden.has(item.token))
     .slice(0, visibleLimit)
     .map(({ item, sourceRank }, index) => ({
@@ -259,6 +288,7 @@ export function wordPresentationKey(
   metric: WordFrequencyMetric,
   customHiddenWords: readonly string[],
   visibleLimit: number,
+  cleanMode = true,
 ): string {
   const normalized = mergeCustomHiddenWords([], customHiddenWords);
   let hash = 2_166_136_261;
@@ -267,9 +297,11 @@ export function wordPresentationKey(
     hash = Math.imul(hash, 16_777_619) >>> 0;
   }
   return JSON.stringify([
-    "chat-history-analysis.word-presentation.v1",
+    "chat-history-analysis.word-presentation.v2",
     frequencyDtoKeyValue,
     metric,
+    BETA_VOCABULARY_CLEAN_PRESENTATION_VERSION,
+    cleanMode,
     hash.toString(16).padStart(8, "0"),
     visibleLimit,
   ]);

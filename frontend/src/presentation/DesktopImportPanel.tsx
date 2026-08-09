@@ -56,12 +56,12 @@ import {
   applyGlobalReportRange,
   datasetRange,
   initializeReportPresentationState,
-  reportSelectionValue,
   representedYearOptions,
   representedYearsFromBuckets,
   restoreDatasetReportRange,
   selectAllReportYears,
   selectMultiYearOverview,
+  selectMultiYearReportRange,
   selectReportYear,
   type BetaProductMode,
   type BetaReportPresentationState,
@@ -1398,15 +1398,12 @@ export function DesktopImportPanel() {
     transition: ReportQueryTransition,
     commitKind: Exclude<AnalyticsCommitKind, "global">,
   ): Promise<void> {
-    const previous = reportState;
-    setReportState(transition.state);
     const next = await updateAnalyticsFilters(transition.filters, commitKind);
-    if (next === undefined && previous !== undefined) {
+    if (next !== undefined) {
       setReportState((current) =>
         current !== undefined &&
-        current.datasetSessionKey === transition.state.datasetSessionKey &&
-        reportSelectionValue(current.selection) === reportSelectionValue(transition.state.selection)
-          ? previous
+        current.datasetSessionKey === transition.state.datasetSessionKey
+          ? transition.state
           : current,
       );
     }
@@ -1445,7 +1442,14 @@ export function DesktopImportPanel() {
       return;
     }
     if (value === "multi-year-overview") {
-      setReportState(selectMultiYearOverview(reportState));
+      if (analyticsResult.filters.selectedYear === null) {
+        setReportState(selectMultiYearOverview(reportState));
+      } else {
+        void commitReportTransition(
+          selectMultiYearReportRange(reportState, analyticsResult.filters),
+          "report-all",
+        );
+      }
       return;
     }
     if (value === "all-years") {

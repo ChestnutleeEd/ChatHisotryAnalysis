@@ -13,6 +13,8 @@ This Beta should land before Release hardening because it can reuse the accepted
 - Compatibly extend the Analytics Worker result for scoped ranked tokens, normalized frequencies, vocabulary-quality flags, stopword policy identity, and word-cloud inputs; retain one-time Worker tokenization and all existing Dashboard DTOs.
 - Add an independent deterministic word-cloud layout Worker, Canvas screen/export renderers, and an accessible ranked list; the renderer will not scan message bodies or hold the canonical dataset.
 - Add local vocabulary controls for built-in analysis-policy disclosure and custom hidden words; custom hiding is a presentation preference that never changes the eligible-token denominator or base analytics query.
+- Synchronize the committed annual scope across the selector, report facts, core cards, scoped frequency DTO, yearly-keyword presentation, and word cloud; a pending selection never relabels retained evidence, and multi-year/all-years modes never retain a year-narrowed analytical result.
+- Add a default-on, one-click “净化常用词” presentation preference backed by a conservative versioned Chinese/English discourse lexicon. It filters and refills bounded display candidates only, composes with custom hidden words, and never changes tokenization, Stage 7, analytical ranks/scores, counts, rates, denominators, canonical query identity, or frequency DTO identity.
 - Add the frozen Beta visual, responsive, motion, reduced-motion, keyboard, ARIA, contrast, chart-alternative, loading, empty, error, and disabled-state system.
 - Add a shared visual foundation for Annual Recap, then land the low-risk Detailed Analysis uplift as a separate non-blocking B1b batch: semantic typography patterns, six semantic surface roles, restrained borders/depth, lightweight card variants, button hierarchy, form-control wrappers, badges/chips, app-mode navigation, Dashboard tab rail, compact filter toolbar, table/chart treatments, methodology disclosures, and status patterns.
 - Refine the App Shell and workflow status so product identity, privacy/local state, current context, and secondary actions have distinct hierarchy; remove duplicate visible status statements and demote generation/schema/DTO labels to methodology or developer-only disclosure.
@@ -30,6 +32,7 @@ This Beta should land before Release hardening because it can reuse the accepted
 - Rewriting Dashboard data logic or Worker query commit semantics as part of visual uplift; Beta may change typography, spacing, surfaces, controls, navigation styling, tables, charts, disclosures, badges, and metadata hierarchy only.
 - Executing private-data Stage 12.7/12.8, legacy Stage 13.10/15.10, or recording any private aggregate as implementation evidence.
 - Full dark mode, possible-name filtering or named-entity recognition, a general-purpose NLP pipeline, chapter-by-chapter PNG, or long/multipage report export in the first Beta.
+- The screenshot-driven B1b/Annual Recap visual refinement backlog (sticky toolbar weight, native select styling, forced equal heights, duplicate ready badges, over-expanded tables, excess serif hierarchy, dashboard-like cards, long vocabulary tables, density, and scene rhythm) is recorded but not implemented by this correctness hotfix.
 
 ## Capabilities
 
