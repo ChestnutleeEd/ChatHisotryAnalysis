@@ -36,6 +36,16 @@ import type {
 } from "../worker-analysis/analytics-contract";
 import { canonicalQueryKey } from "../worker-analysis/analytics-contract";
 import type { WorkerProgress } from "../worker-analysis/protocol";
+import {
+  WORD_FREQUENCY_QUERY_SCHEMA_VERSION,
+  frequencyDtoKey,
+  type WorkerWordFrequencyDtoV1,
+  type WordFrequencyRole,
+} from "../worker-analysis/word-frequency-contract";
+import {
+  BETA_VOCABULARY_POLICY_HASH,
+  BETA_VOCABULARY_POLICY_VERSION,
+} from "../worker-analysis/vocabulary-policy";
 import { DesktopDashboard } from "./DesktopDashboard";
 import { BetaAnnualReport } from "./beta/BetaAnnualReport";
 import { BetaHome } from "./beta/BetaHome";
@@ -237,6 +247,8 @@ export function DesktopImportPanel() {
   const replacementPendingRef = useRef(false);
   const analyticsClientRef = useRef<AnalysisWorkerClient | undefined>(undefined);
   const analyticsAttemptRef = useRef(0);
+  const wordFrequencyAttemptRef = useRef(0);
+  const analyticsResultRef = useRef<CanonicalAnalysisResult | undefined>(undefined);
   const latestSelectionIdRef = useRef<string | undefined>(undefined);
   const operationRef = useRef<ActiveOperation | undefined>(undefined);
   const exportAttemptRef = useRef<{ readonly format: ReportFormat; readonly chartKey: ApprovedChartKey }>(undefined);
@@ -258,6 +270,10 @@ export function DesktopImportPanel() {
   const [analyticsResult, setAnalyticsResult] = useState<CanonicalAnalysisResult>();
   const [analyticsPending, setAnalyticsPending] = useState(false);
   const [analyticsError, setAnalyticsError] = useState<string>();
+  const [wordRole, setWordRole] = useState<WordFrequencyRole>("both");
+  const [wordFrequency, setWordFrequency] = useState<WorkerWordFrequencyDtoV1>();
+  const [wordFrequencyPending, setWordFrequencyPending] = useState(false);
+  const [wordFrequencyError, setWordFrequencyError] = useState<string>();
   const [pendingCommand, setPendingCommand] = useState(false);
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
   const [exportMessage, setExportMessage] = useState<string>();
@@ -271,6 +287,10 @@ export function DesktopImportPanel() {
     operationRef.current = next;
     setOperation(next);
   }
+
+  useEffect(() => {
+    analyticsResultRef.current = analyticsResult;
+  }, [analyticsResult]);
 
   useEffect(() => {
     if (!onboardingOpen && !closeDialogOpen) {
@@ -341,7 +361,66 @@ export function DesktopImportPanel() {
     setProductMode("home");
     setReportSection("opening");
     setDashboardRoute("Overview");
+    setWordRole("both");
+    setWordFrequency(undefined);
+    setWordFrequencyError(undefined);
   }, [analyticsResult]);
+
+  useEffect(() => {
+    const result = analyticsResult;
+    const client = analyticsClientRef.current;
+    if (result === undefined || client === undefined || analyticsPending) {
+      return;
+    }
+    const expectedKey = frequencyDtoKey(
+      result.datasetId,
+      result.generation,
+      result.queryKey,
+      wordRole,
+    );
+    wordFrequencyAttemptRef.current += 1;
+    const attempt = wordFrequencyAttemptRef.current;
+    setWordFrequencyPending(true);
+    setWordFrequencyError(undefined);
+    void client.analyzeWordFrequency({
+      schemaVersion: WORD_FREQUENCY_QUERY_SCHEMA_VERSION,
+      baseQueryKey: result.queryKey,
+      role: wordRole,
+      policy: {
+        version: BETA_VOCABULARY_POLICY_VERSION,
+        builtInPolicyHash: BETA_VOCABULARY_POLICY_HASH,
+      },
+    }).then((next) => {
+      const current = analyticsResultRef.current;
+      if (
+        !mountedRef.current ||
+        attempt !== wordFrequencyAttemptRef.current ||
+        current?.queryKey !== result.queryKey ||
+        next.identity.frequencyDtoKey !== expectedKey ||
+        next.identity.baseQueryKey !== current.queryKey ||
+        next.identity.datasetId !== current.datasetId ||
+        next.identity.generation !== current.generation ||
+        next.scope.role !== wordRole
+      ) {
+        return;
+      }
+      setWordFrequency(next);
+      setWordFrequencyError(undefined);
+    }).catch((error: unknown) => {
+      if (
+        !mountedRef.current ||
+        attempt !== wordFrequencyAttemptRef.current ||
+        error instanceof WorkerClientCancelledError
+      ) {
+        return;
+      }
+      setWordFrequencyError("当前词频证据未完成；未发布部分或过期结果。");
+    }).finally(() => {
+      if (mountedRef.current && attempt === wordFrequencyAttemptRef.current) {
+        setWordFrequencyPending(false);
+      }
+    });
+  }, [analyticsPending, analyticsResult, wordRole]);
 
   useEffect(() => {
     if (analyticsResult === undefined) {
@@ -422,6 +501,10 @@ export function DesktopImportPanel() {
       setReportRepresentedYears([]);
       setReportSection("opening");
       setDashboardRoute("Overview");
+      wordFrequencyAttemptRef.current += 1;
+      setWordFrequency(undefined);
+      setWordFrequencyPending(false);
+      setWordFrequencyError(undefined);
     }
   }
 
@@ -1562,10 +1645,16 @@ export function DesktopImportPanel() {
           representedYears={reportYearOptions}
           selectedSection={reportSection}
           pending={analyticsPending || pendingCommand}
+          analyticsResult={analyticsResult}
+          wordFrequency={wordFrequency}
+          wordRole={wordRole}
+          wordFrequencyPending={wordFrequencyPending}
+          wordFrequencyError={wordFrequencyError}
           onRangeChange={changeReportRange}
           onSectionChange={changeReportSection}
           onRestoreFullRange={restoreFullReportRange}
           onOpenDetailed={() => setProductMode("detailed-analysis")}
+          onWordRoleChange={setWordRole}
         />
       ) : null}
 

@@ -21,6 +21,10 @@ import {
   ANALYTICS_RESULT_CONTRACT_VERSION,
   isWorkerQueryKeyBoundTo,
 } from "./query-binding";
+import type {
+  WorkerWordFrequencyDtoV1,
+  WorkerWordFrequencyQueryV1,
+} from "./word-frequency-contract";
 
 export const STOP_WORDS_VERSION =
   "chat-history-analysis.stopwords.zh-en.v1";
@@ -198,6 +202,13 @@ export type WorkerRequest =
       readonly workerCapability?: WorkerOperationCapability;
     }
   | {
+      readonly type: "word-frequency";
+      readonly operationId: number;
+      readonly generation: number;
+      readonly sequence: number;
+      readonly query: WorkerWordFrequencyQueryV1;
+    }
+  | {
       readonly type: "cancel";
       readonly operationId: number;
       readonly generation: number;
@@ -222,7 +233,7 @@ export type WorkerResponse =
       readonly operationId: number;
       readonly generation: number;
       readonly sequence: number;
-      readonly result: AnalysisResult | CanonicalAnalysisResult;
+      readonly result: AnalysisResult | CanonicalAnalysisResult | WorkerWordFrequencyDtoV1;
       readonly resultId?: string;
     }
   | {

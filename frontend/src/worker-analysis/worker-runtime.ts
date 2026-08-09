@@ -48,6 +48,7 @@ import {
   isCanonicalUserMessage,
   validateCanonicalAnalyticsResult,
   validateCanonicalFilters,
+  canonicalDateCode,
   type CanonicalAnalysisFilters,
   type CanonicalAnalysisResult,
   type CanonicalAnalysisSettings,
@@ -56,6 +57,9 @@ import {
 } from "./analytics-contract";
 import {
   CanonicalIndexBuilder,
+  OWNER_SENDER_CODE,
+  OTHER_SENDER_CODE,
+  SYSTEM_SENDER_CODE,
   type CanonicalIndex,
 } from "./canonical-index";
 import {
@@ -70,6 +74,25 @@ import {
 } from "./analytics-aggregates";
 import { deriveActivityMetrics } from "./activity-metrics";
 import { deriveStage7Metrics } from "./stage7-metrics";
+import {
+  BETA_VOCABULARY_DENOMINATOR_DEFINITION,
+  BETA_VOCABULARY_POLICY_HASH,
+  BETA_VOCABULARY_POLICY_VERSION,
+  assertBetaVocabularyPolicyIdentity,
+  betaVocabularyPolicyDecision,
+  compareUnicodeCodePoints,
+} from "./vocabulary-policy";
+import {
+  MAX_WORD_FREQUENCY_CANDIDATES,
+  WORD_FREQUENCY_SCHEMA_VERSION,
+  WORD_FREQUENCY_TIMEZONE,
+  frequencyDtoKey,
+  validateWorkerWordFrequencyDtoV1,
+  validateWorkerWordFrequencyQueryV1,
+  type WorkerWordFrequencyDtoV1,
+  type WorkerWordFrequencyQueryV1,
+  type WordFrequencyRole,
+} from "./word-frequency-contract";
 
 const HASH_PATTERN = /^[0-9a-f]{64}$/u;
 const DATE_PATTERN = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/u;
@@ -979,12 +1002,27 @@ export class AnalysisWorkerRuntime {
     string,
     CanonicalAnalysisResult
   >();
+  private initialCanonicalResult: CanonicalAnalysisResult | undefined;
+  private readonly wordFrequencyCache = new Map<
+    string,
+    WorkerWordFrequencyDtoV1
+  >();
+  private betaVocabularyPolicyIndex:
+    | {
+        readonly cacheGeneration: number;
+        readonly decisions: readonly ReturnType<typeof betaVocabularyPolicyDecision>[];
+      }
+    | undefined;
+  private readonly betaBuiltInStopWords: ReadonlySet<string>;
 
   constructor(
     private readonly tokenizer: TokenizerDependencies,
     private readonly stopWordAsset: string,
     private readonly reportProgress: (progress: WorkerProgress) => void,
-  ) {}
+  ) {
+    assertBetaVocabularyPolicyIdentity();
+    this.betaBuiltInStopWords = buildStopWordSet(stopWordAsset, []);
+  }
 
   cancel(operationId: number, generation = operationId, sequence?: number): void {
     const active = this.activeOperation;
@@ -1007,6 +1045,9 @@ export class AnalysisWorkerRuntime {
     this.acceptedCache = undefined;
     this.activeSessionIndex = undefined;
     this.canonicalResultCache.clear();
+    this.initialCanonicalResult = undefined;
+    this.wordFrequencyCache.clear();
+    this.betaVocabularyPolicyIndex = undefined;
     this.initialized = false;
     this.initializationPromise = undefined;
   }
@@ -1340,6 +1381,10 @@ export class AnalysisWorkerRuntime {
       await this.checkpoint(operationId, false);
       this.acceptedCache = candidateCache;
       this.cacheGeneration = generation;
+      this.canonicalResultCache.clear();
+      this.initialCanonicalResult = undefined;
+      this.wordFrequencyCache.clear();
+      this.betaVocabularyPolicyIndex = undefined;
       this.finish(operationId, metadata.generation ?? operationId);
       this.cancelled.delete(operationId);
       return { summary, result };
@@ -1680,6 +1725,9 @@ export class AnalysisWorkerRuntime {
     this.acceptedCache = candidateCache;
     this.cacheGeneration = cacheGeneration;
     this.canonicalResultCache.clear();
+    this.initialCanonicalResult = result;
+    this.wordFrequencyCache.clear();
+    this.betaVocabularyPolicyIndex = undefined;
     this.finish(operationId, metadata.generation ?? operationId);
     this.cancelled.delete(operationId);
     return { summary: dataset, result };
@@ -1758,6 +1806,219 @@ export class AnalysisWorkerRuntime {
         "aggregation",
       );
     }
+  }
+
+  async analyzeWordFrequency(
+    operationId: number,
+    queryValue: WorkerWordFrequencyQueryV1,
+    metadata: OperationMetadata = {},
+  ): Promise<WorkerWordFrequencyDtoV1> {
+    this.begin(operationId, metadata);
+    try {
+      const cache = this.acceptedCache;
+      if (cache === undefined || cache.kind !== "v2") {
+        throw new WorkerAnalysisError("NO_ACCEPTED_DATASET", "aggregation");
+      }
+      let query: WorkerWordFrequencyQueryV1;
+      try {
+        query = validateWorkerWordFrequencyQueryV1(queryValue);
+      } catch {
+        throw new WorkerAnalysisError("SETTINGS_INVALID", "aggregation");
+      }
+      const baseResult =
+        this.canonicalResultCache.get(query.baseQueryKey) ??
+        (this.initialCanonicalResult?.queryKey === query.baseQueryKey
+          ? this.initialCanonicalResult
+          : undefined);
+      if (
+        baseResult === undefined ||
+        baseResult.datasetId !== cache.correlation.datasetId ||
+        baseResult.generation !== cache.correlation.generation
+      ) {
+        throw new WorkerAnalysisError("SETTINGS_INVALID", "aggregation");
+      }
+      const key = frequencyDtoKey(
+        baseResult.datasetId,
+        baseResult.generation,
+        baseResult.queryKey,
+        query.role,
+      );
+      const cached = this.wordFrequencyCache.get(key);
+      if (cached !== undefined) {
+        await this.checkpoint(operationId, false);
+        this.progress(operationId, "aggregation", 1, 1, 100);
+        this.finish(operationId, metadata.generation ?? operationId);
+        this.cancelled.delete(operationId);
+        return cached;
+      }
+      const result = await this.aggregateWordFrequency(
+        operationId,
+        cache.index,
+        cache.generation,
+        baseResult,
+        query.role,
+        key,
+      );
+      if (this.wordFrequencyCache.size >= 8) {
+        const oldest = this.wordFrequencyCache.keys().next().value;
+        if (oldest !== undefined) {
+          this.wordFrequencyCache.delete(oldest);
+        }
+      }
+      this.wordFrequencyCache.set(key, result);
+      this.finish(operationId, metadata.generation ?? operationId);
+      this.cancelled.delete(operationId);
+      return result;
+    } catch (error) {
+      this.finish(operationId, metadata.generation ?? operationId);
+      this.cancelled.delete(operationId);
+      if (error instanceof WorkerAnalysisError || error instanceof WorkerCancellation) {
+        throw error;
+      }
+      if (error instanceof RangeError) {
+        throw new WorkerAnalysisError("MEMORY_PRESSURE", "aggregation");
+      }
+      throw new WorkerAnalysisError("WORKER_RUNTIME_FAILED", "aggregation");
+    }
+  }
+
+  private async aggregateWordFrequency(
+    operationId: number,
+    index: CanonicalIndex,
+    cacheGeneration: number,
+    baseResult: CanonicalAnalysisResult,
+    role: WordFrequencyRole,
+    key: string,
+  ): Promise<WorkerWordFrequencyDtoV1> {
+    const start = canonicalDateCode(baseResult.filters.startDate);
+    const end = canonicalDateCode(baseResult.filters.endDate);
+    const selectedYear = baseResult.filters.selectedYear;
+    const frequencies = new Uint32Array(index.tokenTable.length);
+    const policyDecisions = await this.getBetaVocabularyPolicyDecisions(
+      operationId,
+      index,
+      cacheGeneration,
+    );
+    let denominator = 0;
+    const total = index.summary.indexedRecordCount;
+    this.progress(operationId, "aggregation", 0, total, 90);
+    for (let record = 0; record < total; record += 1) {
+      const date = index.calendarDates[record];
+      const senderCode = index.senderCodes[record];
+      const baseSenderMatches =
+        baseResult.filters.sender === "both" ||
+        (baseResult.filters.sender === "owner" && senderCode === OWNER_SENDER_CODE) ||
+        (baseResult.filters.sender === "other" && senderCode === OTHER_SENDER_CODE);
+      const roleMatches =
+        role === "both" ||
+        (role === "owner" && senderCode === OWNER_SENDER_CODE) ||
+        (role === "other" && senderCode === OTHER_SENDER_CODE);
+      if (
+        senderCode === SYSTEM_SENDER_CODE ||
+        !baseSenderMatches ||
+        !roleMatches ||
+        date < start ||
+        date > end ||
+        (selectedYear !== null && index.years[record] !== selectedYear)
+      ) {
+        continue;
+      }
+      for (
+        let cursor = index.recordOffsets[record];
+        cursor < index.recordOffsets[record + 1];
+        cursor += 1
+      ) {
+        const tokenId = index.tokenIds[cursor];
+        if (policyDecisions[tokenId]?.eligible !== true) {
+          continue;
+        }
+        frequencies[tokenId] += 1;
+        denominator += 1;
+      }
+      if (record % 4_096 === 0) {
+        this.progress(
+          operationId,
+          "aggregation",
+          record,
+          total,
+          total === 0 ? 100 : 90 + Math.floor((record / total) * 10),
+        );
+        await this.checkpoint(operationId, true);
+      }
+    }
+    const rankedTokenIds: number[] = [];
+    for (let tokenId = 0; tokenId < frequencies.length; tokenId += 1) {
+      if ((frequencies[tokenId] ?? 0) > 0) {
+        rankedTokenIds.push(tokenId);
+      }
+    }
+    const ranked = rankedTokenIds
+      .sort((left, right) =>
+        (frequencies[right] ?? 0) - (frequencies[left] ?? 0) ||
+        compareUnicodeCodePoints(index.tokenTable[left] ?? "", index.tokenTable[right] ?? ""),
+      )
+      .slice(0, MAX_WORD_FREQUENCY_CANDIDATES)
+      .map((tokenId, indexValue) => ({
+        normalizedToken: index.tokenTable[tokenId] ?? "",
+        count: frequencies[tokenId] ?? 0,
+        ratePer10000: denominator === 0 ? 0 : ((frequencies[tokenId] ?? 0) * 10_000) / denominator,
+        rank: indexValue + 1,
+        category: policyDecisions[tokenId]?.category ?? "other",
+        qualityFlags: policyDecisions[tokenId]?.qualityFlags ?? [],
+      }));
+    const result: WorkerWordFrequencyDtoV1 = {
+      schemaVersion: WORD_FREQUENCY_SCHEMA_VERSION,
+      identity: {
+        datasetId: baseResult.datasetId,
+        generation: baseResult.generation,
+        baseQueryKey: baseResult.queryKey,
+        frequencyDtoKey: key,
+      },
+      scope: {
+        timezone: WORD_FREQUENCY_TIMEZONE,
+        year: selectedYear,
+        role,
+      },
+      denominator: {
+        eligibleTokenCount: denominator,
+        definition: BETA_VOCABULARY_DENOMINATOR_DEFINITION,
+        status: denominator === 0 ? "empty" : "ready",
+        emptyReason: denominator === 0 ? "NO_ELIGIBLE_TOKENS" : null,
+      },
+      policy: {
+        version: BETA_VOCABULARY_POLICY_VERSION,
+        builtInPolicyHash: BETA_VOCABULARY_POLICY_HASH,
+      },
+      items: ranked,
+    };
+    try {
+      validateWorkerWordFrequencyDtoV1(result);
+    } catch {
+      throw new WorkerAnalysisError("WORKER_RUNTIME_FAILED", "aggregation");
+    }
+    this.progress(operationId, "aggregation", total, total, 100);
+    await this.checkpoint(operationId, false);
+    return result;
+  }
+
+  private async getBetaVocabularyPolicyDecisions(
+    operationId: number,
+    index: CanonicalIndex,
+    cacheGeneration: number,
+  ): Promise<readonly ReturnType<typeof betaVocabularyPolicyDecision>[]> {
+    const cached = this.betaVocabularyPolicyIndex;
+    if (cached?.cacheGeneration === cacheGeneration) {
+      return cached.decisions;
+    }
+    const decisions: ReturnType<typeof betaVocabularyPolicyDecision>[] = [];
+    for (const [tokenId, token] of index.tokenTable.entries()) {
+      decisions.push(betaVocabularyPolicyDecision(token, this.betaBuiltInStopWords));
+      if (tokenId % 4_096 === 0) {
+        await this.checkpoint(operationId, true);
+      }
+    }
+    this.betaVocabularyPolicyIndex = { cacheGeneration, decisions };
+    return decisions;
   }
 
   private mapSourceError(

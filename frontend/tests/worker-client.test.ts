@@ -26,6 +26,18 @@ import type {
   SessionId,
 } from "../src/desktop/ipc-contract";
 import type { CanonicalAnalysisResult } from "../src/worker-analysis/analytics-contract";
+import {
+  WORD_FREQUENCY_QUERY_SCHEMA_VERSION,
+  WORD_FREQUENCY_SCHEMA_VERSION,
+  WORD_FREQUENCY_TIMEZONE,
+  frequencyDtoKey,
+  type WorkerWordFrequencyDtoV1,
+} from "../src/worker-analysis/word-frequency-contract";
+import {
+  BETA_VOCABULARY_DENOMINATOR_DEFINITION,
+  BETA_VOCABULARY_POLICY_HASH,
+  BETA_VOCABULARY_POLICY_VERSION,
+} from "../src/worker-analysis/vocabulary-policy";
 
 const result: AnalysisResult = {
   words: [{ token: "synthetic", frequency: 2 }],
@@ -370,5 +382,97 @@ describe("analysis Worker client lifecycle", () => {
     );
     expect(preventDefault).toHaveBeenCalledOnce();
     expect(worker.terminate).toHaveBeenCalledOnce();
+  });
+
+  it("suppresses stale frequency results and keeps the committed aggregate identity", async () => {
+    const worker = new FakeWorker();
+    const client = new AnalysisWorkerClient(() => worker);
+    const analyzed = client.analyzeCanonical({
+      kind: "canonical-v2",
+      startDate: "2025-01-01",
+      endDate: "2025-01-01",
+      sender: "both",
+      selectedYear: null,
+      sessionThresholdHours: 6,
+    });
+    const analyzeRequest = worker.messages.at(-1) as Extract<WorkerRequest, { type: "analyze" }>;
+    worker.respond({
+      type: "result",
+      operationId: analyzeRequest.operationId,
+      generation: analyzeRequest.generation,
+      sequence: 2,
+      result: result as unknown as CanonicalAnalysisResult,
+      resultId: "res_00000000000000000000000000000001",
+    });
+    await analyzed;
+    expect(client.committedResultId).toBe("res_00000000000000000000000000000001");
+
+    const frequencyQuery = {
+      schemaVersion: WORD_FREQUENCY_QUERY_SCHEMA_VERSION,
+      baseQueryKey: workerCapability.queryKey,
+      role: "owner" as const,
+      policy: {
+        version: BETA_VOCABULARY_POLICY_VERSION,
+        builtInPolicyHash: BETA_VOCABULARY_POLICY_HASH,
+      },
+    };
+    const pending = client.analyzeWordFrequency(frequencyQuery);
+    const frequencyRequest = worker.messages.at(-1) as Extract<WorkerRequest, { type: "word-frequency" }>;
+    expect(client.committedResultId).toBe("res_00000000000000000000000000000001");
+    expect(frequencyRequest.query).toEqual(frequencyQuery);
+
+    const frequencyResult: WorkerWordFrequencyDtoV1 = {
+      schemaVersion: WORD_FREQUENCY_SCHEMA_VERSION,
+      identity: {
+        datasetId: workerCapability.datasetId,
+        generation: workerCapability.generation,
+        baseQueryKey: workerCapability.queryKey,
+        frequencyDtoKey: frequencyDtoKey(
+          workerCapability.datasetId,
+          workerCapability.generation,
+          workerCapability.queryKey,
+          "owner",
+        ),
+      },
+      scope: { timezone: WORD_FREQUENCY_TIMEZONE, year: null, role: "owner" },
+      denominator: {
+        eligibleTokenCount: 1,
+        definition: BETA_VOCABULARY_DENOMINATOR_DEFINITION,
+        status: "ready",
+        emptyReason: null,
+      },
+      policy: {
+        version: BETA_VOCABULARY_POLICY_VERSION,
+        builtInPolicyHash: BETA_VOCABULARY_POLICY_HASH,
+      },
+      items: [{
+        normalizedToken: "synthetic",
+        count: 1,
+        ratePer10000: 10_000,
+        rank: 1,
+        category: "latin",
+        qualityFlags: [],
+      }],
+    };
+    worker.respond({
+      type: "result",
+      operationId: frequencyRequest.operationId,
+      generation: frequencyRequest.generation - 1,
+      sequence: 3,
+      result: frequencyResult,
+    });
+    let settled = false;
+    void pending.finally(() => { settled = true; });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    worker.respond({
+      type: "result",
+      operationId: frequencyRequest.operationId,
+      generation: frequencyRequest.generation,
+      sequence: 2,
+      result: frequencyResult,
+    });
+    await expect(pending).resolves.toBe(frequencyResult);
+    expect(client.committedResultId).toBe("res_00000000000000000000000000000001");
   });
 });

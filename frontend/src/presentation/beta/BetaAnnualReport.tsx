@@ -16,6 +16,12 @@ import {
   QueryChips,
 } from "./primitives";
 import type { BetaRecapSkeletonViewModel } from "./view-model";
+import type { CanonicalAnalysisResult } from "../../worker-analysis/analytics-contract";
+import type {
+  WorkerWordFrequencyDtoV1,
+  WordFrequencyRole,
+} from "../../worker-analysis/word-frequency-contract";
+import { BetaWordEvidenceSections } from "./BetaWordEvidenceSections";
 
 export function BetaAnnualReport({
   viewModel,
@@ -23,21 +29,37 @@ export function BetaAnnualReport({
   representedYears,
   selectedSection,
   pending,
+  analyticsResult,
+  wordFrequency,
+  wordRole,
+  wordFrequencyPending,
+  wordFrequencyError,
   onRangeChange,
   onSectionChange,
   onRestoreFullRange,
   onOpenDetailed,
+  onWordRoleChange,
 }: {
   readonly viewModel: BetaRecapSkeletonViewModel;
   readonly reportState: BetaReportPresentationState;
   readonly representedYears: readonly RepresentedYearOption[];
   readonly selectedSection: BetaReportSectionId;
   readonly pending: boolean;
+  readonly analyticsResult?: CanonicalAnalysisResult;
+  readonly wordFrequency?: WorkerWordFrequencyDtoV1;
+  readonly wordRole?: WordFrequencyRole;
+  readonly wordFrequencyPending?: boolean;
+  readonly wordFrequencyError?: string;
   readonly onRangeChange: (value: string) => void;
   readonly onSectionChange: (section: BetaReportSectionId) => void;
   readonly onRestoreFullRange: () => void;
   readonly onOpenDetailed: () => void;
+  readonly onWordRoleChange?: (role: WordFrequencyRole) => void;
 }) {
+  const hasWordEvidence =
+    analyticsResult !== undefined &&
+    wordRole !== undefined &&
+    onWordRoleChange !== undefined;
   return (
     <section
       className="beta-report"
@@ -126,8 +148,29 @@ export function BetaAnnualReport({
           <p className="beta-type-eyebrow">阅读方式 · 03–16</p>
           <h2 className="beta-type-heading">沿着固定章节继续阅读</h2>
           <HighlightSentence>{viewModel.narrative}</HighlightSentence>
-          <p className="beta-type-body">当前版本先提供可运行的阅读结构；尚未接入的指标、词汇、词云和分享不会用示例值替代。</p>
+          <p className="beta-type-body">当前版本先提供可运行的阅读结构；尚未接入的指标、词云和分享不会用示例值替代。</p>
         </BaseCard>
+
+        {BETA_REPORT_SECTIONS.filter((section) => section.order >= 4 && section.order <= 12).map((section) => (
+          <span key={section.id} id={section.id} className="beta-report-section-anchor" aria-hidden="true" />
+        ))}
+
+        {hasWordEvidence ? (
+          <BetaWordEvidenceSections
+            result={analyticsResult}
+            frequency={wordFrequency}
+            requestedRole={wordRole}
+            pending={wordFrequencyPending ?? false}
+            error={wordFrequencyError}
+            onRoleChange={onWordRoleChange}
+          />
+        ) : BETA_REPORT_SECTIONS.filter((section) => section.order >= 13 && section.order <= 14).map((section) => (
+          <span key={section.id} id={section.id} className="beta-report-section-anchor" aria-hidden="true" />
+        ))}
+
+        {BETA_REPORT_SECTIONS.filter((section) => section.order >= 15).map((section) => (
+          <span key={section.id} id={section.id} className="beta-report-section-anchor" aria-hidden="true" />
+        ))}
 
         <BaseCard variant="privacy" className="beta-report-map-card">
           <div className="beta-report-map-heading">
@@ -139,11 +182,7 @@ export function BetaAnnualReport({
           </div>
           <ol className="beta-report-map">
             {BETA_REPORT_SECTIONS.map((section) => (
-              <li
-                id={section.id === "opening" || section.id === "messages" || section.id === "active-days" ? undefined : section.id}
-                key={section.id}
-                data-delivery-slot={section.deliverySlot}
-              >
+              <li key={section.id} data-delivery-slot={section.deliverySlot}>
                 <button type="button" onClick={() => onSectionChange(section.id)}>
                   <span>{String(section.order).padStart(2, "0")}</span>
                   <strong>{section.title}</strong>

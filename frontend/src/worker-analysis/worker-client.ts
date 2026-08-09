@@ -19,6 +19,10 @@ import type {
   CanonicalAnalysisResult,
   CanonicalAnalysisSettings,
 } from "./analytics-contract";
+import type {
+  WorkerWordFrequencyDtoV1,
+  WorkerWordFrequencyQueryV1,
+} from "./word-frequency-contract";
 
 export interface WorkerPort {
   onmessage: ((event: MessageEvent<WorkerResponse>) => void) | null;
@@ -97,6 +101,7 @@ export class AnalysisWorkerClient {
     number,
     PendingOperation<
       AcceptedDatasetResult | AnalysisResult | CanonicalAnalysisResult
+      | WorkerWordFrequencyDtoV1
     >
   >();
   private readonly cancelWaiters = new Map<number, () => void>();
@@ -183,6 +188,24 @@ export class AnalysisWorkerClient {
         ...(workerCapability === undefined ? {} : { workerCapability }),
       }),
       onProgress,
+    );
+  }
+
+  analyzeWordFrequency(
+    query: WorkerWordFrequencyQueryV1,
+    onProgress?: (progress: WorkerProgress) => void,
+  ): Promise<WorkerWordFrequencyDtoV1> {
+    return this.startOperation<WorkerWordFrequencyDtoV1>(
+      (operationId, generation, sequence) => ({
+        type: "word-frequency",
+        operationId,
+        generation,
+        sequence,
+        query,
+      }),
+      onProgress,
+      undefined,
+      true,
     );
   }
 
@@ -281,7 +304,8 @@ export class AnalysisWorkerClient {
     Result extends
       | AcceptedDatasetResult
       | AnalysisResult
-      | CanonicalAnalysisResult,
+      | CanonicalAnalysisResult
+      | WorkerWordFrequencyDtoV1,
   >(
     request: (
       operationId: number,
@@ -290,8 +314,11 @@ export class AnalysisWorkerClient {
     ) => WorkerRequest,
     onProgress?: (progress: WorkerProgress) => void,
     requestedGeneration?: number,
+    preserveCommittedResultId = false,
   ): Promise<Result> {
-    this.lastCommittedResultId = undefined;
+    if (!preserveCommittedResultId) {
+      this.lastCommittedResultId = undefined;
+    }
     let worker: WorkerPort;
     try {
       worker = this.ensureWorker();
@@ -333,7 +360,8 @@ export class AnalysisWorkerClient {
           result:
             | AcceptedDatasetResult
             | AnalysisResult
-            | CanonicalAnalysisResult,
+            | CanonicalAnalysisResult
+            | WorkerWordFrequencyDtoV1,
         ) => void,
         reject,
         onProgress,

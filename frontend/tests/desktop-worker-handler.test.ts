@@ -33,6 +33,11 @@ import {
   buildRendererAggregateInput,
   isRendererAggregateInput,
 } from "../src/desktop/export-contract";
+import { WORD_FREQUENCY_QUERY_SCHEMA_VERSION } from "../src/worker-analysis/word-frequency-contract";
+import {
+  BETA_VOCABULARY_POLICY_HASH,
+  BETA_VOCABULARY_POLICY_VERSION,
+} from "../src/worker-analysis/vocabulary-policy";
 
 const PROTOCOL = "chat-history-analysis.desktop-ipc.v1" as const;
 const SESSION = "ses_00000000000000000000000000000001" as SessionId;
@@ -241,7 +246,7 @@ async function waitForTerminal(
     const response = responses.find(
       (candidate) =>
         candidate.operationId === operationId &&
-        ["accepted", "cancelled", "error"].includes(candidate.type),
+        ["accepted", "result", "cancelled", "error"].includes(candidate.type),
     );
     expect(response).toBeDefined();
     return response as WorkerResponse;
@@ -434,6 +439,42 @@ describe("desktop dataset source through the production Worker handler", () => {
     expect(JSON.stringify(response)).not.toContain("alpha beta");
     expect(JSON.stringify(response)).not.toContain("beta gamma");
     expect(JSON.stringify(response)).not.toContain('"content"');
+
+    const baseResult = (response as Extract<WorkerResponse, { readonly type: "accepted" }>).result;
+    if (!("queryKey" in baseResult)) {
+      throw new Error("expected canonical result");
+    }
+    handler({
+      data: {
+        type: "word-frequency",
+        operationId: 2,
+        generation: 2,
+        sequence: 1,
+        query: {
+          schemaVersion: WORD_FREQUENCY_QUERY_SCHEMA_VERSION,
+          baseQueryKey: baseResult.queryKey,
+          role: "both",
+          policy: {
+            version: BETA_VOCABULARY_POLICY_VERSION,
+            builtInPolicyHash: BETA_VOCABULARY_POLICY_HASH,
+          },
+        },
+      },
+    } as MessageEvent<WorkerRequest>);
+    const frequencyResponse = await waitForTerminal(responses, 2);
+    expect(frequencyResponse).toMatchObject({
+      type: "result",
+      result: {
+        scope: { role: "both", year: null },
+        denominator: { eligibleTokenCount: 4 },
+        items: [
+          { normalizedToken: "beta", count: 2, rank: 1 },
+          { normalizedToken: "alpha", count: 1, rank: 2 },
+          { normalizedToken: "gamma", count: 1, rank: 3 },
+        ],
+      },
+    });
+    expect(JSON.stringify(frequencyResponse)).not.toMatch(/content|source|contact|context/iu);
   });
 
   it("keeps 128 production Worker generations bounded at the numeric export seam", async () => {

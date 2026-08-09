@@ -211,6 +211,32 @@ export function createAnalysisWorkerHandler(
       );
       return;
     }
+    if (request.type === "word-frequency") {
+      void runtime
+        .analyzeWordFrequency(request.operationId, request.query, {
+          generation: request.generation,
+          sequence: request.sequence,
+        })
+        .then((result) => {
+          const metadata = runtime.nextResponseMetadata(
+            request.operationId,
+            request.generation,
+          );
+          if (metadata === undefined) {
+            return;
+          }
+          scope.postMessage({
+            type: "result",
+            operationId: request.operationId,
+            ...metadata,
+            result,
+          });
+        })
+        .catch((error: unknown) => {
+          reportFailure(request, error);
+        });
+      return;
+    }
     void runtime
       .analyze(request.operationId, request.settings, {
         generation: request.generation,
