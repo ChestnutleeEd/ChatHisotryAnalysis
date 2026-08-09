@@ -1,174 +1,381 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import type {
+  BetaLocalizedMetricV1,
   BetaLocalizedReportSectionV1,
   BetaLocalizedVisualV1,
-  BetaLocalizedMetricV1,
   BetaReportViewModelV1,
 } from "./report-contract";
-import { ArtworkFrame, BaseCard, Badge, Metric, QueryChips, Scene, StatusPill } from "./primitives";
+import type { BetaReportSectionId } from "./report-sections";
+import { ArtworkFrame, Badge, Metric, QueryChips, Scene, StatusPill } from "./primitives";
 import annualOpeningHero from "../../assets/beta/art/annual-opening-hero-v1.webp";
 
 const SCENE_LABELS = {
-  opening: "开场与消息",
-  activity: "聊天节奏",
-  rhythm: "时间分布",
-  comparison: "双方与消息构成",
+  opening: "开场",
+  scale: "规模",
+  rhythm: "节奏",
+  balance: "平衡",
+  conversation: "交流",
+  vocabulary: "词汇",
+  closing: "收束",
 } as const;
 
-function statusTone(status: BetaLocalizedReportSectionV1["status"]): "success" | "pending" | "warning" {
-  if (status === "READY") {
-    return "success";
-  }
-  if (status === "PARTIAL") {
-    return "pending";
-  }
-  return "warning";
+function statusTone(status: BetaLocalizedReportSectionV1["status"]): "pending" | "warning" {
+  return status === "PARTIAL" ? "pending" : "warning";
 }
 
-function cardVariant(section: BetaLocalizedReportSectionV1): "hero" | "metric" | "chart" | "split" {
-  if (section.id === "opening") {
-    return "hero";
+function sectionFor(
+  sections: readonly BetaLocalizedReportSectionV1[],
+  id: BetaReportSectionId,
+): BetaLocalizedReportSectionV1 {
+  const section = sections.find((candidate) => candidate.id === id);
+  if (section === undefined) {
+    throw new Error(`BETA_SECTION_MISSING:${id}`);
   }
-  if (section.visual === null) {
-    return "metric";
-  }
-  return section.visual.kind === "table" ? "split" : "chart";
+  return section;
 }
 
-function visualRows(visual: BetaLocalizedVisualV1, rows = visual.rows) {
-  return rows.map((row) => (
-    <li key={row.key} className={`beta-core-visual-row beta-core-tone-${row.tone}`}>
-      <div className="beta-core-visual-row-copy">
-        <span>{row.label}</span>
-        <strong>{row.displayValue}</strong>
-      </div>
-      <div className="beta-core-visual-track" aria-hidden="true">
-        <span
-          className="beta-core-visual-fill"
-          style={{ "--beta-core-width": `${row.widthPercent}%` } as CSSProperties}
-        />
-      </div>
-      {row.secondaryLabel !== null ? <small>{row.secondaryLabel}</small> : null}
-    </li>
-  ));
-}
-
-function visualTable(visual: BetaLocalizedVisualV1) {
+function SceneHeading({
+  number,
+  scene,
+  title,
+  summary,
+}: {
+  readonly number: string;
+  readonly scene: keyof typeof SCENE_LABELS;
+  readonly title: string;
+  readonly summary: string;
+}) {
+  const headingId = `beta-v2-scene-${scene}-heading`;
   return (
-    <table className="beta-core-visual-table">
-      <caption>{visual.ariaLabel}</caption>
-      <thead>
-        <tr><th scope="col">项目</th><th scope="col">数值</th><th scope="col">补充</th></tr>
-      </thead>
-      <tbody>
-        {visual.rows.map((row) => (
-          <tr key={row.key}>
-            <th scope="row">{row.label}</th>
-            <td>{row.displayValue}</td>
-            <td>{row.secondaryLabel ?? "—"}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <header className="beta-v2-scene-heading beta-core-scene-heading">
+      <span className="beta-v2-scene-number" aria-hidden="true">{number}</span>
+      <div>
+        <p className="beta-type-eyebrow">{SCENE_LABELS[scene]}</p>
+        <h2 id={headingId} className="beta-type-heading">{title}</h2>
+        <p className="beta-v2-scene-summary">{summary}</p>
+      </div>
+    </header>
   );
 }
 
-function CompactDistribution({ visual }: { readonly visual: BetaLocalizedVisualV1 }) {
+function SectionHeader({ section }: { readonly section: BetaLocalizedReportSectionV1 }) {
   return (
-    <div className="beta-core-compact-distribution" aria-hidden="true">
-      <ol>
-        {visual.rows.map((row) => (
-          <li key={row.key} title={`${row.label}：${row.displayValue}`}>
-            <span style={{ "--beta-core-height": `${Math.max(10, row.widthPercent)}%` } as CSSProperties} />
-            <small>{row.label}</small>
-          </li>
-        ))}
-      </ol>
+    <div className="beta-v2-logical-header">
+      <div>
+        <p className="beta-type-eyebrow">{section.eyebrow} · {String(section.order).padStart(2, "0")}</p>
+        <h3 className="beta-v2-logical-title">{section.heading}</h3>
+      </div>
+      {section.status === "READY" ? null : (
+        <StatusPill tone={statusTone(section.status)}>{section.statusLabel}</StatusPill>
+      )}
     </div>
   );
 }
 
-function Visual({
+function DetailList({ section }: { readonly section: BetaLocalizedReportSectionV1 }) {
+  const rows = [
+    ...(section.scopeNote === null ? [] : [{ label: "当前范围", value: section.scopeNote }]),
+    ...section.details,
+  ];
+  if (rows.length === 0) {
+    return null;
+  }
+  return (
+    <dl className="beta-v2-detail-list">
+      {rows.map((detail) => (
+        <div key={`${detail.label}-${detail.value}`}>
+          <dt>{detail.label}</dt>
+          <dd>{detail.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function MetricLine({
+  metric,
+  className = "",
+}: {
+  readonly metric: BetaLocalizedMetricV1 | null;
+  readonly className?: string;
+}) {
+  if (metric === null) {
+    return null;
+  }
+  return (
+    <div className={`beta-v2-metric-line ${className}`.trim()} aria-label={metric.accessibleLabel}>
+      <span className="beta-metric-label">{metric.label}</span>
+      <div className="beta-metric-value">
+        <strong>{metric.value}</strong>
+        {metric.unit !== "" ? <span>{metric.unit}</span> : null}
+      </div>
+    </div>
+  );
+}
+
+function ExactVisualTable({
   visual,
-  sectionId,
+  summary = "查看完整数据",
 }: {
   readonly visual: BetaLocalizedVisualV1;
-  readonly sectionId: BetaLocalizedReportSectionV1["id"];
+  readonly summary?: string;
 }) {
-  const compactDistribution = sectionId === "peak-month" || sectionId === "peak-weekday" || sectionId === "peak-hour";
-  const primaryVisual = sectionId === "message-types"
-    ? { ...visual, rows: visual.rows.map((row) => ({ ...row, secondaryLabel: null })) }
-    : visual;
-  const compactTableRows = primaryVisual.kind === "table" ? primaryVisual.rows.slice(0, 3) : primaryVisual.rows;
   return (
-    <div className={`beta-core-visual beta-core-visual-${visual.kind}`}>
-      {compactDistribution ? <CompactDistribution visual={primaryVisual} /> : (
-        <div className="beta-core-chart" aria-hidden="true">
-          <ol>{visualRows(primaryVisual, compactTableRows)}</ol>
+    <details className="beta-core-visual-details">
+      <summary>{summary}</summary>
+      <table className="beta-core-visual-table">
+        <caption>{visual.ariaLabel}</caption>
+        <thead>
+          <tr><th scope="col">项目</th><th scope="col">数值</th><th scope="col">补充</th></tr>
+        </thead>
+        <tbody>
+          {visual.rows.map((row) => (
+            <tr key={row.key}>
+              <th scope="row">{row.label}</th>
+              <td>{row.displayValue}</td>
+              <td>{row.secondaryLabel ?? "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </details>
+  );
+}
+
+function BarRows({
+  visual,
+  compact = false,
+}: {
+  readonly visual: BetaLocalizedVisualV1;
+  readonly compact?: boolean;
+}) {
+  const rows = compact ? visual.rows : visual.rows;
+  return (
+    <ol className={`beta-v2-bar-rows${compact ? " beta-v2-bar-rows-compact" : ""}`} aria-hidden="true">
+      {rows.map((row) => (
+        <li key={row.key} data-tone={row.tone} data-peak={row.widthPercent >= 100 ? "true" : undefined}>
+          <div className="beta-v2-bar-label">
+            <span>{row.label}</span>
+            <strong>{row.displayValue}</strong>
+          </div>
+          <span className="beta-v2-bar-track">
+            <span
+              className="beta-v2-bar-fill"
+              style={{ "--beta-v2-width": `${row.widthPercent}%` } as CSSProperties}
+            />
+          </span>
+          {row.secondaryLabel !== null ? <small>{row.secondaryLabel}</small> : null}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function LandscapeChart({ visual }: { readonly visual: BetaLocalizedVisualV1 }) {
+  return (
+    <figure className="beta-v2-landscape-chart" aria-label={visual.ariaLabel}>
+      <BarRows visual={visual} />
+      <figcaption>主图：按时间顺序排列；峰值直接标注，完整数值收在下方。</figcaption>
+      <ExactVisualTable visual={visual} summary="查看完整月份数据" />
+    </figure>
+  );
+}
+
+function DistributionStrip({ visual }: { readonly visual: BetaLocalizedVisualV1 }) {
+  return (
+    <div className="beta-v2-distribution-strip">
+      <figure aria-label={visual.ariaLabel}>
+        <ol aria-hidden="true">
+          {visual.rows.map((row) => (
+            <li key={row.key} data-peak={row.widthPercent >= 100 ? "true" : undefined} title={`${row.label}：${row.displayValue}`}>
+              <span
+                className="beta-v2-strip-value"
+                style={{ "--beta-v2-height": `${Math.max(8, row.widthPercent)}%` } as CSSProperties}
+              />
+              <small>{row.label}</small>
+            </li>
+          ))}
+        </ol>
+        <figcaption>{visual.ariaLabel}；高亮只提示峰值，颜色不是唯一信息。</figcaption>
+      </figure>
+      <ExactVisualTable visual={visual} summary="查看完整分布数据" />
+    </div>
+  );
+}
+
+function ComparisonBar({ visual }: { readonly visual: BetaLocalizedVisualV1 }) {
+  return (
+    <figure className="beta-v2-comparison-visual" aria-label={visual.ariaLabel}>
+      <div className="beta-v2-comparison-bar" aria-hidden="true">
+        {visual.rows.map((row) => (
+          <span
+            key={row.key}
+            data-tone={row.tone}
+            style={{ "--beta-v2-width": `${row.widthPercent}%` } as CSSProperties}
+          />
+        ))}
+      </div>
+      <ul className="beta-v2-comparison-legend">
+        {visual.rows.map((row) => (
+          <li key={row.key} data-tone={row.tone}>
+            <span className="beta-v2-role-marker" aria-hidden="true" />
+            <strong>{row.label}</strong>
+            <span>{row.displayValue}</span>
+          </li>
+        ))}
+      </ul>
+      <figcaption>{visual.ariaLabel}；两侧角色以文字和形状同时标记。</figcaption>
+    </figure>
+  );
+}
+
+function RankBars({ visual }: { readonly visual: BetaLocalizedVisualV1 }) {
+  return (
+    <figure className="beta-v2-rank-bars" aria-label={visual.ariaLabel}>
+      <BarRows visual={visual} compact />
+      <figcaption>{visual.ariaLabel}；排序和精确数值保留在明细中。</figcaption>
+    </figure>
+  );
+}
+
+function TableVisual({ visual }: { readonly visual: BetaLocalizedVisualV1 }) {
+  return (
+    <div className="beta-v2-table-visual">
+      <table aria-label={visual.ariaLabel}>
+        <caption>{visual.ariaLabel}</caption>
+        <thead><tr><th scope="col">项目</th><th scope="col">数值</th><th scope="col">补充</th></tr></thead>
+        <tbody>
+          {visual.rows.map((row) => (
+            <tr key={row.key}>
+              <th scope="row">{row.label}</th>
+              <td>{row.displayValue}</td>
+              <td>{row.secondaryLabel ?? "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <ExactVisualTable visual={visual} summary="查看完整回复/长度数据" />
+    </div>
+  );
+}
+
+function StreakTimeline({ visual }: { readonly visual: BetaLocalizedVisualV1 }) {
+  return (
+    <div className="beta-v2-streak-timeline" aria-label={visual.ariaLabel}>
+      {visual.rows.map((row, index) => (
+        <div key={row.key} className="beta-v2-streak-row">
+          <span className="beta-v2-streak-index">{index + 1}</span>
+          <span className="beta-v2-streak-line" aria-hidden="true" />
+          <span><strong>{row.displayValue}</strong><small>{row.secondaryLabel}</small></span>
         </div>
-      )}
-      <details className="beta-core-visual-details">
-        <summary>{sectionId === "message-types" ? "查看类型明细" : "查看完整数据"}</summary>
-        {visualTable(visual)}
-      </details>
-      {visual.legend.length > 0 ? (
-        <ul className="beta-core-legend" aria-label="图例">
-          {visual.legend.map((item) => <li key={item}>{item}</li>)}
-        </ul>
-      ) : null}
+      ))}
+      <ExactVisualTable visual={visual} summary="查看全部连续聊天区间" />
+    </div>
+  );
+}
+
+function VisualForSection({
+  section,
+}: {
+  readonly section: BetaLocalizedReportSectionV1;
+}) {
+  if (section.visual === null) {
+    return null;
+  }
+  switch (section.id) {
+    case "peak-month":
+      return <LandscapeChart visual={section.visual} />;
+    case "peak-weekday":
+    case "peak-hour":
+      return <DistributionStrip visual={section.visual} />;
+    case "sender-share":
+    case "sessions":
+      return <ComparisonBar visual={section.visual} />;
+    case "message-types":
+      return <RankBars visual={section.visual} />;
+    case "longest-streak":
+      return <StreakTimeline visual={section.visual} />;
+    case "message-length":
+    case "replies":
+      return <TableVisual visual={section.visual} />;
+    default:
+      return (
+        <div className="beta-v2-default-visual">
+          <BarRows visual={section.visual} />
+          <ExactVisualTable visual={section.visual} />
+        </div>
+      );
+  }
+}
+
+function LogicalSection({
+  section,
+  className = "",
+  children,
+}: {
+  readonly section: BetaLocalizedReportSectionV1;
+  readonly className?: string;
+  readonly children?: ReactNode;
+}) {
+  return (
+    <div
+      id={section.id}
+      className={`beta-v2-logical-section beta-v2-logical-${section.id} ${className}`.trim()}
+      data-section-status={section.status.toLowerCase()}
+      data-scene={section.scene}
+    >
+      <SectionHeader section={section} />
+      <p className="beta-v2-logical-lead">{section.lead}</p>
+      <MetricLine metric={section.metric} />
+      {children}
+      <VisualForSection section={section} />
+      <DetailList section={section} />
     </div>
   );
 }
 
 function CoreOpeningSection({
   section,
-  scopeLabel,
-  queryChips,
-  dominantMetric,
+  message,
+  viewModel,
 }: {
   readonly section: BetaLocalizedReportSectionV1;
-  readonly scopeLabel: string;
-  readonly queryChips: BetaReportViewModelV1["metadata"]["queryChips"];
-  readonly dominantMetric: BetaLocalizedMetricV1 | null;
+  readonly message: BetaLocalizedReportSectionV1;
+  readonly viewModel: BetaReportViewModelV1;
 }) {
   return (
     <Scene
       id="opening"
       scene="opening"
-      className={`beta-core-card beta-core-opening beta-core-card-${section.status.toLowerCase()}`}
+      className="beta-v2-opening"
       data-section-status={section.status.toLowerCase()}
-      data-card-variant="hero"
       aria-labelledby="beta-report-heading"
     >
-      <div className="beta-core-opening-copy">
+      <div className="beta-v2-opening-copy">
         <div className="beta-home-kicker">
           <Badge tone="beta">年度聊天报告</Badge>
-          <Badge tone="privacy">仅本地呈现 · 不上传</Badge>
+          <Badge tone="privacy">{viewModel.privacy.localOnlyLabel}</Badge>
           {section.status === "PARTIAL" ? <Badge tone="partial">部分日期范围</Badge> : null}
         </div>
         <p className="beta-type-eyebrow">{section.eyebrow} · {String(section.order).padStart(2, "0")}</p>
-        <h1 id="beta-report-heading" className="beta-type-display" tabIndex={-1}>{scopeLabel}</h1>
-        <p className="beta-type-report-lead">{section.lead}</p>
-        <QueryChips chips={queryChips} />
-        {section.scopeNote !== null ? <p className="beta-core-scope-note">{section.scopeNote}</p> : null}
-        {dominantMetric !== null ? (
+        <h1 id="beta-report-heading" className="beta-type-display" tabIndex={-1}>{viewModel.metadata.scopeLabel}</h1>
+        <p className="beta-v2-opening-lead">{section.lead}</p>
+        <QueryChips chips={viewModel.metadata.queryChips} />
+        {section.scopeNote !== null ? <p className="beta-v2-scope-note">{section.scopeNote}</p> : null}
+        {message.metric !== null ? (
           <Metric
-            className="beta-report-hero-metric"
-            label={dominantMetric.label}
-            value={dominantMetric.value}
-            unit={dominantMetric.unit}
+            className="beta-v2-opening-metric"
+            label={message.metric.label}
+            value={message.metric.value}
+            unit={message.metric.unit}
             description="post-dedup 用户消息；当前报告只显示本地聚合结果。"
           />
         ) : null}
-        {section.details.length > 0 ? (
-          <dl className="beta-core-opening-details">
-            {section.details.map((detail) => <div key={detail.label}><dt>{detail.label}</dt><dd>{detail.value}</dd></div>)}
-          </dl>
-        ) : null}
-        <a className="beta-next-cue" href="#messages">下一节：消息</a>
+        <DetailList section={section} />
+        <a className="beta-next-cue" href="#messages">下一节：规模</a>
       </div>
-      <div className="beta-core-opening-art">
+      <div className="beta-v2-opening-art">
         <ArtworkFrame src={annualOpeningHero} width={1536} height={1024} loading="eager" className="beta-opening-artwork" />
         <p className="beta-artwork-caption">抽象的时间与节奏记录</p>
       </div>
@@ -176,62 +383,71 @@ function CoreOpeningSection({
   );
 }
 
-function CoreSection({
-  section,
-  scopeLabel,
-  queryChips,
-  dominantMetric,
-}: {
-  readonly section: BetaLocalizedReportSectionV1;
-  readonly scopeLabel: string;
-  readonly queryChips: BetaReportViewModelV1["metadata"]["queryChips"];
-  readonly dominantMetric: BetaLocalizedMetricV1 | null;
-}) {
-  if (section.id === "opening") {
-    return <CoreOpeningSection section={section} scopeLabel={scopeLabel} queryChips={queryChips} dominantMetric={dominantMetric} />;
-  }
-  const variant = cardVariant(section);
+function ScaleScene({ sections }: { readonly sections: readonly BetaLocalizedReportSectionV1[] }) {
+  const messages = sectionFor(sections, "messages");
+  const activeDays = sectionFor(sections, "active-days");
+  const streak = sectionFor(sections, "longest-streak");
   return (
-    <BaseCard
-      id={section.id}
-      variant={variant}
-      className={`beta-core-card beta-core-card-${section.status.toLowerCase()}`}
-      data-section-status={section.status.toLowerCase()}
-      data-card-variant={variant}
-    >
-      <div className="beta-core-card-heading">
-        <div>
-          <p className="beta-type-eyebrow">{section.eyebrow} · {String(section.order).padStart(2, "0")}</p>
-          <h2 className="beta-type-title beta-core-section-heading">{section.heading}</h2>
+    <Scene id="scale-scene" scene="scale" className="beta-v2-scene beta-v2-scale" aria-labelledby="beta-v2-scene-scale-heading">
+      <SceneHeading number="02" scene="scale" title="把这一年放到尺度里" summary="一个主数字先回答消息量，再用聊天日与连续区间补充活动范围。" />
+      <div className="beta-v2-scale-grid">
+        <LogicalSection section={messages} className="beta-v2-scale-hero">
+          <p className="beta-v2-dominance-note">主视线：消息总量</p>
+        </LogicalSection>
+        <div className="beta-v2-scale-support">
+          <LogicalSection section={activeDays} className="beta-v2-support-block" />
+          <LogicalSection section={streak} className="beta-v2-support-block beta-v2-streak-block" />
         </div>
-        {section.status === "READY" ? null : <StatusPill tone={statusTone(section.status)}>{section.statusLabel}</StatusPill>}
       </div>
-      <p className="beta-type-report-lead">{section.lead}</p>
-      {section.metric !== null ? (
-        <div className="beta-core-metric" aria-label={section.metric.accessibleLabel}>
-          <span className="beta-type-metadata">{section.metric.label}</span>
-          <strong className="beta-type-metric">{section.metric.value}</strong>
-          {section.metric.unit !== "" ? <span className="beta-type-metric-unit">{section.metric.unit}</span> : null}
+    </Scene>
+  );
+}
+
+function RhythmScene({ sections }: { readonly sections: readonly BetaLocalizedReportSectionV1[] }) {
+  const month = sectionFor(sections, "peak-month");
+  const weekday = sectionFor(sections, "peak-weekday");
+  const hour = sectionFor(sections, "peak-hour");
+  return (
+    <Scene id="rhythm-scene" scene="rhythm" className="beta-v2-scene beta-v2-rhythm" aria-labelledby="beta-v2-scene-rhythm-heading">
+      <SceneHeading number="03" scene="rhythm" title="节奏不是一条横条" summary="月份承担主叙事，星期与小时退到两个可读的分布带，峰值和完整数据都直接可查。" />
+      <LogicalSection section={month} className="beta-v2-rhythm-month" />
+      <div className="beta-v2-rhythm-strips">
+        <LogicalSection section={weekday} className="beta-v2-rhythm-strip" />
+        <LogicalSection section={hour} className="beta-v2-rhythm-strip" />
+      </div>
+    </Scene>
+  );
+}
+
+function BalanceScene({ sections }: { readonly sections: readonly BetaLocalizedReportSectionV1[] }) {
+  const sender = sectionFor(sections, "sender-share");
+  const length = sectionFor(sections, "message-length");
+  const types = sectionFor(sections, "message-types");
+  return (
+    <Scene id="balance-scene" scene="balance" className="beta-v2-scene beta-v2-balance" aria-labelledby="beta-v2-scene-balance-heading">
+      <SceneHeading number="04" scene="balance" title="看见交流的平衡与形状" summary="Owner 与 Other 先做匿名比较；长度与类型只作为消息构成的辅助剖面。" />
+      <div className="beta-v2-balance-grid">
+        <LogicalSection section={sender} className="beta-v2-balance-primary" />
+        <div className="beta-v2-balance-support">
+          <LogicalSection section={length} className="beta-v2-support-block" />
+          <LogicalSection section={types} className="beta-v2-support-block" />
         </div>
-      ) : null}
-      {section.visual !== null ? <Visual visual={section.visual} sectionId={section.id} /> : null}
-      {section.details.length > 0 ? (
-        <details className="beta-core-details-disclosure">
-          <summary>查看明细</summary>
-          <dl className="beta-core-details">
-            {section.scopeNote !== null ? (
-              <div><dt>当前范围</dt><dd>{section.scopeNote}</dd></div>
-            ) : null}
-            {section.details.map((detail) => (
-              <div key={`${detail.label}-${detail.value}`}>
-                <dt>{detail.label}</dt>
-                <dd>{detail.value}</dd>
-              </div>
-            ))}
-          </dl>
-        </details>
-      ) : null}
-    </BaseCard>
+      </div>
+    </Scene>
+  );
+}
+
+function ConversationScene({ sections }: { readonly sections: readonly BetaLocalizedReportSectionV1[] }) {
+  const sessions = sectionFor(sections, "sessions");
+  const replies = sectionFor(sections, "replies");
+  return (
+    <Scene id="conversation-scene" scene="conversation" className="beta-v2-scene beta-v2-conversation" aria-labelledby="beta-v2-scene-conversation-heading">
+      <SceneHeading number="05" scene="conversation" title="交流从哪里开始，如何接上" summary="会话数量是主事实；发起分布与回复间隔提供可核验的节奏上下文，不作关系判断。" />
+      <div className="beta-v2-conversation-grid">
+        <LogicalSection section={sessions} className="beta-v2-conversation-primary" />
+        <LogicalSection section={replies} className="beta-v2-conversation-secondary" />
+      </div>
+    </Scene>
   );
 }
 
@@ -240,46 +456,36 @@ export function BetaCoreReportSections({
 }: {
   readonly viewModel: BetaReportViewModelV1;
 }) {
-  const scenes = ["opening", "activity", "rhythm", "comparison"] as const;
-  const dominantMetric = viewModel.sections.find((section) => section.id === "messages")?.metric ?? null;
+  const coreSections = viewModel.sections.filter((section) => section.order <= 12);
+  const opening = sectionFor(coreSections, "opening");
+  const messages = sectionFor(coreSections, "messages");
   return (
-    <div className="beta-core-report-scenes">
-      {scenes.map((scene) => {
-        const sections = viewModel.sections.filter((section) => section.order <= 12 && section.scene === scene);
-        return sections.length === 0 ? null : (
-          <section key={scene} className={`beta-core-scene beta-core-scene-${scene}`} aria-labelledby={`beta-core-scene-${scene}-heading`}>
-            <h2 id={`beta-core-scene-${scene}-heading`} className="beta-core-scene-heading">{SCENE_LABELS[scene]}</h2>
-            {sections.map((section) => (
-              <CoreSection
-                key={section.id}
-                section={section}
-                scopeLabel={viewModel.metadata.scopeLabel}
-                queryChips={viewModel.metadata.queryChips}
-                dominantMetric={dominantMetric}
-              />
-            ))}
-          </section>
-        );
-      })}
+    <div className="beta-v2-core-scenes">
+      <CoreOpeningSection section={opening} message={messages} viewModel={viewModel} />
+      <ScaleScene sections={coreSections} />
+      <RhythmScene sections={coreSections} />
+      <BalanceScene sections={coreSections} />
+      <ConversationScene sections={coreSections} />
     </div>
   );
 }
 
 export function BetaUnavailableReportSections() {
+  const unavailable: readonly { readonly id: BetaReportSectionId; readonly title: string; readonly lead: string }[] = [
+    { id: "frequent-words", title: "常用词", lead: "本地词频证据尚未就绪。" },
+    { id: "distinctive-keywords", title: "年度关键词", lead: "年度关键词证据尚未就绪。" },
+    { id: "word-cloud", title: "词云", lead: "词云会在对应的有界词频结果就绪后显示。" },
+  ];
   return (
-    <section className="beta-core-scene beta-core-scene-language" aria-label="词语与分享模块状态">
-      {[
-        ["frequent-words", "常用词", "本地词频证据尚未就绪。"],
-        ["distinctive-keywords", "年度关键词", "年度关键词证据尚未就绪。"],
-        ["word-cloud", "词云", "词云会在对应的有界词频结果就绪后显示。"],
-      ].map(([id, title, lead]) => (
-        <BaseCard key={id} id={id} variant="narrative" className="beta-core-card beta-core-card-unavailable">
-          <p className="beta-type-eyebrow">{title}</p>
-          <h2 className="beta-type-heading">{title}</h2>
-          <p className="beta-type-report-lead">{lead}</p>
+    <div className="beta-v2-vocabulary-unavailable">
+      {unavailable.map((item) => (
+        <section key={item.id} id={item.id} className="beta-v2-unavailable-item" data-section-status="unavailable">
+          <p className="beta-type-eyebrow">{item.title}</p>
+          <h3 className="beta-v2-logical-title">{item.title}</h3>
+          <p className="beta-v2-logical-lead">{item.lead}</p>
           <Badge tone="partial">尚未提供</Badge>
-        </BaseCard>
+        </section>
       ))}
-    </section>
+    </div>
   );
 }

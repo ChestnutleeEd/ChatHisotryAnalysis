@@ -5,7 +5,7 @@ import type {
   WorkerWordFrequencyDtoV1,
   WordFrequencyRole,
 } from "../../worker-analysis/word-frequency-contract";
-import { Badge, BaseCard, BetaButton, MethodologyDisclosure } from "./primitives";
+import { Badge, BetaButton, MethodologyDisclosure, ToggleChip } from "./primitives";
 import { BetaWordCloud } from "./BetaWordCloud";
 import {
   BETA_VOCABULARY_CLEAN_PRESENTATION_VERSION,
@@ -46,7 +46,7 @@ function FrequencyRanking({
   return (
     <ol className={className} aria-label="当前范围常用词排名">
       {items.map((item) => (
-        <li key={item.normalizedToken}>
+        <li key={item.normalizedToken} data-rank={item.displayRank}>
           <span className="beta-word-rank">{item.displayRank}</span>
           <strong>{item.displayToken}</strong>
           <span>
@@ -73,10 +73,10 @@ function KeywordRanking({
   return (
     <ol className={className} aria-label="年度关键词展示排名">
       {items.map((item) => (
-        <li key={item.normalizedToken}>
-          <span>{item.displayRank}</span>
+        <li key={item.normalizedToken} data-rank={item.displayRank}>
+          <span className="beta-keyword-rank">{item.displayRank}</span>
           <strong>{item.displayToken}</strong>
-          <small>{item.count.toLocaleString("zh-CN")} 次</small>
+          <small>{item.count.toLocaleString("zh-CN")} 次 · 年度区分候选</small>
           <BetaButton variant="tertiary" onClick={() => onHideWord(item.normalizedToken)}>隐藏</BetaButton>
         </li>
       ))}
@@ -148,11 +148,11 @@ export function BetaWordEvidenceSections({
 
   return (
     <div className="beta-word-evidence-scenes">
-      <BaseCard id="frequent-words" variant="metric" className="beta-word-evidence-card">
+      <section id="frequent-words" className="beta-v2-word-section beta-v2-frequent-words">
         <div className="beta-word-evidence-heading">
           <div>
             <p className="beta-type-eyebrow">常用词 · 13</p>
-            <h2 className="beta-type-title beta-word-section-heading">这一范围最常提到什么？</h2>
+            <h3 className="beta-type-title beta-word-section-heading">这一范围最常提到什么？</h3>
             <p className="beta-type-secondary">同一份本地词频结果同时保留出现次数与每万词频率；切换展示口径不会重新统计。</p>
           </div>
           <Badge tone={pending ? "partial" : "privacy"}>{pending ? "更新中" : "本地词频"}</Badge>
@@ -174,7 +174,7 @@ export function BetaWordEvidenceSections({
           ))}
         </fieldset>
 
-        <fieldset className="beta-word-control-group">
+        <fieldset className="beta-word-control-group beta-v2-word-role-control">
           <legend>显示口径</legend>
           <label>
             <input
@@ -198,20 +198,15 @@ export function BetaWordEvidenceSections({
 
         <fieldset className="beta-word-control-group beta-clean-mode-control">
           <legend>词汇展示</legend>
-          <label>
-            <input
-              type="checkbox"
-              checked={cleanMode}
-              aria-describedby="beta-clean-mode-description"
-              onChange={(event) => changeCleanMode(event.currentTarget.checked)}
-            />
-            <span>{cleanMode ? "已净化常用词" : "显示全部词"}</span>
-          </label>
-          <small id="beta-clean-mode-description">
-            {cleanMode
-              ? "已隐藏常见虚词和连接表达，只影响当前展示。"
-              : "包含所有通过基础质量规则的词语。"}
-          </small>
+          <ToggleChip
+            className="beta-v2-clean-toggle"
+            label={cleanMode ? "✓ 净化常用词" : "净化常用词"}
+            checked={cleanMode}
+            onChange={changeCleanMode}
+            description={cleanMode
+              ? "只改变展示候选，不改变分析结果。"
+              : "显示所有通过基础质量规则的词语。"}
+          />
         </fieldset>
 
         {scopeIsRefreshing && frequency !== undefined ? (
@@ -270,11 +265,11 @@ export function BetaWordEvidenceSections({
           <p>token 化后不能可靠还原全部邮箱或路径来源，因此只采用保守 token-shape 规则；不做 stemming、lemmatization、NER 或姓名推断，缩写默认保留。</p>
           <p>净化常用词使用 {BETA_VOCABULARY_CLEAN_PRESENTATION_VERSION} 本地启发式列表，只过滤展示候选；不会改变原始次数、每万词频率、分母、底层排名或 frequencyDtoKey。</p>
         </MethodologyDisclosure>
-      </BaseCard>
+      </section>
 
-      <BaseCard id="distinctive-keywords" variant="narrative" className="beta-word-evidence-card" data-keyword-year={keywordPresentation.year ?? "all-years"}>
+      <section id="distinctive-keywords" className="beta-v2-word-section beta-v2-distinctive-keywords" data-keyword-year={keywordPresentation.year ?? "all-years"}>
         <p className="beta-type-eyebrow">年度关键词 · 14</p>
-        <h2 className="beta-type-title beta-word-section-heading">哪些词更能代表这一年？</h2>
+        <h3 className="beta-type-title beta-word-section-heading">哪些词更能代表这一年？</h3>
         <p className="beta-type-report-lead">{keywordPresentation.explanation}</p>
         <p className="beta-type-metadata">年度关键词展示范围：{keywordPresentation.year === null ? "全部年份（不适用）" : `${keywordPresentation.year} 年`}</p>
         {keywordPresentation.items.length === 0 ? (
@@ -294,7 +289,7 @@ export function BetaWordEvidenceSections({
           <p>年度关键词继续使用现有 Stage7 的候选阈值与平滑 year-vs-rest log-odds。常用词的 count/rate 与关键词的 distinctiveness score 是两种独立语义。</p>
           <p>净化常用词只隐藏展示行并从既有候选顺序补位，不重新计算或改写 score、count、DF 与底层排名。</p>
         </MethodologyDisclosure>
-      </BaseCard>
+      </section>
 
       <BetaWordCloud
         frequency={scopedFrequency}

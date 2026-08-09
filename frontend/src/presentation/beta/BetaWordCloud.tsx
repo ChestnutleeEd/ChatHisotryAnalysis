@@ -20,7 +20,6 @@ import {
 } from "../../word-cloud-layout/presentation";
 import type { WorkerWordFrequencyDtoV1 } from "../../worker-analysis/word-frequency-contract";
 import {
-  BaseCard,
   Badge,
   BetaButton,
   MethodologyDisclosure,
@@ -309,11 +308,16 @@ export function BetaWordCloud({
   }, [canvasWidth, currentResult, devicePixelRatio, role, viewportBucket]);
 
   return (
-    <BaseCard id="word-cloud" variant="word" className="beta-word-cloud-card" data-clean-mode={cleanMode ? "on" : "off"}>
+    <section
+      id="word-cloud"
+      className="beta-v2-word-cloud"
+      data-clean-mode={cleanMode ? "on" : "off"}
+      aria-labelledby="beta-word-cloud-heading"
+    >
       <div className="beta-word-cloud-heading">
         <div>
           <p className="beta-type-eyebrow">词云 · 15</p>
-          <h2 className="beta-type-title beta-word-section-heading">这一组词放在一起是什么样？</h2>
+          <h3 id="beta-word-cloud-heading" className="beta-type-title beta-word-section-heading">这一组词放在一起是什么样？</h3>
           <p className="beta-type-secondary">
             词语大小代表当前{metric === "raw-count" ? "出现次数" : "每万词频率"}；词云和列表都来自当前 {yearLabel}、{roleLabel} 范围。
           </p>
@@ -428,6 +432,6 @@ export function BetaWordCloud({
         <p>浏览器字体如果比布局安全框更宽，只会向下缩小绘制字号；无法在最小字号内适配的词不会偷偷溢出，列表仍会保留它。</p>
         <p>内置词汇过滤决定统计分母；自定义隐藏只影响本地呈现，不改变次数、频率、排名、分母或 Worker 请求。</p>
       </MethodologyDisclosure>
-    </BaseCard>
+    </section>
   );
 }

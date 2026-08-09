@@ -35,11 +35,11 @@ import closingPoster from "../../assets/beta/art/closing-poster-v1.webp";
 
 const REPORT_SCENES = [
   { key: "opening", label: "开场", section: "opening" },
-  { key: "activity", label: "规模", section: "active-days" },
+  { key: "scale", label: "规模", section: "messages" },
   { key: "rhythm", label: "节奏", section: "peak-month" },
-  { key: "comparison", label: "双方", section: "sender-share" },
-  { key: "conversation", label: "会话", section: "sessions" },
-  { key: "language", label: "词汇", section: "frequent-words" },
+  { key: "balance", label: "平衡", section: "sender-share" },
+  { key: "conversation", label: "交流", section: "sessions" },
+  { key: "vocabulary", label: "词汇", section: "frequent-words" },
   { key: "closing", label: "收束", section: "summary-share" },
 ] as const satisfies readonly { key: string; label: string; section: BetaReportSectionId }[];
 
@@ -359,10 +359,10 @@ function ClosingScene({
         <p className="beta-type-body">这份 Beta 先提供可读的年度回顾。分享与导出的位置已经预留，但当前不会声称这些功能可用。</p>
         <Surface role="subtle" className="beta-closing-share-slot">
           <div>
-            <Badge tone="partial">尚未提供</Badge>
-            <strong>分享与导出</strong>
+            <Badge tone="partial">后续批次</Badge>
+            <strong>分享与导出位置</strong>
           </div>
-          <p>后续批次会在不上传原始内容的前提下接入。</p>
+          <p>当前只呈现年度回顾；后续批次会在不上传原始内容的前提下接入分享与导出。</p>
         </Surface>
         {methodology !== undefined ? (
           <MethodologyDisclosure summary="查看范围、分母与表达边界" chips={["UTC+08:00", "本地聚合", "非评价性"]}>
@@ -430,19 +430,34 @@ function BetaCoreAnnualReport({
 
       <BetaCoreReportSections viewModel={viewModel} />
 
-      {canRenderWordEvidence ? (
-        <BetaWordEvidenceSections
-          result={analyticsResult}
-          frequency={wordFrequency}
-          requestedRole={wordRole}
-          requestedYear={analyticsResult.filters.selectedYear}
-          pending={wordFrequencyPending ?? false}
-          error={wordFrequencyError}
-          onRoleChange={onWordRoleChange}
-        />
-      ) : (
-        <BetaUnavailableReportSections />
-      )}
+      <Scene
+        id="vocabulary-scene"
+        scene="vocabulary"
+        className="beta-v2-scene beta-v2-vocabulary"
+        aria-labelledby="beta-v2-scene-vocabulary-heading"
+      >
+        <header className="beta-v2-scene-heading">
+          <span className="beta-v2-scene-number" aria-hidden="true">06</span>
+          <div>
+            <p className="beta-type-eyebrow">词汇</p>
+            <h2 id="beta-v2-scene-vocabulary-heading" className="beta-type-heading">从常用词到整体词云</h2>
+            <p className="beta-v2-scene-summary">三种词汇体验各自回答不同问题：出现最多、年度区分度，以及放在一起的整体形状。</p>
+          </div>
+        </header>
+        {canRenderWordEvidence ? (
+          <BetaWordEvidenceSections
+            result={analyticsResult}
+            frequency={wordFrequency}
+            requestedRole={wordRole}
+            requestedYear={analyticsResult.filters.selectedYear}
+            pending={wordFrequencyPending ?? false}
+            error={wordFrequencyError}
+            onRoleChange={onWordRoleChange}
+          />
+        ) : (
+          <BetaUnavailableReportSections />
+        )}
+      </Scene>
 
       <ClosingScene
         onOpenDetailed={onOpenDetailed}
