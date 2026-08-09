@@ -2544,6 +2544,11 @@ footer a {
   background: var(--beta-color-coral-surface);
 }
 
+.desktop-app.beta-enabled .beta-card-word {
+  background: var(--beta-color-report);
+  box-shadow: var(--beta-depth-raised);
+}
+
 .desktop-app.beta-enabled .beta-card-privacy {
   background: var(--beta-color-privacy-surface);
 }
@@ -2975,6 +2980,203 @@ footer a {
   justify-content: space-between;
 }
 
+.desktop-app.beta-enabled .beta-word-cloud-card {
+  gap: var(--beta-space-5);
+  padding: clamp(28px, 5vw, 56px);
+}
+
+.desktop-app.beta-enabled .beta-word-cloud-heading {
+  display: flex;
+  gap: var(--beta-space-5);
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.desktop-app.beta-enabled .beta-word-cloud-status,
+.desktop-app.beta-enabled .beta-word-cloud-empty {
+  max-width: 72ch;
+  margin: 0;
+  color: var(--beta-color-text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.desktop-app.beta-enabled .beta-word-cloud-canvas-wrap {
+  width: 100%;
+  min-height: 220px;
+  overflow: hidden;
+  border-radius: var(--beta-radius-card);
+  background: var(--beta-color-inset);
+}
+
+.desktop-app.beta-enabled .beta-word-cloud-canvas {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+.desktop-app.beta-enabled .beta-word-cloud-fallback-bars {
+  display: grid;
+  gap: var(--beta-space-2);
+  padding: var(--beta-space-4);
+  border-radius: var(--beta-radius-control);
+  background: var(--beta-color-inset);
+}
+
+.desktop-app.beta-enabled .beta-word-cloud-bar-row {
+  display: grid;
+  grid-template-columns: minmax(70px, 0.28fr) minmax(100px, 1fr) auto;
+  gap: var(--beta-space-3);
+  min-height: 32px;
+  align-items: center;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.desktop-app.beta-enabled .beta-word-cloud-bar-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-app.beta-enabled .beta-word-cloud-bar-track {
+  display: block;
+  height: 8px;
+  overflow: hidden;
+  border-radius: var(--beta-radius-pill);
+  background: rgb(23 56 168 / 12%);
+}
+
+.desktop-app.beta-enabled .beta-word-cloud-bar-fill {
+  display: block;
+  width: var(--beta-word-cloud-bar-width);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--beta-color-primary);
+}
+
+.desktop-app.beta-enabled .beta-word-cloud-list-wrap {
+  display: grid;
+  gap: var(--beta-space-3);
+}
+
+.desktop-app.beta-enabled .beta-word-cloud-list-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--beta-space-3);
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.desktop-app.beta-enabled .beta-word-cloud-list-heading h3 {
+  margin: 0;
+  font-family: var(--beta-font-display);
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.desktop-app.beta-enabled .beta-word-cloud-list {
+  display: grid;
+  gap: 0;
+  max-height: 560px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.desktop-app.beta-enabled .beta-word-cloud-list li {
+  display: grid;
+  grid-template-columns: 36px minmax(120px, 1fr) minmax(160px, auto) minmax(110px, auto) auto;
+  gap: var(--beta-space-3);
+  min-height: 52px;
+  align-items: center;
+  border-top: 1px solid var(--beta-color-border);
+  font-variant-numeric: tabular-nums;
+}
+
+.desktop-app.beta-enabled .beta-word-cloud-list li[data-layout-omitted="true"],
+.desktop-app.beta-enabled .beta-word-cloud-list li[data-renderer-omitted="true"] {
+  background: var(--beta-color-warning-surface);
+}
+
+.desktop-app.beta-enabled .beta-word-cloud-list-rank {
+  color: var(--beta-color-text-muted);
+  font-size: 13px;
+}
+
+.desktop-app.beta-enabled .beta-word-cloud-list-token,
+.desktop-app.beta-enabled .beta-word-cloud-list-values {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.desktop-app.beta-enabled .beta-word-cloud-list-token strong {
+  overflow-wrap: anywhere;
+}
+
+.desktop-app.beta-enabled .beta-word-cloud-list-token small,
+.desktop-app.beta-enabled .beta-word-cloud-list-values small,
+.desktop-app.beta-enabled .beta-word-cloud-list-note {
+  color: var(--beta-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.desktop-app.beta-enabled .beta-word-cloud-list-values {
+  text-align: right;
+}
+
+.desktop-app.beta-enabled .beta-word-cloud-list-note {
+  color: var(--beta-color-warning);
+}
+
+.desktop-app.beta-enabled .beta-harness-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--beta-space-4);
+  width: min(1120px, 100%);
+  margin: 0 auto var(--beta-space-5);
+  padding: var(--beta-space-4);
+  border-radius: var(--beta-radius-card);
+}
+
+.desktop-app.beta-enabled .beta-harness-controls fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--beta-space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.desktop-app.beta-enabled .beta-harness-controls legend {
+  width: 100%;
+  margin-bottom: var(--beta-space-1);
+  color: var(--beta-color-text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.desktop-app.beta-enabled .beta-harness-controls label {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: var(--beta-space-2);
+  padding: 0 var(--beta-space-3);
+  border-radius: var(--beta-radius-control);
+  background: var(--beta-color-surface);
+  color: var(--beta-color-text);
+}
+
+.desktop-app.beta-enabled .beta-harness-controls input:focus-visible + span {
+  outline: 3px solid var(--beta-color-focus);
+  outline-offset: 3px;
+}
+
 .desktop-app.beta-enabled .beta-word-control-group {
   display: flex;
   flex-wrap: wrap;
@@ -3214,6 +3416,29 @@ footer a {
 
   .desktop-app.beta-enabled .beta-word-evidence-heading {
     display: grid;
+  }
+
+  .desktop-app.beta-enabled .beta-word-cloud-heading {
+    display: grid;
+  }
+
+  .desktop-app.beta-enabled .beta-word-cloud-bar-row {
+    grid-template-columns: minmax(70px, 0.35fr) minmax(80px, 1fr) auto;
+  }
+
+  .desktop-app.beta-enabled .beta-word-cloud-list li {
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+    padding: var(--beta-space-2) 0;
+  }
+
+  .desktop-app.beta-enabled .beta-word-cloud-list-values {
+    text-align: right;
+  }
+
+  .desktop-app.beta-enabled .beta-word-cloud-list-note,
+  .desktop-app.beta-enabled .beta-word-cloud-list .beta-button {
+    grid-column: 2 / -1;
+    justify-self: start;
   }
 
   .desktop-app.beta-enabled .beta-word-ranking li,

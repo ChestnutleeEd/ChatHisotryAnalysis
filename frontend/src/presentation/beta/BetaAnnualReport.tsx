@@ -148,7 +148,7 @@ export function BetaAnnualReport({
           <p className="beta-type-eyebrow">阅读方式 · 03–16</p>
           <h2 className="beta-type-heading">沿着固定章节继续阅读</h2>
           <HighlightSentence>{viewModel.narrative}</HighlightSentence>
-          <p className="beta-type-body">当前版本先提供可运行的阅读结构；尚未接入的指标、词云和分享不会用示例值替代。</p>
+          <p className="beta-type-body">当前章节会明确区分已就绪与尚未提供的指标；词频与词云在下方保持本地生成和可读列表。</p>
         </BaseCard>
 
         {BETA_REPORT_SECTIONS.filter((section) => section.order >= 4 && section.order <= 12).map((section) => (
@@ -160,6 +160,7 @@ export function BetaAnnualReport({
             result={analyticsResult}
             frequency={wordFrequency}
             requestedRole={wordRole}
+            requestedYear={reportState.selection.kind === "year" ? reportState.selection.year : null}
             pending={wordFrequencyPending ?? false}
             error={wordFrequencyError}
             onRoleChange={onWordRoleChange}
@@ -168,7 +169,7 @@ export function BetaAnnualReport({
           <span key={section.id} id={section.id} className="beta-report-section-anchor" aria-hidden="true" />
         ))}
 
-        {BETA_REPORT_SECTIONS.filter((section) => section.order >= 15).map((section) => (
+        {BETA_REPORT_SECTIONS.filter((section) => section.order >= 15 && (!hasWordEvidence || section.id !== "word-cloud")).map((section) => (
           <span key={section.id} id={section.id} className="beta-report-section-anchor" aria-hidden="true" />
         ))}
 

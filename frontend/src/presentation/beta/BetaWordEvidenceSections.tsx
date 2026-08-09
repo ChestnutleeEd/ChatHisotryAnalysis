@@ -6,6 +6,7 @@ import type {
   WordFrequencyRole,
 } from "../../worker-analysis/word-frequency-contract";
 import { Badge, BaseCard, BetaButton, MethodologyDisclosure } from "./primitives";
+import { BetaWordCloud } from "./BetaWordCloud";
 import {
   createKeywordPresentation,
   createWordFrequencyPresentation,
@@ -18,14 +19,15 @@ import {
 
 const ROLE_LABELS: Readonly<Record<WordFrequencyRole, string>> = {
   both: "双方",
-  owner: "owner",
-  other: "other",
+  owner: "Owner",
+  other: "Other",
 };
 
 export function BetaWordEvidenceSections({
   result,
   frequency,
   requestedRole,
+  requestedYear,
   pending,
   error,
   onRoleChange,
@@ -33,6 +35,7 @@ export function BetaWordEvidenceSections({
   readonly result: CanonicalAnalysisResult;
   readonly frequency?: WorkerWordFrequencyDtoV1;
   readonly requestedRole: WordFrequencyRole;
+  readonly requestedYear?: number | null;
   readonly pending: boolean;
   readonly error?: string;
   readonly onRoleChange: (role: WordFrequencyRole) => void;
@@ -47,6 +50,10 @@ export function BetaWordEvidenceSections({
   const keywordPresentation = useMemo(
     () => createKeywordPresentation(result, customHiddenWords),
     [customHiddenWords, result],
+  );
+  const scopeIsRefreshing = pending && frequency !== undefined && (
+    frequency.scope.role !== requestedRole ||
+    (requestedYear !== undefined && frequency.scope.year !== requestedYear)
   );
 
   function commitHidden(words: readonly string[]): void {
@@ -73,7 +80,7 @@ export function BetaWordEvidenceSections({
           <div>
             <p className="beta-type-eyebrow">常用词 · 13</p>
             <h2 className="beta-type-heading">这一范围最常提到什么？</h2>
-            <p className="beta-type-secondary">同一份 Worker 结果同时携带原始次数与每万 eligible tokens；切换展示口径不会重新统计。</p>
+            <p className="beta-type-secondary">同一份本地词频结果同时保留出现次数与每万词频率；切换展示口径不会重新统计。</p>
           </div>
           <Badge tone={pending ? "partial" : "privacy"}>{pending ? "更新中" : "本地词频"}</Badge>
         </div>
@@ -112,13 +119,13 @@ export function BetaWordEvidenceSections({
               checked={metric === "per-10000-eligible-tokens"}
               onChange={() => setMetric("per-10000-eligible-tokens")}
             />
-            <span>每万 eligible tokens</span>
+            <span>每万词频率</span>
           </label>
         </fieldset>
 
-        {pending && frequency !== undefined && frequency.scope.role !== requestedRole ? (
+        {scopeIsRefreshing && frequency !== undefined ? (
           <p className="beta-word-status" role="status">
-            正在更新为{ROLE_LABELS[requestedRole]}范围；以下暂时保留{ROLE_LABELS[frequency.scope.role]}的上一份完整结果。
+            正在更新为{ROLE_LABELS[requestedRole]}{requestedYear === null ? "全部年份" : requestedYear === undefined ? "" : `${requestedYear} 年`}范围；以下暂时保留上一份完整结果。
           </p>
         ) : null}
         {error !== undefined ? <p className="beta-word-status" role="alert">{error}</p> : null}
@@ -128,9 +135,6 @@ export function BetaWordEvidenceSections({
           <p className="beta-word-status" role="status">当前年份、角色与已提交范围内没有符合内置质量策略的 eligible token。</p>
         ) : (
           <>
-            <p className="beta-word-denominator">
-              分母：{frequencyPresentation.denominator?.eligibleTokenCount.toLocaleString("zh-CN")} 个内置策略过滤后的 eligible tokens
-            </p>
             <ol className="beta-word-ranking" aria-label="当前范围常用词排名">
               {frequencyPresentation.items.map((item) => (
                 <li key={item.normalizedToken}>
@@ -171,7 +175,8 @@ export function BetaWordEvidenceSections({
           ) : <p>当前没有自定义隐藏词。</p>}
         </details>
 
-        <MethodologyDisclosure summary="查看常用词统计口径" chips={["NFKC", "每万 eligible tokens", "最多 400 候选"]}>
+        <MethodologyDisclosure summary="查看常用词统计口径" chips={["NFKC", "每万词频率", "最多 400 候选"]}>
+          <p>原始次数是当前范围内的出现次数；每万词频率以当前角色、年份和内置词汇策略过滤后的 {frequencyPresentation.denominator?.eligibleTokenCount.toLocaleString("zh-CN") ?? "当前"} 个 eligible tokens 为分母。</p>
           <p>内置中英文停用词、纯数字、URL、标点/符号/emoji、单字符、不可见/控制字符、超过 32 个 code points、固定扩展名和无效 mixed fragments 会参与 eligibility 与分母。</p>
           <p>token 化后不能可靠还原全部邮箱或路径来源，因此只采用保守 token-shape 规则；不做 stemming、lemmatization、NER 或姓名推断，缩写默认保留。</p>
         </MethodologyDisclosure>
@@ -199,6 +204,14 @@ export function BetaWordEvidenceSections({
           <p>年度关键词继续使用现有 Stage7 的候选阈值与平滑 year-vs-rest log-odds。常用词的 count/rate 与关键词的 distinctiveness score 是两种独立语义。</p>
         </MethodologyDisclosure>
       </BaseCard>
+
+      <BetaWordCloud
+        frequency={frequency}
+        metric={metric}
+        customHiddenWords={customHiddenWords}
+        pending={pending}
+        onHideWord={hideWord}
+      />
     </div>
   );
 }

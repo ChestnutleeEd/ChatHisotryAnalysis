@@ -3,7 +3,10 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { createWordCloudLayoutRequest } from "../src/word-cloud-layout/contracts";
+import {
+  WORD_CLOUD_MIN_FREQUENCY,
+  createWordCloudLayoutRequest,
+} from "../src/word-cloud-layout/contracts";
 import { layoutWordCloud } from "../src/word-cloud-layout/layout-engine";
 import { createWordCloudPresentation } from "../src/word-cloud-layout/presentation";
 import { canonicalQueryKey } from "../src/worker-analysis/analytics-contract";
@@ -55,6 +58,22 @@ describe("B3 frequency DTO to B4 deterministic geometry integration", () => {
     expect(client).toContain('new Worker(new URL("./word-cloud-layout.worker.ts"');
     expect(worker).toContain("createWordCloudLayoutWorkerHandler");
     expect(presentation).not.toMatch(/layoutWordCloud|measureText|Math\.random/u);
+    const component = readFileSync(fileURLToPath(new URL("../src/presentation/beta/BetaWordCloud.tsx", import.meta.url)), "utf8");
+    expect(component).not.toMatch(/layoutWordCloud\s*\(/u);
+  });
+
+  it("keeps the cloud presentation threshold at two occurrences without changing the DTO", () => {
+    const dto = createSyntheticFrequencyDto(3);
+    const presented = createWordCloudPresentation(
+      dto,
+      [],
+      "raw-count",
+      3,
+      WORD_CLOUD_MIN_FREQUENCY,
+    );
+    expect(presented.items.map((item) => item.count)).toEqual([3, 2]);
+    expect(dto.items.map((item) => item.count)).toEqual([3, 2, 1]);
+    expect(dto.identity.frequencyDtoKey).toBe(presented.frequencyDtoKey);
   });
 
   it("contains no randomness, Canvas measurement, DOM, locale collation, or network dependency", () => {

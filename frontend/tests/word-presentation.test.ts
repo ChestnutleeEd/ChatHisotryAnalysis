@@ -173,7 +173,7 @@ describe("Beta B3 word presentation boundary", () => {
     expect(JSON.stringify(keywords)).not.toMatch(/score|restCount|distinctMessageFrequency/u);
   });
 
-  it("renders list-first sections 13–14 without keyword trace fields or cloud layout", () => {
+  it("renders word evidence with a real Canvas section without keyword trace fields", () => {
     const roleChange = vi.fn();
     const html = renderToStaticMarkup(createElement(BetaWordEvidenceSections, {
       result,
@@ -185,11 +185,14 @@ describe("Beta B3 word presentation boundary", () => {
     expect(html).toContain('id="frequent-words"');
     expect(html).toContain('id="distinctive-keywords"');
     expect(html).toContain("原始次数");
-    expect(html).toContain("每万 eligible tokens");
+    expect(html).toContain("每万词频率");
     expect(html).toContain("管理自定义隐藏词");
     expect(html).toContain("恢复默认过滤");
     expect(html).toContain("频次回退");
-    expect(html).not.toMatch(/restCount|restTokenTotal|distinctMessageFrequency|raw score|Canvas|layout Worker/u);
+    expect(html).toContain('id="word-cloud"');
+    expect(html).toContain('aria-hidden="true"');
+    expect(html).toContain("可读词频列表");
+    expect(html).not.toMatch(/restCount|restTokenTotal|distinctMessageFrequency|raw score/u);
     expect(roleChange).not.toHaveBeenCalled();
   });
 });

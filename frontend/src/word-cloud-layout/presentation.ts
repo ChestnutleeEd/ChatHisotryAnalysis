@@ -1,6 +1,7 @@
 import {
   createWordFrequencyPresentation,
   type WordFrequencyMetric,
+  type WordFrequencyPresentationItem,
 } from "../presentation/beta/word-presentation";
 import {
   validateWorkerWordFrequencyDtoV1,
@@ -16,6 +17,7 @@ import {
 export interface WordCloudPresentationV1 {
   readonly metric: WordFrequencyMetric;
   readonly frequencyDtoKey: string;
+  readonly items: readonly WordFrequencyPresentationItem[];
   readonly words: readonly WordCloudLayoutWordV1[];
   readonly presentationDigest: string;
   readonly boundedPoolExhausted: boolean;
@@ -26,6 +28,7 @@ export function createWordCloudPresentation(
   customHiddenWords: readonly string[],
   metric: WordFrequencyMetric,
   wordLimit: number,
+  minimumFrequency = 1,
 ): WordCloudPresentationV1 {
   const dto = validateWorkerWordFrequencyDtoV1(value) as WorkerWordFrequencyDtoV1;
   if (
@@ -35,13 +38,17 @@ export function createWordCloudPresentation(
   ) {
     throw new Error("INVALID_WORD_CLOUD_PRESENTATION_LIMIT");
   }
+  if (!Number.isSafeInteger(minimumFrequency) || minimumFrequency < 1) {
+    throw new Error("INVALID_WORD_CLOUD_PRESENTATION_MIN_FREQUENCY");
+  }
   const presentation = createWordFrequencyPresentation(
     dto,
     customHiddenWords,
     metric,
     wordLimit,
   );
-  const words = sortLayoutWords(presentation.items.map((item) => ({
+  const items = presentation.items.filter((item) => item.count >= minimumFrequency);
+  const words = sortLayoutWords(items.map((item) => ({
     stableKey: JSON.stringify([item.normalizedToken, item.sourceRank]),
     displayToken: item.displayToken,
     displayRank: item.displayRank,
@@ -54,6 +61,7 @@ export function createWordCloudPresentation(
   return {
     metric,
     frequencyDtoKey: dto.identity.frequencyDtoKey,
+    items,
     words,
     presentationDigest: presentationDigest(words),
     boundedPoolExhausted: presentation.boundedPoolExhausted,

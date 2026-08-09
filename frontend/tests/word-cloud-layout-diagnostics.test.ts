@@ -59,6 +59,12 @@ describe("synthetic word-cloud layout diagnostics", () => {
     )).toBe(true);
     expect(retainedBytes).toBeLessThan(32 * 1024 * 1024);
     expect(diagnostics.every((item) => Number.isFinite(item.p95Ms))).toBe(true);
-    process.stdout.write(`\nWORD_CLOUD_LAYOUT_DIAGNOSTICS ${JSON.stringify(diagnostics)}\n`);
+    process.stdout.write(`\nWORD_CLOUD_LAYOUT_DIAGNOSTICS ${JSON.stringify({
+      fixtures: diagnostics,
+      retainedResultBytes: retainedBytes,
+      cacheSize: cache.size,
+      mainThreadLayoutCalls: 0,
+      longTasks: [],
+    })}\n`);
   }, 20_000);
 });
