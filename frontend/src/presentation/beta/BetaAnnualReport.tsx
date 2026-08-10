@@ -1,3 +1,5 @@
+import { useRef, useState, type RefObject } from "react";
+
 import {
   BETA_REPORT_SECTIONS,
   type BetaReportSectionId,
@@ -23,6 +25,9 @@ import {
 } from "./primitives";
 import type { BetaRecapSkeletonViewModel } from "./view-model";
 import type { BetaReportViewModelV1 } from "./report-contract";
+import type { ShareCardViewModelV1 } from "./summary-contract";
+import { BetaSharePreviewDialog } from "./BetaSharePreviewDialog";
+import type { ShareCardPreviewModels } from "./share-preview-state";
 import { BetaCoreReportSections, BetaUnavailableReportSections } from "./BetaCoreReportSections";
 import type { CanonicalAnalysisResult } from "../../worker-analysis/analytics-contract";
 import type {
@@ -59,6 +64,8 @@ export interface BetaAnnualReportProps {
   readonly onRestoreFullRange: () => void;
   readonly onOpenDetailed: () => void;
   readonly onWordRoleChange?: (role: WordFrequencyRole) => void;
+  readonly shareCardViewModel?: ShareCardViewModelV1;
+  readonly onBuildSharePreview?: () => ShareCardPreviewModels | undefined;
 }
 
 function isBetaReportViewModel(
@@ -183,6 +190,8 @@ export function BetaAnnualReport({
   onRestoreFullRange,
   onOpenDetailed,
   onWordRoleChange,
+  shareCardViewModel,
+  onBuildSharePreview,
 }: BetaAnnualReportProps) {
   if (isBetaReportViewModel(viewModel)) {
     return (
@@ -202,6 +211,8 @@ export function BetaAnnualReport({
         onRestoreFullRange={onRestoreFullRange}
         onOpenDetailed={onOpenDetailed}
         onWordRoleChange={onWordRoleChange}
+        shareCardViewModel={shareCardViewModel}
+        onBuildSharePreview={onBuildSharePreview}
       />
     );
   }
@@ -351,11 +362,18 @@ function ClosingScene({
   onOpenDetailed,
   methodology,
   privacyLabel = "本地聚合结果 · 不含消息正文或联系人身份",
+  shareCardViewModel,
+  sharePreviewTriggerRef,
+  onOpenSharePreview,
 }: {
   readonly onOpenDetailed: () => void;
   readonly methodology?: readonly { readonly id: string; readonly label: string; readonly value: string }[];
   readonly privacyLabel?: string;
+  readonly shareCardViewModel?: ShareCardViewModelV1;
+  readonly sharePreviewTriggerRef?: RefObject<HTMLButtonElement | null>;
+  readonly onOpenSharePreview?: () => void;
 }) {
+  const shareCardUnavailable = shareCardViewModel?.exportAvailability.status === "unavailable";
   return (
     <Scene id="summary-share" scene="closing" className="beta-closing-scene" aria-labelledby="beta-closing-heading">
       <div className="beta-closing-copy">
@@ -363,13 +381,36 @@ function ClosingScene({
         <h2 id="beta-closing-heading" className="beta-type-heading">把这段本地记录留在手边</h2>
         <p className="beta-type-report-lead">回顾在这里收束；你的范围、指标和表达边界仍由本地已提交结果决定。</p>
         <p className="beta-type-body">这份 Beta 先提供可读的年度回顾。分享与导出的位置已经预留，但当前不会声称这些功能可用。</p>
-        <Surface role="subtle" className="beta-closing-share-slot">
-          <div>
-            <Badge tone="partial">后续批次</Badge>
-            <strong>分享与导出位置</strong>
-          </div>
-          <p>当前只呈现年度回顾；后续批次会在不上传原始内容的前提下接入分享与导出。</p>
-        </Surface>
+        {shareCardViewModel === undefined ? (
+          <Surface role="subtle" className="beta-closing-share-slot">
+            <div>
+              <Badge tone="partial">后续批次</Badge>
+              <strong>分享与导出位置</strong>
+            </div>
+            <p>当前只呈现年度回顾；后续批次会在不上传原始内容的前提下接入分享与导出。</p>
+          </Surface>
+        ) : (
+          <Surface role="subtle" className="beta-closing-share-entry" data-share-card-availability={shareCardViewModel.exportAvailability.status}>
+            <div className="beta-closing-share-entry-heading">
+              <div>
+                <Badge tone={shareCardUnavailable ? "partial" : "privacy"}>{shareCardUnavailable ? "暂不可用" : "年度回顾卡"}</Badge>
+                <strong>把这段范围整理成一张回顾卡</strong>
+              </div>
+              <span>{shareCardViewModel.scope.partial ? "部分日期范围" : shareCardViewModel.rangeLabel}</span>
+            </div>
+            <p>预览只使用当前本地统计结果，不包含聊天正文或联系人身份。</p>
+            <BetaButton
+              buttonRef={sharePreviewTriggerRef}
+              data-testid="beta-share-preview-trigger"
+              variant="primary"
+              disabled={shareCardUnavailable || onOpenSharePreview === undefined}
+              onClick={onOpenSharePreview}
+            >
+              生成回顾卡
+            </BetaButton>
+            {shareCardUnavailable ? <small className="beta-closing-share-entry-reason">当前范围没有可用的用户消息，暂时无法生成回顾卡。</small> : null}
+          </Surface>
+        )}
         {methodology !== undefined ? (
           <MethodologyDisclosure summary="查看范围、分母与表达边界" chips={["UTC+08:00", "本地聚合", "非评价性"]}>
             <ul className="beta-methodology-facts">
@@ -404,12 +445,28 @@ function BetaCoreAnnualReport({
   onRestoreFullRange,
   onOpenDetailed,
   onWordRoleChange,
+  shareCardViewModel,
+  onBuildSharePreview,
 }: BetaAnnualReportProps & { readonly viewModel: BetaReportViewModelV1 }) {
+  const sharePreviewTriggerRef = useRef<HTMLButtonElement>(null);
+  const [sharePreviewOpen, setSharePreviewOpen] = useState(false);
+  const [sharePreviewModels, setSharePreviewModels] = useState<ShareCardPreviewModels>();
   const canRenderWordEvidence = analyticsResult !== undefined && wordRole !== undefined && onWordRoleChange !== undefined;
   const selectLatestYear = () => {
     const latestYear = representedYears[representedYears.length - 1]?.year;
     if (latestYear !== undefined) onRangeChange(`year:${latestYear}`);
   };
+  function openSharePreview(): void {
+    if (shareCardViewModel?.exportAvailability.status !== "ready" || onBuildSharePreview === undefined) {
+      return;
+    }
+    const models = onBuildSharePreview();
+    if (models === undefined) {
+      return;
+    }
+    setSharePreviewModels(models);
+    setSharePreviewOpen(true);
+  }
   return (
     <section
       id="beta-main-content"
@@ -474,7 +531,19 @@ function BetaCoreAnnualReport({
         onOpenDetailed={onOpenDetailed}
         methodology={viewModel.methodology}
         privacyLabel={`${viewModel.privacy.badgeLabel} · 不含消息正文或联系人身份。`}
+        shareCardViewModel={shareCardViewModel}
+        sharePreviewTriggerRef={sharePreviewTriggerRef}
+        onOpenSharePreview={openSharePreview}
       />
+      {shareCardViewModel !== undefined && sharePreviewModels !== undefined ? (
+        <BetaSharePreviewDialog
+          open={sharePreviewOpen}
+          models={sharePreviewModels}
+          currentViewModel={shareCardViewModel}
+          triggerRef={sharePreviewTriggerRef}
+          onClose={() => setSharePreviewOpen(false)}
+        />
+      ) : null}
     </section>
   );
 }

@@ -73,6 +73,14 @@ import {
 import { presentBetaReportZhCN } from "./beta/locales/zh-CN";
 import { BetaReportFactsCache } from "./beta/report-cache";
 import type { BetaReportAdapterOptions } from "./beta/report-adapter";
+import { createBetaSummaryDtoV1 } from "./beta/summary-adapter";
+import { presentBetaSummaryZhCN } from "./beta/summary-presenter";
+import type { ShareCardPreviewModels } from "./beta/share-preview-state";
+import {
+  createWordFrequencyPresentation,
+  readCustomHiddenWords,
+} from "./beta/word-presentation";
+import { readVocabularyCleanMode } from "./beta/clean-vocabulary";
 import {
   desktopFailureMessage,
   desktopPhaseLabel,
@@ -1516,17 +1524,56 @@ export function DesktopImportPanel() {
       ),
     [analyticsResult, reportRepresentedYears, reportState],
   );
-  const reportViewModel = useMemo(
+  const reportDto = useMemo(
     () => analyticsResult === undefined || reportState === undefined
       ? undefined
-      : presentBetaReportZhCN(
-        reportFactsCacheRef.current.getForResult(
-          analyticsResult,
-          committedReportOptions(analyticsResult, reportState.selection),
-        ),
+      : reportFactsCacheRef.current.getForResult(
+        analyticsResult,
+        committedReportOptions(analyticsResult, reportState.selection),
       ),
     [analyticsResult, reportState],
   );
+  const reportViewModel = useMemo(
+    () => reportDto === undefined ? undefined : presentBetaReportZhCN(reportDto),
+    [reportDto],
+  );
+  const shareCardViewModel = useMemo(
+    () => reportDto === undefined
+      ? undefined
+      : presentBetaSummaryZhCN(createBetaSummaryDtoV1(reportDto)),
+    [reportDto],
+  );
+
+  function buildSharePreviewModels(): ShareCardPreviewModels | undefined {
+    if (reportDto === undefined || analyticsResult === undefined || shareCardViewModel === undefined) {
+      return undefined;
+    }
+    const matchingFrequency = wordFrequency !== undefined &&
+      wordFrequency.identity.baseQueryKey === analyticsResult.queryKey &&
+      wordFrequency.identity.datasetId === analyticsResult.datasetId &&
+      wordFrequency.identity.generation === analyticsResult.generation &&
+      wordFrequency.scope.year === analyticsResult.filters.selectedYear &&
+      wordFrequency.scope.role === wordRole
+      ? wordFrequency
+      : undefined;
+    const wordPresentation = createWordFrequencyPresentation(
+      matchingFrequency,
+      readCustomHiddenWords(),
+      "raw-count",
+      undefined,
+      readVocabularyCleanMode(),
+    );
+    const onSummary = createBetaSummaryDtoV1(reportDto, {
+      includeVocabulary: true,
+      wordPresentation,
+      expectedWordRole: wordRole,
+      expectedFrequencyDtoKey: wordPresentation.frequencyDtoKey,
+    });
+    return {
+      off: shareCardViewModel,
+      on: presentBetaSummaryZhCN(onSummary),
+    };
+  }
 
   return (
     <main className="desktop-app beta-enabled" aria-busy={isBusy}>
@@ -1679,6 +1726,8 @@ export function DesktopImportPanel() {
           onRestoreFullRange={restoreFullReportRange}
           onOpenDetailed={() => setProductMode("detailed-analysis")}
           onWordRoleChange={setWordRole}
+          shareCardViewModel={shareCardViewModel}
+          onBuildSharePreview={buildSharePreviewModels}
         />
       ) : null}
 

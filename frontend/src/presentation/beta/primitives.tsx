@@ -1,4 +1,4 @@
-import { useState, type ButtonHTMLAttributes, type CSSProperties, type HTMLAttributes, type ImgHTMLAttributes, type ReactNode } from "react";
+import { useState, type ButtonHTMLAttributes, type CSSProperties, type HTMLAttributes, type ImgHTMLAttributes, type ReactNode, type Ref } from "react";
 
 import type { QueryChipViewModel } from "./view-model";
 
@@ -233,16 +233,19 @@ export function BetaButton({
   loadingLabel = "处理中",
   className,
   disabled,
+  buttonRef,
   children,
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   readonly variant?: BetaButtonVariant;
   readonly loading?: boolean;
   readonly loadingLabel?: string;
+  readonly buttonRef?: Ref<HTMLButtonElement>;
 }) {
   return (
     <button
       {...props}
+      ref={buttonRef}
       type={props.type ?? "button"}
       className={joinClasses("beta-button", `beta-button-${variant}`, className)}
       disabled={disabled || loading}

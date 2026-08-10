@@ -3,6 +3,8 @@ import { useMemo, useState } from "react";
 import {
   buildBetaReportDto,
 } from "./report-adapter";
+import { createBetaSummaryDtoV1 } from "./summary-adapter";
+import { presentBetaSummaryZhCN } from "./summary-presenter";
 import { presentBetaReportZhCN } from "./locales/zh-CN";
 import { BetaAnnualReport } from "./BetaAnnualReport";
 import {
@@ -19,6 +21,8 @@ import type { WordFrequencyRole } from "../../worker-analysis/word-frequency-con
 import type { BetaReportMode } from "./report-contract";
 import { BETA_REPORT_SECTIONS, type BetaReportSectionId } from "./report-sections";
 import { SkipLink } from "./primitives";
+import { createWordFrequencyPresentation } from "./word-presentation";
+import type { ShareCardPreviewModels } from "./share-preview-state";
 
 type HarnessMode = Exclude<BetaReportMode, "annual"> | "annual";
 
@@ -55,6 +59,23 @@ export function BetaAnnualReportBrowserHarness() {
     () => syntheticBetaWordCloudFrequency(mode === "annual" ? year : null, wordRole),
     [mode, wordRole, year],
   );
+  const shareCardModels = useMemo<ShareCardPreviewModels>(() => {
+    const reportDto = buildBetaReportDto(result, {
+      mode,
+      year: mode === "annual" ? year : null,
+    });
+    const summary = createBetaSummaryDtoV1(reportDto);
+    const wordPresentation = createWordFrequencyPresentation(frequency, [], "raw-count", undefined, true);
+    return {
+      off: presentBetaSummaryZhCN(summary),
+      on: presentBetaSummaryZhCN(createBetaSummaryDtoV1(reportDto, {
+        includeVocabulary: true,
+        wordPresentation,
+        expectedWordRole: wordRole,
+        expectedFrequencyDtoKey: wordPresentation.frequencyDtoKey,
+      })),
+    };
+  }, [frequency, mode, result, wordRole, year]);
   const representedYears = representedYearOptions([2024, 2025], { startDate: "2024-01-01", endDate: "2025-12-31" });
 
   function changeRange(value: string): void {
@@ -100,6 +121,8 @@ export function BetaAnnualReportBrowserHarness() {
         onRestoreFullRange={() => { setMode("all-years"); }}
         onOpenDetailed={() => undefined}
         onWordRoleChange={setWordRole}
+        shareCardViewModel={shareCardModels.off}
+        onBuildSharePreview={() => shareCardModels}
       />
       <p className="visually-hidden">{BETA_REPORT_SECTIONS.length} 个固定逻辑章节。</p>
     </main>

@@ -5411,3 +5411,549 @@
     display: none;
   }
 }
+
+/* B5.2 Share Preview: one archival folio, one optional vocabulary line, and
+   a local-only future save state. The DOM composition deliberately stays
+   portable to the later fixed Canvas renderer. */
+.desktop-app.beta-enabled .beta-closing-share-entry {
+  display: grid;
+  gap: var(--beta-space-3);
+  padding: var(--beta-space-4);
+  border: 1px solid var(--beta-color-divider);
+  border-radius: var(--beta-radius-panel);
+  background: rgb(247 243 234 / 72%);
+}
+
+.desktop-app.beta-enabled .beta-closing-share-entry-heading,
+.desktop-app.beta-enabled .beta-closing-share-entry-heading > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--beta-space-2);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.desktop-app.beta-enabled .beta-closing-share-entry-heading > div {
+  justify-content: flex-start;
+}
+
+.desktop-app.beta-enabled .beta-closing-share-entry-heading strong {
+  color: var(--beta-color-text);
+  font-size: 14px;
+}
+
+.desktop-app.beta-enabled .beta-closing-share-entry-heading > span,
+.desktop-app.beta-enabled .beta-closing-share-entry-reason,
+.desktop-app.beta-enabled .beta-closing-share-entry p {
+  color: var(--beta-color-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.desktop-app.beta-enabled .beta-closing-share-entry p,
+.desktop-app.beta-enabled .beta-closing-share-entry-reason {
+  margin: 0;
+}
+
+.desktop-app.beta-enabled .beta-share-preview-dialog {
+  width: min(1120px, calc(100% - 32px));
+  max-width: none;
+  max-height: calc(100vh - 32px);
+  margin: auto;
+  padding: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  border: 1px solid var(--beta-color-divider);
+  border-radius: var(--beta-radius-art);
+  background: var(--beta-color-report);
+  color: var(--beta-color-text);
+  box-shadow: var(--beta-depth-overlay);
+}
+
+.desktop-app.beta-enabled .beta-share-preview-dialog::backdrop {
+  background: rgb(23 26 24 / 58%);
+}
+
+.desktop-app.beta-enabled .beta-share-preview-dialog[open] .beta-share-preview-shell {
+  animation: beta-share-preview-enter 220ms cubic-bezier(.2, .8, .2, 1) both;
+}
+
+@keyframes beta-share-preview-enter {
+  from { opacity: 0; transform: scale(.985); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.desktop-app.beta-enabled .beta-share-preview-shell {
+  display: grid;
+  gap: var(--beta-space-5);
+  min-height: 100%;
+  padding: clamp(20px, 3vw, 40px);
+}
+
+.desktop-app.beta-enabled .beta-share-preview-header {
+  display: flex;
+  gap: var(--beta-space-5);
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.desktop-app.beta-enabled .beta-share-preview-header > div {
+  display: grid;
+  gap: var(--beta-space-2);
+}
+
+.desktop-app.beta-enabled .beta-share-preview-header h2 {
+  margin: 0;
+  color: var(--beta-color-text);
+  font-family: var(--beta-font-display);
+  font-size: clamp(28px, 4vw, 44px);
+  line-height: 1.05;
+  text-wrap: balance;
+}
+
+.desktop-app.beta-enabled .beta-share-preview-header p:last-child {
+  max-width: 60ch;
+  margin: 0;
+  color: var(--beta-color-text-secondary);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.desktop-app.beta-enabled .beta-share-preview-close {
+  flex: 0 0 auto;
+  min-width: 76px;
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid var(--beta-color-divider);
+  border-radius: var(--beta-radius-control);
+  background: transparent;
+  color: var(--beta-color-text-secondary);
+  cursor: pointer;
+}
+
+.desktop-app.beta-enabled .beta-share-preview-close:hover {
+  border-color: var(--beta-color-primary);
+  background: var(--beta-color-primary-soft);
+  color: var(--beta-color-primary-ink);
+}
+
+.desktop-app.beta-enabled .beta-share-preview-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  gap: clamp(24px, 4vw, 56px);
+  align-items: start;
+}
+
+.desktop-app.beta-enabled .beta-share-preview-stage {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+}
+
+.desktop-app.beta-enabled .beta-share-card {
+  position: relative;
+  width: auto;
+  height: min(62vh, 620px);
+  aspect-ratio: 4 / 5;
+  overflow: hidden;
+  border: 1px solid rgb(23 26 24 / 22%);
+  border-radius: 4px;
+  background: var(--beta-color-report);
+  box-shadow: 0 18px 40px rgb(23 26 24 / 18%);
+  isolation: isolate;
+}
+
+.desktop-app.beta-enabled .beta-share-card::after {
+  position: absolute;
+  z-index: 1;
+  inset: 6% 5%;
+  border: 1px solid rgb(247 243 234 / 62%);
+  background: rgb(247 243 234 / 82%);
+  content: "";
+  pointer-events: none;
+}
+
+.desktop-app.beta-enabled .beta-share-card-artwork,
+.desktop-app.beta-enabled .beta-share-card-artwork-fallback {
+  position: absolute;
+  inset: 0;
+}
+
+.desktop-app.beta-enabled .beta-share-card-artwork img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: .82;
+}
+
+.desktop-app.beta-enabled .beta-share-card-artwork-fallback {
+  background:
+    radial-gradient(circle at 12% 24%, var(--beta-color-coral) 0 1.8%, transparent 2.1%),
+    radial-gradient(circle at 86% 76%, var(--beta-color-primary) 0 1.7%, transparent 2%),
+    linear-gradient(164deg, transparent 0 19%, var(--beta-color-primary) 19.2% 20%, transparent 20.2% 77%, var(--beta-color-coral) 77.2% 78%, transparent 78.2%),
+    linear-gradient(24deg, var(--beta-color-section) 0 11%, transparent 11.2% 88%, var(--beta-color-inset) 88.2% 100%),
+    var(--beta-color-report);
+}
+
+.desktop-app.beta-enabled .beta-share-card-content {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
+  gap: clamp(4px, .8vw, 8px);
+  height: 100%;
+  min-height: 0;
+  padding: clamp(16px, 2vw, 22px);
+}
+
+.desktop-app.beta-enabled .beta-share-card-header,
+.desktop-app.beta-enabled .beta-share-card-section-label,
+.desktop-app.beta-enabled .beta-share-card-footer,
+.desktop-app.beta-enabled .beta-share-card-sender-role {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.desktop-app.beta-enabled .beta-share-card-header > div,
+.desktop-app.beta-enabled .beta-share-card-section-label {
+  display: grid;
+  gap: 4px;
+}
+
+.desktop-app.beta-enabled .beta-share-card-eyebrow {
+  margin: 0;
+  color: var(--beta-color-primary-ink);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: .08em;
+}
+
+.desktop-app.beta-enabled .beta-share-card-header h2 {
+  max-width: 13ch;
+  margin: 0;
+  color: var(--beta-color-text);
+  font-family: var(--beta-font-display);
+  font-size: clamp(20px, 2.6vw, 32px);
+  line-height: 1.08;
+  text-wrap: balance;
+}
+
+.desktop-app.beta-enabled .beta-share-card-range,
+.desktop-app.beta-enabled .beta-share-card-header small {
+  flex: 0 0 auto;
+  color: var(--beta-color-text-muted);
+  font-family: var(--beta-font-mono);
+  font-size: 9px;
+  line-height: 1.4;
+  text-align: right;
+}
+
+.desktop-app.beta-enabled .beta-share-card-total {
+  display: grid;
+  gap: 2px;
+  padding-top: 10px;
+  border-top: 2px solid var(--beta-color-coral);
+}
+
+.desktop-app.beta-enabled .beta-share-card-total p,
+.desktop-app.beta-enabled .beta-share-card-total small,
+.desktop-app.beta-enabled .beta-share-card-total span {
+  margin: 0;
+}
+
+.desktop-app.beta-enabled .beta-share-card-total p,
+.desktop-app.beta-enabled .beta-share-card-section-label span {
+  color: var(--beta-color-text-muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.desktop-app.beta-enabled .beta-share-card-total strong {
+  color: var(--beta-color-text);
+  font-family: var(--beta-font-ui);
+  font-size: clamp(34px, 5vw, 58px);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.045em;
+  line-height: .95;
+  overflow-wrap: anywhere;
+}
+
+.desktop-app.beta-enabled .beta-share-card-total > span {
+  color: var(--beta-color-text-secondary);
+  font-size: 12px;
+}
+
+.desktop-app.beta-enabled .beta-share-card-total small,
+.desktop-app.beta-enabled .beta-share-card-section-label small,
+.desktop-app.beta-enabled .beta-share-card-sender-role small,
+.desktop-app.beta-enabled .beta-share-card-footer {
+  color: var(--beta-color-text-secondary);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.desktop-app.beta-enabled .beta-share-card-metrics,
+.desktop-app.beta-enabled .beta-share-card-sender-list,
+.desktop-app.beta-enabled .beta-share-card-vocabulary ul {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.desktop-app.beta-enabled .beta-share-card-metrics {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.desktop-app.beta-enabled .beta-share-card-metric {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding-top: 7px;
+  border-top: 1px solid var(--beta-color-divider);
+}
+
+.desktop-app.beta-enabled .beta-share-card-metric > span,
+.desktop-app.beta-enabled .beta-share-card-metric > small {
+  color: var(--beta-color-text-muted);
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.desktop-app.beta-enabled .beta-share-card-metric > strong {
+  color: var(--beta-color-text);
+  font-size: clamp(14px, 2vw, 22px);
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.desktop-app.beta-enabled .beta-share-card-metric > small {
+  color: var(--beta-color-text-secondary);
+  display: none;
+}
+
+.desktop-app.beta-enabled .beta-share-card-balance,
+.desktop-app.beta-enabled .beta-share-card-vocabulary {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--beta-color-divider);
+}
+
+.desktop-app.beta-enabled .beta-share-card-balance-bar {
+  display: flex;
+  width: 100%;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--beta-color-inset);
+}
+
+.desktop-app.beta-enabled .beta-share-card-balance-bar span:first-child { background: var(--beta-color-owner); }
+.desktop-app.beta-enabled .beta-share-card-balance-bar span:last-child { background: var(--beta-color-other); }
+
+.desktop-app.beta-enabled .beta-share-card-sender-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.desktop-app.beta-enabled .beta-share-card-sender-role {
+  justify-content: flex-start;
+}
+
+.desktop-app.beta-enabled .beta-share-card-role-marker {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  margin-top: 3px;
+  border-radius: 50%;
+  background: var(--beta-color-owner);
+}
+
+.desktop-app.beta-enabled .beta-share-card-sender-other .beta-share-card-role-marker { background: var(--beta-color-other); }
+
+.desktop-app.beta-enabled .beta-share-card-sender-role span:last-child {
+  display: grid;
+  gap: 2px;
+}
+
+.desktop-app.beta-enabled .beta-share-card-sender-role strong {
+  color: var(--beta-color-text);
+  font-size: 10px;
+}
+
+.desktop-app.beta-enabled .beta-share-card-vocabulary-on ul {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.desktop-app.beta-enabled .beta-share-card-vocabulary-on li {
+  min-width: 0;
+  padding: 6px 4px;
+  border-bottom: 2px solid var(--beta-color-coral);
+  color: var(--beta-color-text);
+  font-size: 10px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.desktop-app.beta-enabled .beta-share-card-vocabulary-off p,
+.desktop-app.beta-enabled .beta-share-card-vocabulary-unavailable p,
+.desktop-app.beta-enabled .beta-share-card-unavailable {
+  margin: 0;
+  color: var(--beta-color-text-muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.desktop-app.beta-enabled .beta-share-card-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: end;
+  padding-top: 8px;
+  border-top: 1px solid var(--beta-color-divider);
+}
+
+.desktop-app.beta-enabled .beta-share-card-footer > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+}
+
+.desktop-app.beta-enabled .beta-share-card-footer > div:last-child { margin-left: auto; }
+.desktop-app.beta-enabled .beta-share-card-footer strong { color: var(--beta-color-primary-ink); }
+
+.desktop-app.beta-enabled .beta-share-preview-controls {
+  display: grid;
+  align-content: start;
+  gap: var(--beta-space-4);
+  min-width: 0;
+  padding: var(--beta-space-5);
+  border-left: 1px solid var(--beta-color-divider);
+}
+
+.desktop-app.beta-enabled .beta-share-preview-control-intro,
+.desktop-app.beta-enabled .beta-share-preview-toggle,
+.desktop-app.beta-enabled .beta-share-preview-save {
+  display: grid;
+  gap: 5px;
+}
+
+.desktop-app.beta-enabled .beta-share-preview-control-intro strong {
+  color: var(--beta-color-text);
+  font-family: var(--beta-font-display);
+  font-size: 20px;
+  line-height: 1.15;
+  text-wrap: balance;
+}
+
+.desktop-app.beta-enabled .beta-share-preview-control-intro > span,
+.desktop-app.beta-enabled .beta-share-preview-toggle small,
+.desktop-app.beta-enabled .beta-share-preview-save small,
+.desktop-app.beta-enabled .beta-share-preview-note,
+.desktop-app.beta-enabled .beta-share-preview-privacy,
+.desktop-app.beta-enabled .beta-share-preview-unavailable,
+.desktop-app.beta-enabled .beta-share-preview-status {
+  margin: 0;
+  color: var(--beta-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.desktop-app.beta-enabled .beta-share-preview-toggle {
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  min-height: 52px;
+  padding: 10px 12px;
+  border: 1px solid var(--beta-color-divider);
+  border-radius: var(--beta-radius-control);
+  background: var(--beta-color-surface);
+  cursor: pointer;
+}
+
+.desktop-app.beta-enabled .beta-share-preview-toggle:has(input:checked) {
+  border-color: var(--beta-color-primary);
+  background: var(--beta-color-primary-soft);
+}
+
+.desktop-app.beta-enabled .beta-share-preview-toggle input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--beta-color-primary);
+}
+
+.desktop-app.beta-enabled .beta-share-preview-toggle > span {
+  display: grid;
+  gap: 2px;
+}
+
+.desktop-app.beta-enabled .beta-share-preview-toggle strong { color: var(--beta-color-text); font-size: 14px; }
+.desktop-app.beta-enabled .beta-share-preview-toggle input:disabled + span { opacity: .68; }
+
+.desktop-app.beta-enabled .beta-share-preview-save {
+  gap: 8px;
+  padding-top: var(--beta-space-3);
+  border-top: 1px solid var(--beta-color-divider);
+}
+
+.desktop-app.beta-enabled .beta-share-preview-save .beta-button { width: 100%; }
+.desktop-app.beta-enabled .beta-share-preview-privacy { color: var(--beta-color-text); }
+.desktop-app.beta-enabled .beta-share-preview-status { min-height: 36px; }
+.desktop-app.beta-enabled .beta-share-preview-dialog[data-state="stale"] .beta-share-card { opacity: .78; }
+.desktop-app.beta-enabled .beta-share-preview-dialog[data-state="stale"] .beta-share-preview-status { color: var(--beta-color-error); font-weight: 700; }
+
+@media (max-width: 900px) {
+  .desktop-app.beta-enabled .beta-share-preview-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .desktop-app.beta-enabled .beta-share-card {
+    height: min(62vh, 560px);
+  }
+
+  .desktop-app.beta-enabled .beta-share-preview-controls {
+    border-top: 1px solid var(--beta-color-divider);
+    border-left: 0;
+  }
+}
+
+@media (max-width: 599px) {
+  .desktop-app.beta-enabled .beta-share-preview-dialog {
+    inset: 0;
+    width: 100%;
+    max-height: none;
+    height: 100%;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .desktop-app.beta-enabled .beta-share-preview-shell {
+    gap: var(--beta-space-4);
+    padding: max(var(--beta-space-4), env(safe-area-inset-top))
+      max(var(--beta-space-4), env(safe-area-inset-right))
+      max(var(--beta-space-4), env(safe-area-inset-bottom))
+      max(var(--beta-space-4), env(safe-area-inset-left));
+  }
+
+  .desktop-app.beta-enabled .beta-share-preview-header { gap: var(--beta-space-3); }
+  .desktop-app.beta-enabled .beta-share-preview-header h2 { font-size: 32px; }
+  .desktop-app.beta-enabled .beta-share-preview-header p:last-child { font-size: 13px; }
+
+  .desktop-app.beta-enabled .beta-share-preview-layout { gap: var(--beta-space-4); }
+  .desktop-app.beta-enabled .beta-share-card { width: min(100%, 360px); height: auto; }
+  .desktop-app.beta-enabled .beta-share-card-content { padding: 18px; }
+  .desktop-app.beta-enabled .beta-share-preview-controls { padding: var(--beta-space-4) 0 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .desktop-app.beta-enabled .beta-share-preview-dialog[open] .beta-share-preview-shell {
+    animation: none;
+  }
+}
