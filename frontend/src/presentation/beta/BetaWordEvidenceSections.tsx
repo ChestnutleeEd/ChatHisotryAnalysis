@@ -174,7 +174,7 @@ export function BetaWordEvidenceSections({
   }
 
   return (
-    <div className="beta-word-evidence-scenes">
+    <div className="beta-word-evidence-scenes beta-v2-word-evidence-scenes">
       <section id="frequent-words" className="beta-v2-word-section beta-v2-frequent-words">
         <div className="beta-word-evidence-heading">
           <div>
