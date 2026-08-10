@@ -2,9 +2,9 @@
 
 ### Repository baseline used by this design
 
-Visual re-architecture planning was re-baselined on branch `feat/implement-local-chat-wordcloud-mvp` at full HEAD `78ab06ba1fdcd3d2a3283d42ba7a5201ea81cc4c` (`feat: refine beta annual recap visual experience`) with a clean workspace and upstream `0/0`. `data/private` is ignored by `.gitignore:4`; only `git check-ignore -v data/private` was run against that boundary. No private source, aggregate, screenshot content, filename, or path was read or used in an art prompt.
+B5 planning was re-baselined on branch `feat/implement-local-chat-wordcloud-mvp` at full initial HEAD `5937a04d11a20227588f2d97259a60e1484a650f` (`fix: tighten annual recap scene rhythm`) with a clean workspace and upstream `0/0`. `data/private` is ignored by `.gitignore:4`; only `git check-ignore -v data/private` was run against that boundary. No private source, aggregate, screenshot content, filename, path, real identity, or real statistic was read or used in planning or an art prompt.
 
-OpenSpec 1.6.0 reports this change artifact-complete with `57/79` tasks before this re-plan. B1a, B1b, B2, B3, B4, the annual-scope/Clean Mode hotfix, and the screenshot refinement are checked; B5 motion/share, B6 packaged acceptance, and deferred work remain unchecked. The new Visual Re-architecture and Design System v2 stage blocks B5 and B6 but is not a Release-hardening blocker.
+OpenSpec reports this change artifact-complete with `86/109` checked tasks before the B5 planning freeze. B1a, B1b, B2, B3, B4, Visual Re-architecture V1–V3 implementation, and screenshot polish are complete. The user has accepted 5B.23 for progression with **known module-level visual polish debt**; this is permission to begin the B5 line after this freeze, not a claim that every Annual or Detailed visual debt is resolved. B5 implementation, B6, Release hardening, and deferred work have not begun.
 
 ### Existing architecture
 
@@ -47,7 +47,7 @@ Manual packaged Beta acceptance describes the result as visually unattractive, m
 - Dark-mode implementation in the first Beta; only semantic token names and contrast-ready pairs are reserved.
 - Possible-name filtering, accurate person-name detection, automatic contact naming, English stemming/lemmatization, or hiding all uppercase abbreviations in first Beta.
 - Chapter PNG and long/multipage export as first-Beta blockers.
-- Any production React/CSS/asset edit, image generation, commit, or push in the Sol xHigh visual-planning batch.
+- Any production React/CSS/Rust/TypeScript/asset edit or final image generation in this B5 planning-freeze batch.
 
 ## Decisions
 
@@ -77,7 +77,7 @@ Post-analysis Home
 │   ├── multi-year overview
 │   ├── story chapters
 │   ├── word cloud and accessible list
-│   └── summary/word-cloud PNG export
+│   └── one Summary / Share Card PNG export
 └── Detailed Analysis
     └── existing eight Dashboard routes unchanged
 ```
@@ -102,7 +102,7 @@ The final state taxonomy is deliberately additive to the current architecture ra
 2. **Committed analytics query state** — applied inclusive dates, sender, fixed timezone, applied `selectedYear`, and session threshold. These fields and only analytics-affecting contract/version fields belong in `canonicalQueryKey`; draft controls never do.
 3. **Presentation/report state** — `reportBaseRange`, annual/all-years/multi-year mode, validated semantic report facts, word role, raw/per-10k display mode, custom-hidden preference hash, locale formatter version, and current complete/pending report view-model. `reportBaseRange` is controller input for the next committed year query but is not itself added to `canonicalQueryKey`; the effective committed dates already carry the analytical scope. Word role belongs only to the scoped frequency key; raw/per-10k and custom hiding reuse the same numeric DTO and belong only to presentation/layout keys.
 4. **Navigation state** — Home/Annual Recap/Detailed Analysis mode, current Dashboard route, current logical report chapter/visual scene, and restorable scroll position. It is keyed in memory by current dataset/generation and MUST NOT enter analytics, report-fact, frequency, or layout identities.
-5. **Local preference state** — bounded custom-hidden words and accessibility/platform preferences. It contains no dataset/result identity. Temporary export aliases are transient preview state and are not persisted by default.
+5. **Local preference state** — bounded custom-hidden words and accessibility/platform preferences. It contains no dataset/result identity. B5 has no export-alias field or identity preference.
 
 Reload/startup recovery returns to Home with the recovered committed result when available; otherwise it returns to the existing selection/recovery flow. Because `reportBaseRange` is intentionally not persisted, recovery reconstructs it from committed dates when `selectedYear=null`, or from dataset min/max when the recovered result is year-narrowed, and visibly labels that safe default before another year/all-years commit. Persistent storage never stores dataset IDs, tokens from a dataset, query keys, report DTOs, routes, chapters, or scroll positions. Dataset or generation replacement resets report/navigation state and fences every stale result.
 
@@ -115,7 +115,7 @@ The annual mode uses an ordinary continuous vertical flow with a sticky compact 
 | # | Chapter / user question | Main metric and one-sentence conclusion | Support visual / source | Empty or insufficient behavior | Filter / export / multi-year |
 |---|---|---|---|---|---|
 | 1 | Opening — “这是哪段时间的回顾？” | Year/scope label; “这是你选择的 YYYY 年本地聊天回顾。” | Metadata, timezone and privacy badge / report metadata | No user messages: explain scope and offer reselect/detail | All filters; summary export; yes as overview opener |
-| 2 | Messages — “这一年聊了多少？” | post-dedup user-message count; factual count only | count-up KPI plus restrained comparison bar / `aggregate.userMessageCount` | zero is explicit, never omitted | date/sender; summary export; yes |
+| 2 | Messages — “这一年聊了多少？” | post-dedup user-message count; factual count only | static KPI plus restrained comparison bar / `aggregate.userMessageCount` | zero is explicit, never omitted | date/sender; summary export; yes |
 | 3 | Active days — “有多少天聊过？” | total chat days; “这一范围内有 N 个聊天日。” | calendar-density summary / `chatActivity.totalChatDays` | zero state | date/sender; chapter later, summary; yes |
 | 4 | Longest streak — “最长连续聊了多久？” | longest consecutive active days | start/end chips for canonical tied intervals / `longestStreaks` | no active day state | date/sender; summary; compare length only for full-calendar scopes |
 | 5 | Peak month — “哪个月最活跃？” | maximum monthly user-message bucket; fixed-order tie list | 12-bar monthly strip / `trends.monthly` | all zero → no peak; partial bucket marked | date/sender; chapter later; yes, excluding partial YoY claims |
@@ -126,9 +126,9 @@ The annual mode uses an ordinary continuous vertical flow with a sticky compact 
 | 10 | Message types — “除了文字，还发了什么？” | stable category distribution | ranked bars/icons plus text table / `stage7.messageTypes` | zero user messages | date/sender; chapter later; yes |
 | 11 | Sessions — “一次聊天如何开始？” | session count and initiator shares at active threshold | threshold chip + two/unknown counts / `conversationSessions` | zero sessions | date; sender exception; threshold-sensitive; chapter later; yes |
 | 12 | Replies — “回复间隔通常多久？” | median latency by responder; “可判定回复区间的中位数是 …” | direction cards and sample counts / `replyIntervals` | count zero or too few → insufficient, not `0` | date; sender exception; threshold-sensitive; chapter later; multi-year only when same threshold |
-| 13 | Frequent words — “今年最常提到什么？” | scoped ranked eligible tokens by raw count or per-10k rate | top list / Beta token-frequency DTO | zero denominator or fewer than minimum terms | date/sender/word policy; word-cloud export companion; yes |
+| 13 | Frequent words — “今年最常提到什么？” | scoped ranked eligible tokens by raw count or per-10k rate | top list / Beta token-frequency DTO | zero denominator or fewer than minimum terms | date/sender/word policy; optional summary export source (max five); yes |
 | 14 | Distinctive keywords — “哪些词更能代表这一年？” | positive smoothed year-vs-rest log-odds candidates | ranked keyword cards / existing yearly keyword DTO | one year: label frequency fallback; no candidate: insufficient | date/sender; chapter later; only annual, not all-years hero |
-| 15 | Word cloud — “这些词放在一起是什么样？” | same ranked DTO and selected raw/normalized weight | deterministic Canvas plus accessible ordered list / layout Worker | progressively fewer terms; final list-only fallback | date/sender/word policy; word-cloud PNG; overview may use small preview |
+| 15 | Word cloud — “这些词放在一起是什么样？” | same ranked DTO and selected raw/normalized weight | deterministic Canvas plus accessible ordered list / layout Worker | progressively fewer terms; final list-only fallback | date/sender/word policy; screen only in B5; overview may use small preview |
 | 16 | Summary and share — “如何带走这份回顾？” | fixed template clauses selected from validated report DTO | summary card preview and privacy checklist | omit unsupported clause with reason | all applied context; summary PNG; yes |
 
 All tie choices use the underlying canonical ordering. A pure semantic adapter selects facts, reasons, and template IDs; a separate local `zh-CN` presenter applies allow-listed templates before React render. React components receive ready-to-render labels and states; they do not calculate maxima, ratios, thresholds, or prose during render. Engineering fields such as year/rest totals, message DF, internal IDs, raw log-odds score, trace maps, query keys, and generation are available only in a concise “指标说明” drawer or Detailed Analysis, never in hero visuals.
@@ -298,7 +298,7 @@ interface WordCloudLayoutOutputV1 {
 }
 ```
 
-The envelope owns every field constant across words: dataset/generation/query correlation, timezone, year, role, denominator, and policy identity. Per-entry fields are only normalized token, count, rate, analytical rank, script category, and bounded non-hidden quality flags. The Worker does not duplicate year/role/timezone/policy/identity/denominator per item and does not send both an original token and an equivalent normalized token. `displayToken` and contiguous `displayRank` are presentation fields derived after local hiding. The Worker returns at most 400 eligible candidates (four times the largest first-Beta visible limit); a user who hides enough terms to exhaust that bounded pool sees fewer terms with an explanation rather than an unbounded request. Export input is the placed output plus stripped labels/metric metadata; it excludes dataset/query IDs and hidden terms.
+The envelope owns every field constant across words: dataset/generation/query correlation, timezone, year, role, denominator, and policy identity. Per-entry fields are only normalized token, count, rate, analytical rank, script category, and bounded non-hidden quality flags. The Worker does not duplicate year/role/timezone/policy/identity/denominator per item and does not send both an original token and an equivalent normalized token. `displayToken` and contiguous `displayRank` are presentation fields derived after local hiding. The Worker returns at most 400 eligible candidates (four times the largest visible limit); a user who hides enough terms to exhaust that bounded pool sees fewer terms with an explanation rather than an unbounded request. B5 may select only the first five already-visible frequent-word presentation items after Clean Mode and custom hiding; it never consumes placed cloud output or exports the full cloud.
 
 Default `beta-vocabulary-policy.v1` is an **analysis eligibility policy**. It preserves current NFKC/lowercase/Jieba/fixed-stopword behavior, URL removal, punctuation/symbol/emoji separation, pure-number exclusion, and minimum two code points; it additionally excludes invisible/control tokens, tokens longer than 32 code points, a small versioned exact-extension denylist, and invalid mixed-script fragments. These built-in exclusions define the eligible-token denominator and therefore participate in `frequencyDtoKey`. They are applied by re-filtering the retained Worker token index, never by rereading or retokenizing source content. Emoji remain excluded from the cloud in v1. English inflection is not stemmed or lemmatized because that would merge meanings. Email/path origin cannot be reconstructed reliably from normalized tokens; the policy uses conservative token-shape rules and discloses the limitation.
 
@@ -329,9 +329,9 @@ Screen buckets and limits are:
 | narrow `<640px` content | 480×520 | 40 / 50 | 2 |
 | standard `640–959px` | 760×560 | 60 / 80 | 2 |
 | wide `≥960px` | 960×620 | 80 / 100 | 2 |
-| export | 1200×1500 final pixels | 100 / 100 | 2 |
+| reserved fixed cloud layout fixture (not a B5 product export) | 1200×1500 logical test surface | 100 / 100 | 2 |
 
-The minimum usable cloud is 20 terms; fewer available terms render all available terms and an explanation. Tokens over 32 code points are excluded. Within a bucket, resize scales coordinates and Canvas backing resolution; crossing buckets re-layouts in the Worker. Export has one unambiguous fixed output size: **1200×1500 PNG pixels**. Preview CSS size and screen device-pixel ratio do not participate in the export contract.
+The minimum usable cloud is 20 terms; fewer available terms render all available terms and an explanation. Tokens over 32 code points are excluded. Within a bucket, resize scales coordinates and Canvas backing resolution; crossing buckets re-layouts in the Worker. The reserved 1200×1500 cloud layout remains a deterministic regression fixture but is not exposed by B5; the B5 share-card renderer has its own fixed authority in section 11.
 
 Canvas is chosen for screen and export performance and bounded hit testing. SVG is not used for the cloud because hundreds of text nodes increase WebView/layout variability; ordinary React/SVG/CSS may still render small charts. The Canvas is `aria-hidden`; one adjacent semantic ordered list represents exactly the bounded words selected for the cloud (including any layout-omitted ranks), at most 100 on screen. It exposes rank, token, count, per-10k rate, role, year, and a visible bar/number; no hidden DOM node is created per Canvas glyph. Hover/focus may correlate a list row and Canvas item, but word clicks never reveal source text.
 
@@ -530,42 +530,161 @@ Each implementation batch captures the fixed set: Home, Annual Opening, Scale, R
 
 V2 retains scoped CSS beneath `.desktop-app.beta-enabled`, `.beta-report`, and explicit Dashboard roots; browser-v1 cannot inherit Beta rules. V1 may split the Beta/Detailed presentation layers into imported local CSS files to end chronological overrides, but MUST NOT add CSS Modules, Tailwind, CSS-in-JS, styled-components, a UI kit, or a new runtime dependency. Minimal deterministic SVG/CSS handles simple lines/dividers; generated raster assets handle only editorial texture/artwork. Existing word-cloud geometry, ECharts dependencies, analytics, and host authority remain unchanged.
 
-### 10. Motion and scroll narrative
+### 10. B5 motion freeze
 
-The report is continuous scrolling with optional anchor navigation. Motion tokens are:
+The report remains ordinary continuous scrolling. B5 adds only motion with a concrete consumer:
 
 ```text
 motion.fast      120ms
 motion.standard  220ms
 motion.emphasis  420ms
 motion.easing    cubic-bezier(.2,.8,.2,1)
-motion.stagger   36ms, capped at 216ms total
+motion.stagger   36ms, capped at 180ms total
 ```
 
-Chapter entry is opacity + 12px translate using `IntersectionObserver` once per chapter. Numbers count from the previous display value or zero only after data is ready, capped at 420ms; screen readers receive the final value once. Small charts reveal by transform/clip; the word cloud fades placed words in rank batches with the global stagger cap; year/mode switches cross-fade the complete committed view in 220ms; loading uses existing progress/skeleton patterns. Motion never triggers queries, changes layout coordinates, withholds final values, or participates in correctness.
+- A scene may reveal once with opacity `0→1` and translateY `8px→0` over `220ms` after its committed content is already present. There is no count-up, chart-drawing delay, scroll hijack, parallax, horizontal story, long intro, continuous particle field, or cursor effect.
+- The Share Preview dialog enters with opacity plus scale `.985→1` over `220ms`; layout is final before the transition starts.
+- Export success uses one non-looping CSS/SVG completion mark over at most `420ms` and a polite live-region message. Failure and cancellation do not shake or pulse.
+- Generated artwork does not drift continuously in V1. Any future decorative drift requires a separate acceptance decision; static artwork is the frozen default.
+- All animations list `transform` and/or `opacity` explicitly; `transition: all` is prohibited. User input can interrupt a transition, and motion never starts analytics, changes a view-model, changes Canvas pixels, delays a control, moves focus, or participates in correctness.
 
-`prefers-reduced-motion: reduce` disables transforms, counting, chart drawing, cloud stagger, smooth scroll, and cross-fades; final content appears immediately. Missing `IntersectionObserver`, Canvas animation failure, tab backgrounding, or low frame rate yields the same static final view. No large animation framework is added; CSS, Web Animations API, and existing React state suffice. Layout/analytics Workers remain off the main thread and animation work is limited to transform/opacity.
+Under `prefers-reduced-motion: reduce`, scene reveal, preview transition, success mark animation, smooth scroll, and incidental cross-fades are disabled; the exact final state appears synchronously. Missing `IntersectionObserver`, background-tab throttling, or animation failure also yields the same static state. CSS and existing React state are sufficient; B5 adds no animation dependency or general motion framework.
 
-V1–V3 do not build a new motion abstraction. They ensure content, focus, navigation, artwork fallbacks, and meaning are complete in a static state and that incidental transitions respect `prefers-reduced-motion`. The motion tokens/observer/reveals remain in B5 when they have a concrete consumer.
+### 11. B5 Summary / Share Card / PNG export freeze
 
-### 11. Sharing and export authority
+#### 11.1 Product and visual definition
 
-First Beta implements exactly:
+B5 ships exactly **one** V1 share-card product: a portrait archival annual folio at 4:5. It is a local personal-data keepsake, not a template gallery or social-media composition. The one template has one optional content toggle, “包含词汇摘要”; that toggle does not create a second template. It defaults off, and when on it adds at most five already-visible frequent words.
 
-1. annual summary card PNG, 1200×1500 final pixels;
-2. word-cloud PNG, 1200×1500 final pixels.
+The composition is fixed:
 
-Single-chapter PNG is a later Beta enhancement after the two fixed templates are accepted. Long image and multipage-image export are deferred beyond first Beta because WebView height, pagination, memory, and accessibility QA would delay core value. Aggregate JSON/CSV and approved chart PNG remain unchanged in Detailed Analysis.
+```text
+1200×1500 opaque poster
+├─ 72px outer safe area
+├─ product folio + scope title/range
+├─ one dominant total-message fact
+├─ active-days / peak-month / longest-streak support row
+├─ anonymous Owner / Other comparison strip
+├─ optional five-term vocabulary line (same reserved slot)
+└─ partial/filter note + “本地生成 · 不上传” + UTC+08:00 + small “聊天记录分析” product signature
+```
 
-Export defaults to anonymous `owner` / `other` labels. A user may enter local display aliases for the current export preview, but they are never auto-filled from contact/source metadata, are not persisted by default, and must pass length/control-character validation. The confirmation preview warns that aliases and token lists can be sensitive. Default output excludes message bodies, contact names, source paths, basenames, internal IDs, dataset/query keys, token trace, hidden-word lists, and methodology tables.
+The visual direction remains **Private Data Atelier** with archival-poster restraint: report canvas `#F7F3EA`, ink `#171A18`, moss `#1F4D3F`, coral `#C8603C`, hairline rules, strong negative space, serif only for the scope title, sans/tabular numerals for facts, and one bounded generated-art edge field. The project signature is small editorial provenance, never a logo watermark. The card never displays a generation timestamp, source filename/path, contact identity, user-entered alias, session threshold, internal definition/schema/query key, or full methodology; the threshold is omitted because no session/reply metric is exported.
 
-Every image visibly includes year/scope, active sender/filter summary, UTC+08:00, metric label/definition version short form, “仅本地生成”, custom-filter on/off, and a privacy warning. Summary-card clauses come from the committed localized report view-model; word-cloud export uses the fixed export layout key. Geometry is fixed; raster glyph pixels are deterministic within the same packaged application/platform/version, not promised across macOS font/WebView versions.
+Single-year titles are “YYYY 年聊天回顾”. All-years titles are “YYYY–YYYY 聊天回顾” using the committed range endpoints; a one-year all-years range collapses to the single-year form without claiming full-calendar completeness. Partial scopes add the visible label “部分日期范围”. Long raw date ranges use fixed `YYYY.MM.DD–YYYY.MM.DD`; they never include locale-dependent month names.
 
-The renderer draws a privacy-stripped `BetaExportViewModelV1` into one 1200×1500 offscreen Canvas and encodes it with `toBlob("image/png")` without metadata. The raw RGBA backing store is approximately 7.2 MiB, one quarter of the former 2400×3000 proposal. Renderer code releases the Canvas/blob/byte view after save or cancellation and does not retain preview and export backing canvases simultaneously.
+#### 11.2 Summary data authority and typed chain
 
-B5 adds an explicit **opaque binary presentation-export authority** alongside, not inside, the existing closed numeric `export_aggregate` DTO. The contract has two bounded steps: a small `prepare_presentation_png` command validates window/session/committed result/generation/export kind/schema/dimensions and stores at most one active lease per window; `save_presentation_png` then receives only PNG bytes as the top-level raw `ArrayBuffer`/`Uint8Array` IPC body, with the opaque lease ID in one allow-listed ASCII invoke header (`x-chat-analysis-export-lease`). PNG bytes MUST NOT be base64, a nested JSON number array, or placed in React state. Rust consumes the lease before save, validates authority/freshness, PNG signature/IHDR/chunks, exact **1200×1500 pixels**, no ancillary text/profile/EXIF chunks, at most **10 MiB encoded bytes**, approved kind, and generic default filename; prepare replacement, cancellation, session/generation replacement, or close invalidates the previous lease. It then owns native destination selection and descriptor-relative atomic save. A synthetic contract test proves the raw-body/header route before the rich renderer is wired. If the packaged Tauri path cannot carry it within bounds, B5 stops for a contract correction and never grants a renderer path. Cancellation leaves the report intact; retry prepares a fresh lease for the same committed preview.
+The frozen chain is:
 
-This adds only the narrow prepare/raw-save contract and host-owned lease state; it adds no filesystem plugin, dialog plugin, HTTP, opener, shell, process, new-window, or general binary-write permission.
+```text
+matching committed CanonicalAnalysisResult
+  + existing BetaReportDtoV1 facts
+  + matching cleaned/custom-hidden WordFrequencyPresentation (only if opted in)
+→ createBetaSummaryDtoV1 (pure presentation adapter)
+→ presentBetaSummaryZhCN (fixed descriptive copy)
+→ ShareCardViewModelV1 (privacy-stripped, exact-key, renderer-ready)
+→ shared preview/export Canvas renderer
+```
+
+The Analytics Worker and current canonical analytics remain authoritative. The summary adapter reuses committed report facts; it does not query source data or recalculate analytics. It may only select, correlate, classify availability, and carry already-calculated numbers into `BetaSummaryDtoV1`. The `zh-CN` presenter owns all business sentences and `Intl.NumberFormat("zh-CN")` output. React owns dialog interaction, focus, the vocabulary opt-in, and status only; React render functions MUST NOT aggregate, pick a peak, calculate a share, decide a conclusion, or assemble business prose.
+
+`BetaSummaryDtoV1` includes internal correlation fields (`sessionId`, generation, committed result ID, report query key, schema/presenter/artwork versions) only until conversion. `ShareCardViewModelV1` contains no session/dataset/result/query identity and has exactly: schema/version; `zh-CN`; scope kind/year/start/end/partial; applied sender-filter label; ready/unavailable models for total messages, active days, peak month ties, longest streak, and anonymous Owner/Other counts/shares; optional vocabulary state and zero-to-five display tokens; fixed footer labels; and the artwork/copy/layout version IDs.
+
+Summary copy is descriptive and selected from fixed templates, for example “这一范围共有……”, “最活跃的月份是……”, and “最长连续聊天区间为……”. It never infers affection, dependence, intent, personality, relationship quality, emotion, or improvement/decline. Ties retain canonical order. If total user messages are zero, export is unavailable and Closing explains missing evidence. Partial scope remains exportable with its label. An unavailable optional fact keeps its reserved geometry and renders “证据不足”; it never borrows another scope or relabels stale evidence.
+
+#### 11.3 Vocabulary privacy
+
+Vocabulary is absent by default. The user must explicitly enable “包含词汇摘要” in Share Preview after seeing the disclosure. The source is the current Frequent Words presentation **after** `beta-vocabulary-clean-presentation.v1` and custom-hidden filtering; the adapter takes the first five contiguous display ranks and never restores filtered candidates. Distinctive Keywords are not exported in V1 because their comparator/fallback semantics complicate all-years and partial scopes. Counts, rates, full lists, the 80/100-word cloud, hidden-word values, and the hidden list are never placed on the card.
+
+If fewer than five eligible visible terms exist, the card shows those available; if zero exist, the toggle is disabled with “当前没有可用词汇摘要” and the concise card remains exportable. Changing Clean Mode, custom-hidden words, role, year, or committed query invalidates the preview key. The previous preview may remain visibly labelled as prior content while recomputing, but Save is disabled until the matching `ShareCardViewModelV1` is ready.
+
+#### 11.4 Preview, dialog, and UI states
+
+Closing remains inline and replaces its placeholder with one primary action, “生成回顾卡”, plus the existing Detailed Analysis action. The action opens an in-app modal dialog; at `<600px` and effective 200% zoom it becomes a full-screen sheet. It is not a Settings dialog: the 4:5 artwork preview is dominant, while one compact control column contains the vocabulary toggle, disclosure, and Save action.
+
+The required states are:
+
+| State | Frozen behavior |
+|---|---|
+| Closing default | concise summary sentence, local-only note, primary generation action; action disabled with a visible reason only for zero/missing committed evidence |
+| Preview rendering | dialog skeleton preserves final card aspect ratio; `aria-busy`; no stale Save |
+| Share Preview | final 1200×1500 Canvas scaled by CSS; exact scope/content disclosure; vocabulary off by default |
+| Export options | only vocabulary on/off; no template, alias, destination, quality, size, or social control |
+| Export in progress | Save disabled; content remains visible; polite “正在准备 PNG…”, then native save panel |
+| Success | non-blocking completion mark, saved confirmation, “完成” and “再次保存”; no automatic reveal/open/copy/share |
+| User cancelled | return to unchanged preview; polite “已取消保存”; cancellation is not an error |
+| Save failed | content-free stable error plus a concrete retry/choose-another-location action; report remains intact |
+| Renderer/font/art failed | no save attempt; retry once or use the deterministic CSS/Canvas fallback artwork; unrecoverable renderer failure stays in dialog |
+| Missing/partial evidence | zero messages blocks export; missing optional facts render reserved unavailable states; partial range exports with explicit label |
+| Stale scope | Save disabled until one correlated current view-model is presented; never relabel an old preview |
+| Narrow/zoom | full-screen single-column sheet, preview width-first, controls below, no horizontal page scroll |
+| Reduced motion | every state and action identical; transitions become immediate |
+
+The dialog uses native `<dialog>` where the supported packaged WebView passes behavior tests; otherwise the existing React overlay pattern must implement equivalent `role="dialog"`, `aria-modal`, inert background, scroll containment, and focus trap without a new dependency. On open, focus moves to the dialog heading (`tabIndex=-1`); Tab/Shift+Tab remain inside; Escape closes only while no native panel owns focus; close returns focus to “生成回顾卡”. The close and Save controls have visible labels, not icon-only ambiguity. Status changes use `aria-live="polite"`; unrecoverable renderer/save failure may use `role="alert"` once. The preview Canvas has an accessible text summary and is otherwise `aria-hidden`.
+
+#### 11.5 Preview/export renderer authority
+
+The renderer route is a **Canvas 2D hybrid**: deterministic Canvas primitives/text plus one optional locally bundled generated raster decoded before drawing. DOM screenshot, hidden DOM, `html2canvas`, SVG-to-raster, scroll capture, and current viewport capture are rejected because browser layout, scroll, CSS breakpoints, and DPR would become export inputs. No new screenshot/export dependency is added.
+
+One pure `renderShareCardV1(context, viewModel, resources)` function owns both preview and export pixels. Preview uses a real `width=1200 height=1500` Canvas scaled only by CSS; export uses a fresh offscreen `1200×1500` Canvas and the same view-model key/resources/layout constants. The export does not read the preview DOM or screen Canvas, current scroll, viewport, window size, device pixel ratio, zoom, or media query.
+
+Renderer authority is fixed as follows:
+
+| Concern | Frozen authority |
+|---|---|
+| Logical/final size | 600×750 logical units at renderer scale 2; exactly 1200×1500 PNG pixels |
+| DPR | hard-coded renderer scale 2; `window.devicePixelRatio` is ignored |
+| Locale/timezone | `zh-CN`; UTC+08:00; no generation timestamp |
+| Fonts | required macOS offline stack: `PingFang SC`/`Helvetica Neue` for UI/numerals and `Songti SC` for the title; await `document.fonts.load`; missing required fonts returns `EXPORT_FONT_UNAVAILABLE` rather than silent reflow |
+| Formatting | `Intl.NumberFormat("zh-CN")`, full grouped integers, fixed Chinese month labels, fixed date format; no K/M abbreviation |
+| Wrapping | renderer-owned greedy code-point line wrapper using `measureText`; title max 2 lines, disclosure max 2, vocabulary max 1; no DOM measurement or locale collation |
+| Truncation | vocabulary tokens max 12 code points with ellipsis; no fact label/value truncation; values fit down only within frozen minimum sizes and otherwise return renderer error |
+| Artwork | versioned local resource, fixed source crop/focal rectangle and opacity; no responsive crop; decode failure uses the versioned Canvas line/dot fallback |
+| Background/alpha | fill every pixel with `#F7F3EA`; output is visually opaque; encoded RGB or RGBA is accepted only when decoded alpha is 255 for every pixel |
+| PNG | browser Canvas `toBlob("image/png")`; no application-supplied text/EXIF/profile metadata; host rejects text/EXIF/profile chunks and tolerates only generic WebKit colorimetric chunks proven by packaged tests |
+| Size | encoded payload MUST be `>0` and `≤10 MiB`; larger output fails without opening a destination panel |
+| Determinism | equal view-model + renderer/copy/art versions produce equal decoded RGBA digest in the same packaged app/macOS/WebView/font environment; byte identity and cross-macOS glyph identity are not promised |
+| Cleanup | at most one app-managed export Canvas and one `Uint8Array`; clear Canvas dimensions and drop Blob/ArrayBuffer references after save/cancel/failure; no bytes in React state/cache/logs |
+
+#### 11.6 Tauri raw-binary/native-save boundary
+
+The locked repository uses Tauri 2.11.3. Its frontend `invoke` accepts top-level `ArrayBuffer`/`Uint8Array` plus headers, and Rust `tauri::ipc::Request` exposes `InvokeBody::Raw` and request headers. B5 therefore adds a separate presentation-export contract alongside the unchanged numeric `export_aggregate` path:
+
+```text
+user clicks Save PNG
+→ prepare_presentation_png(JSON authority request)
+→ host validates window/session/generation/result/schema/viewModelDigest/1200×1500
+→ one active, single-use, 60-second lease per window
+→ render/encode to local Uint8Array (never React state)
+→ save_presentation_png(top-level raw body, lease id in x-chat-analysis-export-lease)
+→ host consumes/revalidates lease and validates PNG
+→ macOS NSSavePanel with generic default name
+→ descriptor-relative atomic write to user-selected destination
+→ saved / cancelled / stable failure
+```
+
+`cancel_presentation_png` invalidates an unused lease after renderer failure or explicit dialog close. Creating a new lease, timeout, session/generation/result replacement, window close, or application close invalidates the old one. Save consumes the lease before opening the native panel; native cancellation returns `cancelled` and retry obtains a fresh lease. Raw bytes are not base64 or a JSON number array, and no path, overwrite boolean, bookmark, or permission token crosses from renderer input.
+
+The host validates before showing `NSSavePanel`: encoded bytes ≤10 MiB, PNG signature, chunk ordering/length/CRC, exactly one 1200×1500 8-bit RGB/RGBA IHDR, decoded bounds, no transparency, no `tEXt`/`zTXt`/`iTXt`/`eXIf`/`iCCP`, and required IEND. It revalidates lease freshness before atomic publication. Default names are ASCII and identity-free: `chat-recap-YYYY.png` for a selected year, `chat-recap-YYYY-YYYY.png` for all-years, and the same year form plus visible in-card partial label for partial ranges. The native panel owns overwrite confirmation; Cancel writes nothing. The host never automatically writes Downloads/Desktop, uploads, copies, opens, reveals, invokes a social app, or returns the chosen path to React.
+
+Stable renderer/host codes are `EXPORT_STALE_RESULT`, `EXPORT_RENDER_FAILED`, `EXPORT_FONT_UNAVAILABLE`, `EXPORT_ARTWORK_FAILED`, `EXPORT_LIMIT_EXCEEDED`, `EXPORT_SCHEMA_INVALID`, `EXPORT_DIALOG_UNAVAILABLE`, `EXPORT_PERMISSION_DENIED`, `EXPORT_DISK_FULL`, `EXPORT_WRITE_FAILED`, `EXPORT_DURABILITY_UNCERTAIN`, and `EXPORT_CLEANUP_REQUIRED`. User cancellation is a successful `cancelled` outcome, not an error. Every visible error provides a safe next action without arbitrary OS/path text.
+
+#### 11.7 Generated-art asset plan
+
+B5 planning generates no final production artwork. Existing `closing-poster-v1.webp` remains the Closing scene asset and visual reference; it is not copied directly into exported pixels unless it passes the B5 crop/contrast test. Only one new raster slot is justified:
+
+| Asset | Purpose/composition | Ratio/source target | Shipping target | Crop/fallback | Candidates | Reject when |
+|---|---|---|---|---|---:|---|
+| `share-card-field-v1` | quiet right/top edge field for the archival poster; matte paper strata, paths/dots, strong central text-safe negative space, no literal data | 4:5 master, accept ≥2160×2700 | opaque WebP, 1200×1500, ≤350 KiB, repository-local | one fixed renderer crop; fallback is Canvas moss/clay line-dot field on paper fill | 3, then at most 1 targeted refinement of the leading direction | text/numbers/year/logo/watermark; people/avatar/chat bubble/lock/shield/cloud cliché; neon/glossy 3D/photoreal/romantic imagery; fake data; muddy crop; insufficient text contrast; obvious AI artifact; >target size; mediocre in actual preview |
+| `closing-poster-v1` | existing Closing→Share continuity reference | existing 4:5, 1122×1402 | unchanged existing WebP | keep in Closing; CSS field fallback | 0 new | do not force into share card if resampling/crop/contrast is weaker than new field/fallback |
+| completion mark | success acknowledgement | code-native | CSS/SVG, no raster | static check/folio seal fallback | 0 | ImageGen is never used |
+
+The implementation prompt uses the `stylized-concept` taxonomy and names only the generic composition, shipping slot, Private Data Atelier palette, negative-space need, and prohibited elements. It contains no private screenshot, token, name, statistic, path, filename, or contact. Rejected candidates stay outside the bundle and are removed one explicit file at a time when cleanup is authorized. Dynamic text/numbers, word chips, data bars, Owner/Other strip, icons, controls, focus rings, dividers, progress indicators, and the product signature remain Canvas/CSS/SVG because they require deterministic alignment, accessibility, or system consistency.
+
+#### 11.8 Privacy disclosure
+
+The preview control column contains one quiet sentence immediately above Save: “PNG 会将当前选择的摘要内容保存到你指定的位置；应用不会上传。” Enabling vocabulary adds one inline note: “将包含最多 5 个当前可见常用词。” There is no warning modal, checkbox gate, automatic share, clipboard action, or social CTA.
 
 ### 12. Performance budgets
 
@@ -597,15 +716,31 @@ The complete canonical dataset never enters React state, React never tokenizes, 
 
 ### 14. Synthetic-only test strategy
 
-Unit tests cover report/query key separation, represented/full-calendar year logic, logical-section order/scene grouping, peak ties, semantic facts/template IDs, the fixed `zh-CN` presenter, formatters, average-day denominator, keyword/frequent-word copy, reason codes, custom-word normalization/bulk paste/reset, presentation hash, word weights, layout key, export metadata, alias validation, and forbidden privacy fields.
+Unit tests cover report/query key separation, represented/full-calendar year logic, logical-section order/scene grouping, peak ties, semantic facts/template IDs, the fixed `zh-CN` report and summary presenters, formatters, average-day denominator, keyword/frequent-word copy, reason codes, custom-word normalization/bulk paste/reset, presentation hash, word weights, layout key, share-card exact keys/availability/line limits, export metadata, and forbidden privacy fields. No alias field exists.
 
 Worker tests cover year/role/date/sender, raw/per-10k fields, built-in-policy denominator, scoped frequent words, existing log-odds semantics, low samples, zero denominator, exact envelope/per-item keys, deterministic DTO, cache eviction, cancellation, and stale result rejection. Presentation tests prove custom hiding changes neither Worker calls/keys nor denominator/count/rate and may safely yield fewer bounded candidates. Existing Dashboard DTO tests remain unchanged.
 
 Layout tests cover equal input/equal coordinates, controlled input/version changes, fixed initial phase, stable ordering, synthetic-metric rectangles, renderer fit-down without coordinate change, collisions, bounds, 32-code-point rejection, Han/Latin/mixed tokens, viewport buckets, max attempts, progressive term reduction, max term counts, 1200×1500 export pixels, and proof that reduced motion does not alter coordinates. Whole-image pixel snapshots are same-packaged-environment optional visual regression evidence, never the sole correctness oracle.
 
-React tests cover Home/default CTA, single/multiple/empty years, mode switching, shared filter/threshold retention, restore-full-range, chapter order, loading/error/empty/insufficient states, stale-year suppression, keyboard/focus/ARIA/live regions, chart alternatives, word-cloud list, vocabulary controls, export preview/privacy warning, retry/reselect, responsive layout, and reduced motion.
+React tests cover Home/default CTA, single/multiple/empty years, mode switching, shared filter/threshold retention, restore-full-range, chapter order, loading/error/empty/insufficient states, stale-year suppression, keyboard/focus/ARIA/live regions, chart alternatives, word-cloud list, vocabulary controls, Closing CTA, dialog/sheet trap and return, vocabulary default-off/maximum-five behavior, exact preview disclosure, renderer/save/cancel/retry/success states, responsive layout, 200% zoom, and reduced motion.
 
-Rust/IPC tests first prove the one-use lease plus top-level opaque-binary request without base64/nested number arrays, then cover committed result/generation fencing, 1200×1500 PNG dimensions/signature/chunks/10MiB limit, forbidden metadata, generic names, lease replay/expiry, save cancellation, atomic replace/failure cleanup, and no renderer destination. Packaged Beta acceptance later uses synthetic vertical fixtures for `.app`, prototype `.dmg`, offline/no-account/no-network flows. Only the user may separately authorize and perform real-data checks; agents do not execute them.
+Rust/IPC tests first prove the one-use lease plus top-level opaque-binary request and header against locked Tauri 2.11.3 without base64/nested number arrays, then cover committed result/generation/view-model digest fencing, 60-second expiry, 1200×1500 RGB/RGBA PNG dimensions/signature/chunk ordering/CRC/10MiB/opaque-alpha limits, forbidden metadata, generic names, lease replay/replacement, native save cancellation, atomic overwrite/failure cleanup, stable errors, and no renderer destination. Packaged Beta acceptance later uses synthetic vertical fixtures for `.app`, prototype `.dmg`, offline/no-account/no-network flows. Only the user may separately authorize and perform real-data checks; agents do not execute them.
+
+#### B5 acceptance matrix
+
+| Gate | Required synthetic cases |
+|---|---|
+| Functional | Closing action; preview open/close/focus return; preview values equal committed report; Year A→Year B→all-years without stale relabel; partial and missing optional evidence; vocabulary default off, explicit on, max five, Clean Mode/custom hidden preserved; save, native cancel, retry, overwrite, stable error; viewport/scroll/window independence |
+| Export | exactly 1200×1500; valid opaque PNG; ≤10MiB; same-environment decoded RGBA digest; required fonts; fixed artwork crop/fallback; long strings/numbers; single year/all years/partial; zero optional evidence; no generation timestamp; no alpha holes; prompt buffer cleanup |
+| Privacy | no source filename/path, body, contact identity, alias input, hidden vocabulary, full word cloud, trace, internal ID/key, arbitrary OS error/path, network, cloud, upload, telemetry, clipboard, social action, or PNG text/EXIF/profile metadata |
+| Visual | Closing default, concise Share Preview, vocabulary-on Share Preview, renderer failure, native cancel, Save failure, Success; card as a standalone archival folio; artwork integration and fallback |
+| Width/zoom | 1180×760, 760×900, 380×900, and 200% zoom; no two-dimensional page scroll, clipped focus, covered Save, or unreadable preview |
+| Accessibility/motion | keyboard-only flow, dialog semantics/trap/Escape/return, visible labels/focus, live-region announcements, accessible preview summary, contrast, touch targets, immediate reduced-motion states, no `transition: all` |
+| Packaged | macOS arm64 `.app`, offline clean-install smoke, bundle-relative art/fonts, real `NSSavePanel`, user-selected output readable after app exit, no additional permission/plugin/network authority |
+
+#### Storage hygiene gate
+
+B5 keeps at most the two newest package artifacts already permitted by project practice, one clean-install copy for the active smoke, and only the selected production asset. Temporary screenshots and render probes remain outside tracked paths and are removed one explicit file at a time after evidence is recorded. Rejected ImageGen candidates remain in the tool-owned review area or are removed individually; they are never accumulated in the bundle or committed. Build caches are not mass-deleted. Any cleanup requiring multiple files or recursive deletion stops for user action. The gate audits `git status`, tracked asset sizes, package count, and ignored artifacts without opening or traversing `data/private`.
 
 ### 15. Luna Max implementation stages after visual-plan freeze
 
@@ -616,7 +751,12 @@ B1a–B4 and the correctness/refinement work are the protected functional baseli
 | V1 — Design System v2 + Shell + Generated Asset Foundation | v2 tokens/type/grid/primitives; optional scoped CSS reorganization; App Shell/Home; app navigation; compact Annual progress navigation; Detailed header/query/rail shell. Likely: `styles.css` or new imported scoped Beta CSS, `primitives.tsx`, `BetaModeNavigation.tsx`, `BetaHome.tsx`, `BetaAnnualReport.tsx`, presentation-only parts of `DesktopImportPanel.tsx`/`DesktopDashboard.tsx`, tests. | Generate 3–4 `annual-opening-hero` and `closing-poster` candidates; review, keep only selected optimized local files; evaluate Home asset. | Type/lint/scoped browser/a11y/offline pass; screenshots Home, Opening, navigation, Detailed shell at 1180/760/380 and 200% zoom. Stop for human visual acceptance before V2. | Luna Max |
 | V2 — Annual Recap Recomposition | seven scenes; composition archetypes; Scale/Rhythm/Balance/Conversation; distinct vocabulary modes; unchanged word-cloud Canvas geometry with new frame; progressive disclosure; closing poster/share slot. Likely: `BetaAnnualReport.tsx`, `BetaCoreReportSections.tsx`, `BetaWordEvidenceSections.tsx`, `BetaWordCloud.tsx`, `report-sections.ts`, scoped CSS, browser tests. | Generate/review conditional transition and vocabulary assets; integrate selected opening/closing assets; delete low-quality variants. | Full 10-image Annual screenshot set, rubric, keyboard/chart fallback/crop/offline/package-preview checks. Stop for second human visual acceptance before V3. | Luna Max |
 | V3 — Detailed Analysis Recomposition | compact Header/Query Bar/Section Rail; Overview metric regrouping; concise metric anatomy; chart/table language; Words & Years; methodology; message types/replies/sessions/export presentation. Likely: `DesktopDashboard.tsx`, scoped Dashboard CSS, existing Dashboard/browser tests. | None by default; generated art does not enter analytical cards. | Detailed Overview and Words & Years screenshots plus all eight route regressions; exact query/callback/value/export/stale parity. Stop for third human visual acceptance before B5. | Luna Max |
-| B5 — Story Motion and Privacy-Safe PNG Sharing | existing deferred motion, summary/share behavior, fixed PNG rendering and bounded host save authority | Reuse the accepted closing visual language; do not generate data-bearing export pixels | May begin only after V1–V3 are accepted; static/reduced-motion/privacy/IPC tests | Luna Max |
+| B5.1 — Summary + Share contracts | summary adapter, fixed `zh-CN` presenter, exact-key `ShareCardViewModelV1`, optional five-term vocabulary selection | None | Contract/privacy/unit gate; no UI or renderer | Luna Max |
+| B5.2 — Share Preview + generated asset | Closing CTA, modal/full-screen sheet, preview states, one `share-card-field-v1` candidate round, fallback and visual QA | 3 generic candidates; keep at most one optimized asset | 1180×760, 760×900, 380×900, 200% zoom, keyboard/focus/privacy/visual gate | Luna Max |
+| B5.3 — Deterministic PNG renderer | shared Canvas preview/export renderer, fonts, wrap/fit/crop/opaque PNG, cleanup | Reuse accepted B5.2 asset or Canvas fallback | RGBA digest, exact 1200×1500, ≤10MiB, long/partial/all-years/missing-fact gate; Sol High review only if determinism authority must change | Luna Max |
+| B5.4 — Native save / Tauri IPC | prepare/cancel/raw-save commands, one-use lease, PNG validation, `NSSavePanel`, atomic write/errors | None | Locked Tauri 2.11.3 raw-body/header contract and Rust integration gate; Sol High only if permissions or transport boundary changes | Luna Max |
+| B5.5 — Motion + accessibility polish | bounded reveals, preview/success feedback, reduced motion, live regions, focus and narrow/zoom polish | No new generated art | Motion/a11y/browser gate; static behavior remains complete | Luna Max |
+| B5.6 — Packaged export acceptance | macOS arm64 `.app` synthetic vertical, offline/native save/art/font/storage audit | Verify selected local assets only | Packaged save/readability/clean-install/zero-network gate; stop before B6 scope | Luna Max |
 | B6 — Packaged Synthetic Beta Acceptance | existing `.app`/`.dmg`, offline and synthetic acceptance | Verify only repository-owned optimized assets are bundled and zero remote requests occur | May begin only after V3 and B5; packaged visual screenshot/rubric pass | Luna Max |
 
 ```text
@@ -637,7 +777,7 @@ This document, the capability spec, and tasks are the implementation authority f
 - [System-font metrics can vary across macOS versions] → Use versioned synthetic rectangles plus renderer fit-down for coordinate correctness; promise raster identity only in the same packaged platform/version.
 - [Token-only quality filtering cannot perfectly identify email/path fragments or names] → State fragment limitations, provide explicit custom hiding, and defer possible-name/NER behavior instead of making an identity claim.
 - [Global localStorage hidden words can itself be sensitive] → Keep it local, content-free in logs/export, bounded, user-visible/editable/resettable, and never sync it. A future encrypted preference store is non-blocking.
-- [Renderer-generated rich PNG weakens the current host-rendered image model] → Add a separate one-use lease plus opaque raw-byte authority, reduce output to 1200×1500, and retain host path/save/validation authority; never serialize bytes as base64/JSON arrays.
+- [Renderer-generated rich PNG weakens the current host-rendered image model] → Add a separate one-use 60-second lease plus Tauri 2.11.3 raw-byte/header authority, keep the existing aggregate export unchanged, and retain host path/save/validation authority; never serialize bytes as base64/JSON arrays.
 - [Canvas is not intrinsically accessible] → Make it decorative in the accessibility tree and provide the same bounded ordered semantic list without per-glyph hidden DOM.
 - [Motion can harm performance or comprehension] → Uniform small tokens, transform/opacity only, one-shot observers, reduced-motion/static fallback, and main-thread long-task budget.
 - [Beta visual tokens could leak into browser-v1 or Dashboard styles] → Follow the existing stylesheet architecture but scope variables/classes beneath `.desktop-app.beta-enabled`, `.beta-report`, and explicit Dashboard selectors.
@@ -645,7 +785,7 @@ This document, the capability spec, and tasks are the implementation authority f
 - [Reducing borders could weaken grouping or accessibility] → Replace borders with explicit surface tone, spacing, heading structure, and restrained depth; keep borders for controls, selected states, focus support, and table separators.
 - [Decorative hierarchy could hide methodology] → Collapse rather than delete methodology and engineering detail, preserve keyboard-accessible disclosures, and test that every current Words & Years field remains reachable.
 - [First-year data may be partial or sparse] → Never infer export completeness; label full/partial query scope and use explicit insufficient states.
-- [Long-image export could dominate delivery] → Defer chapter/long/multipage output; ship two fixed templates first.
+- [Export scope could dominate delivery] → Ship one fixed share-card template only; defer full cloud, chapter, long, multipage, PDF, video, GIF, clipboard, and social outputs.
 - [Generated art looks generic, noisy, or recognizably low-quality] → Generate multiple generic candidates, score them in context, keep none when quality is inadequate, and preserve a complete CSS/SVG fallback.
 - [Artwork leaks private evidence or bakes data into pixels] → Prompts contain only the frozen abstract brief and palette; no private source/screenshot/statistic/name/path is read or supplied; all user/year/data text stays in React/Canvas/SVG layers.
 - [Repository assets increase package weight or require network access] → Ship only optimized WebP/PNG under bounded per-asset targets, inspect the bundle, and run packaged zero-external-request acceptance.
@@ -657,9 +797,9 @@ This document, the capability spec, and tasks are the implementation authority f
 2. Run V1 to install v2 tokens/grid/primitives, shell/navigation, and the reviewed opening/closing asset foundation; stop for human acceptance.
 3. Run V2 to recompose all Annual scenes and vocabulary/word-cloud framing without changing logical sections or geometry; stop for human acceptance.
 4. Run V3 to recompose Detailed Analysis without changing props, queries, metrics, routes, or exports; stop for human acceptance.
-5. Resume B5 only after all three visual gates, then add the 1200×1500 renderer plus one-use lease/opaque binary save authority and deferred motion.
+5. Record 5B.23 as accepted for progression with known module-level polish debt, then implement B5.1→B5.6 in order with independent gates; do not reopen Annual 1–15 or Detailed visual debt inside B5.
 6. Complete B6 synthetic packaged acceptance. Rollback for V1–V3 is removal of the v2 presentation/selected art while the prior Detailed Dashboard, report data contracts, and deterministic cloud remain functional; no user data migration is required.
 
 ## Open Questions
 
-No product or architecture question blocks V1. Asset selection is deliberately a quality gate rather than an open product question: if no candidate passes, use the frozen fallback. During B5, the raw-body contract test still precedes renderer integration; inability to carry a ≤10 MiB opaque PNG stops that batch for a bounded transport correction rather than falling back to base64/JSON bytes or granting renderer filesystem access. Word-cloud geometry is frozen and is not reopened by visual framing.
+No product or architecture question blocks B5. The locked Tauri 2.11.3 API supports the frozen raw-body/header route, but the packaged contract test still precedes renderer/save integration; failure stops B5.4 for a bounded Sol High transport correction rather than falling back to base64/JSON bytes or granting renderer filesystem access. Asset selection is a quality gate: if no `share-card-field-v1` candidate passes in context, ship the frozen Canvas fallback. Word-cloud geometry is not reopened and the full cloud is not a B5 export.

@@ -245,15 +245,15 @@ Word-cloud geometry SHALL be produced by a dedicated local Worker using `beta-wo
 - **THEN** the Worker removes lowest-ranked words in the frozen sequence down to 20, reports degradation, and never changes the analytical ranking
 
 ### Requirement: Canvas rendering, responsive buckets, and accessible equivalent
-The Beta word cloud SHALL use Canvas for screen and export, zero-degree text, offline system font stacks, fixed palette, and the term limits/dimensions in `design.md`. Resize inside a bucket SHALL scale; crossing a bucket SHALL relayout without reanalysis. Canvas SHALL be excluded from the accessibility tree and accompanied by one semantic ranked list containing exactly the same bounded selected words, including layout-omitted ranks, with token, display rank, raw count, normalized rate, role, and year. The implementation MUST NOT create a hidden DOM node per Canvas glyph or render the full 400-item candidate pool by default.
+The Beta word cloud SHALL use Canvas for its in-app screen experience with zero-degree text, offline system font stacks, fixed palette, and the term limits/dimensions in `design.md`. Resize inside a bucket SHALL scale; crossing a bucket SHALL relayout without reanalysis. Canvas SHALL be excluded from the accessibility tree and accompanied by one semantic ranked list containing exactly the same bounded selected words, including layout-omitted ranks, with token, display rank, raw count, normalized rate, role, and year. The implementation MUST NOT create a hidden DOM node per Canvas glyph or render the full 400-item candidate pool by default. The existing 1200×1500 fixed cloud-layout fixture MAY remain for deterministic regression tests but B5 MUST NOT expose it as a product export.
 
 #### Scenario: Narrow screen
 - **WHEN** report content is below 640 CSS pixels
 - **THEN** the 480×520 narrow layout uses at most 50 terms and the semantic list and controls remain usable without horizontal page scrolling
 
-#### Scenario: Export layout
-- **WHEN** a word-cloud PNG is prepared
-- **THEN** the export renderer uses one fixed 1200×1500 final-pixel layout key with at most 100 terms independent of preview CSS size, device-pixel ratio, or application window size
+#### Scenario: Reserved fixed layout fixture
+- **WHEN** the deterministic 1200×1500 cloud-layout fixture runs in tests
+- **THEN** it uses at most 100 terms independent of preview CSS size, device-pixel ratio, or application window size and no B5 UI exposes a full-cloud save action
 
 #### Scenario: Canvas unavailable
 - **WHEN** Canvas or animation cannot render
@@ -393,45 +393,94 @@ V1, V2, and V3 SHALL each capture the fixed screenshot set applicable to the bat
 - **THEN** rubric results and unresolved polish are recorded and the next stage does not begin while any category is `FAIL`
 
 ### Requirement: Unified motion and reduced-motion behavior
-Motion introduced in B5 SHALL use the frozen fast/standard/emphasis/easing/stagger tokens. Chapters SHALL use one-shot non-blocking entry, numbers and charts SHALL reveal only after data is committed, and cloud words SHALL reveal in bounded rank batches. Motion MUST NOT start analytics, change data/layout, hide final information, or become required for correctness. Reduced motion SHALL show the final static state immediately. V1–V3 SHALL establish no new motion framework; they only guarantee complete static meaning and respect `prefers-reduced-motion` for incidental transitions.
+Motion introduced in B5 SHALL use the frozen 120/220/420ms durations, `cubic-bezier(.2,.8,.2,1)` easing, and at most 180ms total stagger. It SHALL be limited to one-shot scene opacity/8px translate, Share Preview opacity/scale, and one non-looping export-success mark. B5 MUST NOT add count-up, delayed chart/cloud content, scroll hijack, parallax, horizontal storytelling, continuous particles/drift, long intro, cursor effects, a new animation dependency, or `transition: all`. Motion MUST NOT start analytics, change data/layout/Canvas pixels, hide or delay final information, move focus, or become required for correctness. Reduced motion and animation failure SHALL show the final static state immediately.
 
 #### Scenario: Standard motion
 - **WHEN** motion is allowed and a committed chapter enters view
-- **THEN** transform/opacity/count/reveal effects stay within the frozen token durations and global stagger cap
+- **THEN** the already-present chapter may reveal once with only transform/opacity inside the frozen duration/stagger cap and remains interruptible
 
 #### Scenario: Reduced motion
 - **WHEN** `prefers-reduced-motion: reduce` is active
-- **THEN** smooth scroll, transforms, count-up, chart drawing, cloud stagger, and cross-fades are disabled while content and layout remain identical
+- **THEN** scene/preview/success transitions, smooth scroll, and incidental cross-fades are disabled while every value, control, state, and layout remains identical
 
 ### Requirement: First-Beta sharing scope and privacy
-First Beta SHALL export an annual summary card PNG and a word-cloud PNG only. Chapter PNG and long/multipage image export SHALL be non-blocking deferrals. Images SHALL visibly include year/scope, applied filter summary, UTC+08:00, metric definition label, local-only status, custom-filter on/off, and privacy warning. Default labels SHALL be anonymous owner/other; contact/source names SHALL never be auto-populated.
+First Beta B5 SHALL export exactly one annual Summary / Share Card product: one fixed 4:5 archival-folio template as an opaque 1200×1500 PNG. It SHALL support one optional “包含词汇摘要” content toggle, default off, that adds no more than five current Frequent Words after Clean Mode and custom-hidden filtering; it SHALL NOT export Distinctive Keywords, counts/rates, hidden words, or the full word cloud. Template galleries, aliases, chapter/word-cloud/long/multipage/PDF/video/GIF exports, clipboard automation, social actions, and automatic save/upload SHALL be absent. The card SHALL visibly include scope title/range/partial state, total messages, active days, peak month availability/ties, longest streak availability, anonymous Owner/Other comparison, applied sender-filter note, UTC+08:00, local-only status, and a small product signature. It SHALL omit generation time, session threshold, contact/source identity, internal IDs/keys/versions, and detailed methodology.
 
 #### Scenario: Export default summary card
 - **WHEN** the user confirms a current committed summary-card preview
-- **THEN** the PNG contains approved aggregate sentences and anonymous roles but no body, contact name, source path/name, internal ID, query key, token trace, or detailed methodology table
+- **THEN** the PNG contains only the frozen descriptive facts and anonymous roles from the matching share-card view-model and contains no body, contact name/alias, source path/name, internal ID, query key, token trace, hidden word, full cloud, or detailed methodology table
 
-#### Scenario: Use local display aliases
-- **WHEN** the user enters valid temporary display aliases for export
-- **THEN** the preview warns that aliases are sensitive, uses them only for that local preview/save, and does not derive or persist contact identity by default
+#### Scenario: Explicitly include vocabulary summary
+- **WHEN** the user enables the vocabulary option on a current preview
+- **THEN** the card includes at most the first five current contiguous display ranks after Clean Mode and custom-hidden filtering and never restores or replaces a filtered term
+
+#### Scenario: Vocabulary is unavailable
+- **WHEN** zero eligible visible frequent words remain
+- **THEN** the vocabulary toggle is disabled with an explanation and the concise card remains exportable when required summary evidence exists
+
+#### Scenario: Partial or missing evidence
+- **WHEN** a committed report covers a partial range or lacks an optional peak/streak/comparison fact
+- **THEN** partial scope is visibly labelled and reserved optional slots say evidence is insufficient; zero total user messages disables export rather than borrowing another scope
 
 #### Scenario: Unsupported long image
-- **WHEN** the user looks for a long/multipage export in first Beta
-- **THEN** it is absent or identified as deferred and does not block summary-card or word-cloud export
+- **WHEN** the user looks for another template, full word cloud, chapter, long, multipage, PDF, video, GIF, clipboard, or social export in B5
+- **THEN** it is absent and does not block the one summary-card export
+
+### Requirement: B5 summary presenter and preview state authority
+The system SHALL build `BetaSummaryDtoV1` only from one matching committed Analytics Worker result, existing `BetaReportDtoV1` facts, and an optional matching filtered word presentation. A pure summary adapter SHALL select and classify existing facts; a fixed `zh-CN` presenter SHALL own descriptive sentences and number/date formatting; an exact-key privacy-stripped `ShareCardViewModelV1` SHALL be the sole preview/export content authority. React MUST NOT aggregate facts, select peaks/ties, calculate shares, infer conclusions, or assemble business prose. A scope/word/preference change SHALL invalidate Save until a matching current view-model is presented.
+
+#### Scenario: Preview matches committed report
+- **WHEN** a matching summary DTO and presenter complete
+- **THEN** preview facts and optional words equal the committed report/presentation evidence and the same view-model key feeds preview and export
+
+#### Scenario: Reject stale summary
+- **WHEN** session, generation, result, report query, role, Clean Mode, custom-hidden preference, or vocabulary option changes
+- **THEN** the prior card is never relabelled as current and Save remains disabled until the new correlated view-model is ready
+
+#### Scenario: Keep language descriptive
+- **WHEN** the presenter emits summary copy
+- **THEN** it describes counts, months, days, streaks, and anonymous shares only and contains no affection, dependence, intent, personality, emotion, relationship-quality, or improvement/decline claim
+
+### Requirement: B5 Share Preview dialog and recovery states
+Closing SHALL provide “生成回顾卡” as the primary B5 action and retain Detailed Analysis as a secondary action. Share Preview SHALL be an in-app modal dialog that becomes a full-screen single-column sheet below 600px or at effective 200% zoom. It SHALL implement preview rendering, ready/options, export in progress, success, user cancelled, save failed, renderer/font/art failed, missing/partial evidence, stale, narrow, and reduced-motion states frozen in `design.md`. It SHALL show the quiet disclosure “PNG 会将当前选择的摘要内容保存到你指定的位置；应用不会上传。” immediately above Save and SHALL NOT add a second warning dialog.
+
+#### Scenario: Keyboard preview lifecycle
+- **WHEN** a keyboard user opens and closes Share Preview
+- **THEN** focus moves to the dialog heading, remains trapped with visible focus, Escape closes only while no native panel owns focus, and close returns focus to the Closing trigger
+
+#### Scenario: Cancel native save
+- **WHEN** the user cancels the native save panel
+- **THEN** the unchanged preview returns with a polite cancellation announcement and no error, path disclosure, or write
+
+#### Scenario: Save or renderer failure
+- **WHEN** rendering or saving fails
+- **THEN** the dialog preserves the report and preview where safe, announces one content-free stable error with a concrete retry/choose-another-location action, and performs no automatic fallback upload/write/share
 
 ### Requirement: Bounded renderer-to-host PNG save authority
-Rich PNGs SHALL be rendered locally from a privacy-stripped fixed export view-model into one 1200×1500 final-pixel Canvas. B5 SHALL add a distinct opaque binary contract rather than extending the existing numeric `export_aggregate` DTO with bytes: a small prepare command validates fresh committed result/generation, approved kind, schema, and dimensions and stores at most one active one-use host lease per window; the raw save command receives only a top-level `ArrayBuffer`/`Uint8Array` PNG body, with the opaque lease ID in the allow-listed ASCII `x-chat-analysis-export-lease` invoke header. Bytes MUST NOT be base64, a nested JSON number array, or React state. Rust SHALL consume/fence the lease and validate PNG signature, IHDR, chunks, exact 1200×1500 dimensions, forbidden ancillary metadata, and at most 10 MiB before presenting a native save destination and performing atomic save. Prepare replacement, cancellation, session/generation replacement, or close SHALL invalidate the prior lease. The renderer MUST NOT supply or receive a filesystem path. A packaged synthetic raw-body/header contract test SHALL pass before renderer integration.
+The preview and final PNG SHALL use the same pure Canvas 2D renderer and `ShareCardViewModelV1`; no DOM screenshot, hidden DOM, SVG raster capture, scroll/viewport/window/DPR/media-query input, or screenshot dependency is permitted. The renderer SHALL use 600×750 logical units at hard-coded scale 2, required offline macOS fonts, frozen `zh-CN` formatting/wrapping/fit/crop constants, a fully opaque `#F7F3EA` background, and a versioned local artwork or deterministic Canvas fallback. Equal authority/version input SHALL produce equal decoded RGBA digest in the same packaged environment. B5 SHALL add a distinct Tauri 2.11.3 opaque-binary contract rather than extending the existing numeric `export_aggregate` DTO with bytes: `prepare_presentation_png` validates current window/session/generation/result/schema/view-model digest/dimensions and creates at most one active single-use 60-second host lease per window; `save_presentation_png` receives only a top-level raw `ArrayBuffer`/`Uint8Array` body with the opaque lease ID in the allow-listed ASCII `x-chat-analysis-export-lease` header. Bytes MUST NOT be base64, a nested JSON number array, React state/cache, or logs. Rust SHALL consume/fence the lease and validate encoded size, PNG signature, chunk order/length/CRC, exactly one 1200×1500 8-bit RGB/RGBA IHDR, opaque decoded alpha, forbidden text/EXIF/profile chunks, and IEND before presenting `NSSavePanel` and atomically writing the user-selected destination. The renderer MUST NOT supply or receive a filesystem path or overwrite flag. A packaged synthetic raw-body/header contract test SHALL pass before renderer/save integration.
 
 #### Scenario: Save valid PNG
-- **WHEN** a fresh valid summary or cloud PNG passes the closed contract
+- **WHEN** a fresh valid summary-card PNG passes the closed contract
 - **THEN** Rust opens the native save panel with a generic name and atomically writes only the user-approved destination
 
 #### Scenario: Reject stale or metadata-bearing PNG
-- **WHEN** result identity/lease is stale or replayed, or the PNG has wrong dimensions, excess bytes, text/profile/EXIF metadata, malformed chunks, or unapproved kind
+- **WHEN** result/view-model identity or lease is stale/replaced/expired/replayed, or the PNG has wrong dimensions, excess bytes, transparent pixels, text/profile/EXIF metadata, malformed chunks/CRC, or unapproved kind
 - **THEN** the host refuses save with a stable content-free error and performs no destination write
 
 #### Scenario: Cancel or retry export
-- **WHEN** save is cancelled or fails
-- **THEN** the analysis/report remains intact and the user can retry the same current export preview without recomputation
+- **WHEN** save is cancelled, a renderer fails, or dialog close abandons an unused lease
+- **THEN** the lease is consumed or explicitly invalidated, the analysis/report remains intact, and retry prepares a fresh lease for the same still-current preview
+
+### Requirement: B5 generated-art slot and code-native fallback
+B5 SHALL generate at most three generic synthetic candidates for one optional `share-card-field-v1` 4:5 editorial edge field and at most one targeted refinement of the leading direction. Prompts and candidates MUST contain no real/private data, screenshot, statistic, token, person, avatar, contact, message, filename/path, text, number, year, logo, watermark, lock/shield/cloud cliché, romantic imagery, neon AI, glossy 3D, or photorealism. Only one passing optimized opaque repository-local WebP at 1200×1500 and at most 350 KiB MAY ship. Dynamic card content, controls, completion mark, data bars, word chips, icons, focus, and dividers SHALL remain Canvas/CSS/SVG. The card SHALL remain complete with the versioned Canvas line/dot fallback and SHALL ship no mediocre or rejected candidate.
+
+#### Scenario: All candidates fail
+- **WHEN** every generated candidate has an obvious artifact, weak crop/contrast, prohibited motif, excess size, or fails actual preview quality
+- **THEN** B5 uses the deterministic Canvas fallback and ships no new raster rather than lowering the visual/privacy gate
+
+#### Scenario: Artwork fails at runtime
+- **WHEN** the selected local asset cannot decode before rendering
+- **THEN** preview and export use the same frozen Canvas fallback without changing facts, layout authority, accessibility, or network behavior
 
 ### Requirement: Cache, cancellation, and stale suppression
 The system SHALL preserve the existing canonical key for committed analytics only and define separate bounded identities as in `design.md`: report facts from committed base query + report mode/year; frequency DTO from committed base query + role + built-in policy; word presentation from frequency DTO + raw/per-10k + custom-hidden hash + visible limit; layout from the bounded presentation digest + bucket/fixed canvas + synthetic-metrics/layout versions. Navigation, route, chapter, scroll, drafts, and reduced-motion state MUST enter none of them. Report/frequency/layout caches SHALL be bounded and cleared on dataset replacement, generation change, Worker disposal, or close. Superseded asynchronous work SHALL be cancelled/discarded and late results SHALL never replace current year data.
@@ -486,7 +535,7 @@ Automated and agent-run tests SHALL use synthetic fixtures only and SHALL cover 
 - **THEN** the agent stops at the existing authorization boundary and does not execute productization 12.7/12.8 or legacy 13.10/15.10 without separate explicit authorization
 
 ### Requirement: Beta blockers and Release deferrals
-Beta acceptance SHALL fail for Dashboard regression, source reread, private-data access, network/upload/runtime-art dependency, canonical dataset in React state, main-thread tokenization, changed word-cloud geometry, privacy-leaking export, unresolved visual-rubric `FAIL`, unusable 1180×760/760/380 layout, broken artwork crop/fallback, lost applied state, packaged startup failure, serious accessibility regression, or stale/cross-year display. B5 and B6 MUST remain blocked until V1–V3 human stop gates pass. Developer ID, notarization, stapling, Windows, auto-update, public Release, D.1–D.10, exhaustive inputs, full dark mode, possible-name filtering, advanced NER/NLP, all image formats, and Release-grade certification SHALL NOT be Beta blockers.
+Beta acceptance SHALL fail for Dashboard regression, source reread, private-data access, network/upload/runtime-art dependency, canonical dataset in React state, main-thread tokenization, changed word-cloud geometry, privacy-leaking export, unresolved visual-rubric `FAIL`, unusable 1180×760/760×900/380×900/200%-zoom layout, broken artwork crop/fallback, lost applied state, packaged startup failure, serious accessibility regression, or stale/cross-year display. B5 and B6 MUST remain blocked until V1–V3 human stop gates pass. The recorded 5B.23 progression acceptance MAY retain known module-level visual polish debt but MUST NOT be represented as complete visual-debt resolution or used to broaden B5 into Annual 1–15/Detailed redesign. Developer ID, notarization, stapling, Windows, auto-update, public Release, D.1–D.10, exhaustive inputs, full dark mode, possible-name filtering, advanced NER/NLP, all image formats, and Release-grade certification SHALL NOT be Beta blockers.
 
 #### Scenario: Detect stale year publication
 - **WHEN** a report displays metrics correlated to a year/query other than the current selection
@@ -499,3 +548,7 @@ Beta acceptance SHALL fail for Dashboard regression, source reread, private-data
 #### Scenario: Visual gate remains rejected
 - **WHEN** any V1–V3 screenshot category is `FAIL` or human acceptance has not occurred
 - **THEN** B5/B6 do not start even if functional automated tests are green
+
+#### Scenario: Progress with recorded polish debt
+- **WHEN** 5B.23 is accepted for progression with known module-level visual polish debt and no rubric category remains `FAIL`
+- **THEN** B5 may proceed within its frozen Closing/share/export/motion scope without claiming the debt is resolved or restyling Annual 1–15/Detailed
