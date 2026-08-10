@@ -31,7 +31,7 @@ describe("B5.2 share preview state", () => {
 
     const viewModel = shareCard();
     const opening = createSharePreviewState(viewModel);
-    expect(opening).toMatchObject({ phase: "opening", vocabulary: "off", evidence: "partial", artwork: "loaded", renderer: "not-available", save: "not-available" });
+    expect(opening).toMatchObject({ phase: "opening", vocabulary: "off", evidence: "partial", artwork: "loaded", renderer: "rendering", save: "not-available" });
     expect(opening.presentationKey).toBe(shareCardPresentationKey(viewModel));
   });
 

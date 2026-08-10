@@ -2,12 +2,14 @@ import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
 import { BetaButton } from "./primitives";
 import type { ShareCardViewModelV1 } from "./summary-contract";
+import type { ShareCardCanvasRenderUpdateV1 } from "./share-card-renderer";
 import {
   createClosedSharePreviewState,
   createSharePreviewState,
   markSharePreviewArtworkFallback,
   markSharePreviewReady,
   markSharePreviewStale,
+  setSharePreviewRendererState,
   setSharePreviewVocabulary,
   shareCardPresentationKey,
   type ShareCardPreviewModels,
@@ -137,9 +139,27 @@ export function BetaSharePreviewDialog({
     setPreviewState((state) => markSharePreviewArtworkFallback(state));
   }
 
+  function handleCanvasRenderState(update: ShareCardCanvasRenderUpdateV1): void {
+    if (update.artworkMode === "fallback") {
+      handleArtworkError();
+    } else {
+      setArtworkState("loaded");
+    }
+    const rendererState = update.status === "ready"
+      ? "ready"
+      : update.status === "failed"
+        ? update.error?.code === "EXPORT_FONT_UNAVAILABLE" ? "font-failed" : "renderer-failed"
+        : "rendering";
+    setPreviewState((state) => setSharePreviewRendererState(state, rendererState));
+  }
+
   const statusMessage = stale
     ? "当前范围已变化；请关闭后重新生成回顾卡。"
-      : previewState.phase === "opening"
+      : previewState.renderer === "font-failed"
+        ? "字体未就绪，暂时无法生成固定版式；请重试。"
+        : previewState.renderer === "renderer-failed"
+          ? "回顾卡预览暂时无法生成，请重试。"
+          : previewState.renderer === "rendering" || previewState.phase === "opening"
       ? "正在准备回顾卡预览…"
       : artworkState === "fallback"
         ? "装饰图不可用，已使用内置线点图案。"
@@ -157,7 +177,7 @@ export function BetaSharePreviewDialog({
       aria-modal="true"
       aria-labelledby="beta-share-preview-heading"
       aria-describedby="beta-share-preview-description"
-      aria-busy={previewState.phase === "opening"}
+      aria-busy={previewState.phase === "opening" || previewState.renderer === "rendering"}
       onCancel={(event) => { event.preventDefault(); onClose(); }}
       onKeyDown={handleKeyDown}
     >
@@ -174,9 +194,9 @@ export function BetaSharePreviewDialog({
         <div className="beta-share-preview-layout">
           <div className="beta-share-preview-stage">
             <BetaShareCardPreview
+              open={open}
               viewModel={selectedViewModel}
-              artworkState={artworkState}
-              onArtworkError={handleArtworkError}
+              onRenderStateChange={handleCanvasRenderState}
             />
           </div>
 

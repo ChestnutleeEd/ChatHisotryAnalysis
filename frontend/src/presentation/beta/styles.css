@@ -5957,3 +5957,66 @@
     animation: none;
   }
 }
+
+/* B5.3: the Canvas is the only visual Share Card authority. The earlier DOM
+   card selectors remain above for history, but no card content is rendered by
+   them anymore. */
+.desktop-app.beta-enabled .beta-share-card {
+  position: relative;
+  display: block;
+  width: min(100%, 448px, 46.4vh);
+  height: auto;
+  aspect-ratio: 4 / 5;
+  overflow: hidden;
+  border: 1px solid rgb(23 26 24 / 22%);
+  border-radius: 4px;
+  background: var(--beta-color-report);
+  box-shadow: 0 18px 40px rgb(23 26 24 / 18%);
+  isolation: isolate;
+}
+
+.desktop-app.beta-enabled .beta-share-card::after,
+.desktop-app.beta-enabled .beta-share-card-artwork,
+.desktop-app.beta-enabled .beta-share-card-content {
+  display: none;
+}
+
+.desktop-app.beta-enabled .beta-share-card-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 5;
+  background: #F7F3EA;
+}
+
+.desktop-app.beta-enabled .beta-share-card-render-failure {
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  left: 24px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--beta-color-error);
+  border-radius: var(--beta-radius-control);
+  background: rgb(247 243 234 / 94%);
+  color: var(--beta-color-error);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.desktop-app.beta-enabled .beta-share-preview-dialog[data-state="stale"] .beta-share-card-canvas {
+  opacity: .78;
+}
+
+@media (max-width: 900px) {
+  .desktop-app.beta-enabled .beta-share-card {
+    width: min(100%, 448px, 46.4vh);
+  }
+}
+
+@media (max-width: 599px) {
+  .desktop-app.beta-enabled .beta-share-card {
+    width: 100%;
+    max-width: 420px;
+  }
+}

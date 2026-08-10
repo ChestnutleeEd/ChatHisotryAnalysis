@@ -1,12 +1,15 @@
-import type { CSSProperties } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import shareCardField from "../../assets/beta/art/share-card-field-v1.webp";
-import type {
-  ShareCardMetricViewModelV1,
-  ShareCardSenderRoleViewModelV1,
-  ShareCardViewModelV1,
-} from "./summary-contract";
-import type { SharePreviewArtworkState } from "./share-preview-state";
+import {
+  decodeShareCardPngV1,
+  encodeShareCardPngV1,
+  inspectShareCardPngV1,
+  loadShareCardArtworkV1,
+  renderShareCardV1,
+  ShareCardRendererErrorV1,
+  type ShareCardCanvasRenderUpdateV1,
+} from "./share-card-renderer";
+import type { ShareCardMetricViewModelV1, ShareCardViewModelV1 } from "./summary-contract";
 
 function metricValue(metric: ShareCardMetricViewModelV1): string {
   if (metric.status === "unavailable") {
@@ -15,130 +18,145 @@ function metricValue(metric: ShareCardMetricViewModelV1): string {
   return `${metric.value ?? ""}${metric.unit}`;
 }
 
-function SenderRole({ role }: { readonly role: ShareCardSenderRoleViewModelV1 }) {
-  return (
-    <li className={`beta-share-card-sender-role beta-share-card-sender-${role.label.toLowerCase()}`}>
-      <span className="beta-share-card-role-marker" aria-hidden="true" />
-      <span>
-        <strong>{role.label}</strong>
-        <small>{role.count === null ? "证据不足" : `${role.count} 条 · ${role.share ?? ""}`}</small>
-      </span>
-    </li>
-  );
-}
-
-function CardMetric({ metric }: { readonly metric: ShareCardMetricViewModelV1 }) {
-  return (
-    <li className={`beta-share-card-metric beta-share-card-metric-${metric.status}`}>
-      <span>{metric.label}</span>
-      <strong>{metricValue(metric)}</strong>
-      <small>{metric.detail}</small>
-    </li>
-  );
-}
-
 function accessibleSummary(viewModel: ShareCardViewModelV1): string {
-  const metrics = Object.values(viewModel.metrics)
+  const metrics = (Object.values(viewModel.metrics) as ShareCardMetricViewModelV1[])
     .map((metric) => `${metric.label}${metricValue(metric)}`)
     .join("；");
+  const sender = viewModel.senderComparison.status === "available"
+    ? `Owner ${viewModel.senderComparison.owner.count ?? "证据不足"} 条 ${viewModel.senderComparison.owner.share ?? ""}，Other ${viewModel.senderComparison.other.count ?? "证据不足"} 条 ${viewModel.senderComparison.other.share ?? ""}`
+    : "Owner / Other 比较证据不足";
   const vocabulary = viewModel.vocabulary.mode === "on"
     ? `，${viewModel.vocabulary.label}${viewModel.vocabulary.items.map((item) => item.token).join("、")}`
-    : "，未包含词汇摘要";
-  return `${viewModel.headline}，范围 ${viewModel.rangeLabel}${viewModel.partialLabel === null ? "" : `，${viewModel.partialLabel}`}；${metrics}${vocabulary}；${viewModel.privacyLine}。`;
+    : `，${viewModel.vocabulary.label}`;
+  const scopeNote = viewModel.partialLabel === null ? "完整日期范围" : viewModel.partialLabel;
+  return `${viewModel.headline}，范围 ${viewModel.rangeLabel}，${scopeNote}；${metrics}；${sender}；${viewModel.senderFilterContext.appliedFilterLabel}${vocabulary}；${viewModel.privacyLine}，${viewModel.timezoneLabel}。`;
 }
 
 export function BetaShareCardPreview({
+  open,
   viewModel,
-  artworkState,
-  onArtworkError,
+  onRenderStateChange,
 }: {
+  readonly open: boolean;
   readonly viewModel: ShareCardViewModelV1;
-  readonly artworkState: SharePreviewArtworkState;
-  readonly onArtworkError: () => void;
+  readonly onRenderStateChange: (update: ShareCardCanvasRenderUpdateV1) => void;
 }) {
-  const totalMessages = viewModel.metrics.totalMessages;
-  const sender = viewModel.senderComparison;
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [renderUpdate, setRenderUpdate] = useState<ShareCardCanvasRenderUpdateV1>({
+    status: "rendering",
+    artworkMode: "raster",
+  });
+  const [rgbaDigest, setRgbaDigest] = useState<string | null>(null);
+  const renderSequence = useRef(0);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const canvas = canvasRef.current;
+    if (canvas === null) {
+      return;
+    }
+    const sequence = renderSequence.current + 1;
+    renderSequence.current = sequence;
+    let active = true;
+    let artwork: Awaited<ReturnType<typeof loadShareCardArtworkV1>> | undefined;
+    let bytes: Uint8Array | undefined;
+    const publish = (update: ShareCardCanvasRenderUpdateV1): void => {
+      if (!active || renderSequence.current !== sequence) {
+        return;
+      }
+      setRenderUpdate(update);
+      onRenderStateChange(update);
+    };
+    setRgbaDigest(null);
+    publish({ status: "rendering", artworkMode: "raster" });
+
+    void (async () => {
+      try {
+        artwork = await loadShareCardArtworkV1();
+      } catch {
+        artwork = undefined;
+      }
+      if (!active || renderSequence.current !== sequence) {
+        return;
+      }
+      try {
+        const render = await renderShareCardV1(canvas, viewModel, { artwork });
+        if (!active || renderSequence.current !== sequence) {
+          return;
+        }
+        const encodeStartedAt = typeof performance === "undefined" ? null : performance.now();
+        bytes = await encodeShareCardPngV1(canvas);
+        const encodeDurationMs = encodeStartedAt === null || typeof performance === "undefined"
+          ? undefined
+          : Math.max(0, Math.round(performance.now() - encodeStartedAt));
+        const png = inspectShareCardPngV1(bytes);
+        const decoded = await decodeShareCardPngV1(bytes);
+        if (!active || renderSequence.current !== sequence) {
+          return;
+        }
+        const update: ShareCardCanvasRenderUpdateV1 = {
+          status: "ready",
+          artworkMode: render.artworkMode,
+          fontMode: render.diagnostics.fontMode,
+          encodeDurationMs,
+          png,
+          decoded,
+        };
+        // The update only carries non-sensitive diagnostics; PNG bytes never
+        // enter React state or the DOM.
+        setRgbaDigest(decoded.rgbaDigest);
+        publish(update);
+      } catch (error) {
+        if (!active || renderSequence.current !== sequence) {
+          return;
+        }
+        const rendererError = error instanceof ShareCardRendererErrorV1 ? error : undefined;
+        publish({
+          status: "failed",
+          artworkMode: artwork === undefined ? "fallback" : "raster",
+          error: rendererError,
+        });
+      } finally {
+        bytes?.fill(0);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [open, viewModel]);
+
   return (
     <article
       className="beta-share-card"
       data-testid="beta-share-card-preview"
-      data-artwork-state={artworkState}
+      data-artwork-state={renderUpdate.artworkMode === "raster" ? "loaded" : "fallback"}
+      data-render-state={renderUpdate.status}
+      data-png-state={renderUpdate.status === "ready" ? "validated" : "pending"}
+      data-font-mode={renderUpdate.fontMode}
+      data-png-encode-ms={renderUpdate.encodeDurationMs}
+      data-png-width={renderUpdate.status === "ready" ? "1200" : undefined}
+      data-png-height={renderUpdate.status === "ready" ? "1500" : undefined}
+      data-png-size={renderUpdate.png?.byteLength}
+      data-png-chunks={renderUpdate.png === undefined ? undefined : [...new Set(renderUpdate.png.chunkTypes)].join(",")}
+      data-png-forbidden-chunks={renderUpdate.png?.forbiddenChunks.join(",")}
+      data-alpha={renderUpdate.decoded?.opaque === true ? "255" : undefined}
+      data-rgba-digest={rgbaDigest ?? undefined}
       data-evidence-state={viewModel.scope.partial ? "partial" : viewModel.exportAvailability.status}
       aria-describedby="beta-share-card-accessible-summary"
     >
-      <div className="beta-share-card-artwork" aria-hidden="true">
-        {artworkState === "loaded" ? (
-          <img src={shareCardField} alt="" width={1200} height={1500} loading="eager" onError={onArtworkError} />
-        ) : (
-          <div className="beta-share-card-artwork-fallback" />
-        )}
-      </div>
-      <div className="beta-share-card-content">
-        <header className="beta-share-card-header">
-          <div>
-            <p className="beta-share-card-eyebrow">私人数据年鉴 · {viewModel.timezoneLabel}</p>
-            <h2>{viewModel.headline}</h2>
-          </div>
-          <span className="beta-share-card-range">{viewModel.rangeLabel}</span>
-        </header>
-
-        <section className="beta-share-card-total" aria-labelledby="beta-share-card-total-heading">
-          <p id="beta-share-card-total-heading">{totalMessages.label}</p>
-          <strong>{totalMessages.value ?? totalMessages.detail}</strong>
-          {totalMessages.status === "available" ? <span>{totalMessages.unit}</span> : null}
-          <small>{totalMessages.detail}</small>
-        </section>
-
-        <ul className="beta-share-card-metrics" aria-label="年度回顾指标">
-          <CardMetric metric={viewModel.metrics.activeDays} />
-          <CardMetric metric={viewModel.metrics.mostActiveMonth} />
-          <CardMetric metric={viewModel.metrics.longestStreak} />
-        </ul>
-
-        <section className="beta-share-card-balance" aria-labelledby="beta-share-card-balance-heading">
-          <div className="beta-share-card-section-label">
-            <span id="beta-share-card-balance-heading">Owner / Other</span>
-            <small>{sender.status === "available" ? `合计 ${sender.denominator} 条` : sender.detail}</small>
-          </div>
-          {sender.status === "available" ? (
-            <>
-              <div className="beta-share-card-balance-bar" aria-hidden="true">
-                <span style={{ flexBasis: sender.owner.share ?? "0%" } as CSSProperties} />
-                <span style={{ flexBasis: sender.other.share ?? "0%" } as CSSProperties} />
-              </div>
-              <ul className="beta-share-card-sender-list">
-                <SenderRole role={sender.owner} />
-                <SenderRole role={sender.other} />
-              </ul>
-            </>
-          ) : (
-            <p className="beta-share-card-unavailable">双方比较：证据不足</p>
-          )}
-        </section>
-
-        <section className={`beta-share-card-vocabulary beta-share-card-vocabulary-${viewModel.vocabulary.mode}`} aria-labelledby="beta-share-card-vocabulary-heading">
-          <div className="beta-share-card-section-label">
-            <span id="beta-share-card-vocabulary-heading">词汇摘要</span>
-            <small>{viewModel.vocabulary.label}</small>
-          </div>
-          {viewModel.vocabulary.mode === "on" ? (
-            <ul>
-              {viewModel.vocabulary.items.map((item) => <li key={item.displayRank}>{item.token}</li>)}
-            </ul>
-          ) : <p>{viewModel.vocabulary.label}</p>}
-        </section>
-
-        <footer className="beta-share-card-footer">
-          <div>
-            <strong>{viewModel.privacyLine}</strong>
-            <span>{viewModel.productSignature}</span>
-          </div>
-          <div>
-            {viewModel.partialLabel !== null ? <span>{viewModel.partialLabel}</span> : null}
-            <span>{viewModel.senderFilterContext.appliedFilterLabel}</span>
-          </div>
-        </footer>
-      </div>
+      <canvas
+        ref={canvasRef}
+        className="beta-share-card-canvas"
+        width={1200}
+        height={1500}
+        aria-hidden="true"
+      />
+      {renderUpdate.status === "failed" ? (
+        <p className="beta-share-card-render-failure" role="status">回顾卡预览暂时无法生成，请重试。</p>
+      ) : null}
       <p id="beta-share-card-accessible-summary" className="visually-hidden">{accessibleSummary(viewModel)}</p>
     </article>
   );

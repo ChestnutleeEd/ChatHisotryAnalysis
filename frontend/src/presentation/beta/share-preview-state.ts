@@ -15,7 +15,6 @@ export interface SharePreviewState {
   readonly phase: "closed" | "opening" | "ready" | "stale";
   readonly vocabulary: SharePreviewVocabularyState;
   readonly artwork: SharePreviewArtworkState;
-  /** Future Canvas/native renderer states are modeled but not started in B5.2. */
   readonly renderer: SharePreviewRendererState;
   readonly evidence: SharePreviewEvidenceState;
   readonly save: SharePreviewSaveState;
@@ -58,7 +57,7 @@ export function createSharePreviewState(viewModel: ShareCardViewModelV1): ShareP
     phase: "opening",
     vocabulary: viewModel.vocabulary.mode,
     artwork: "loaded",
-    renderer: "not-available",
+    renderer: "rendering",
     evidence: evidenceState(viewModel),
     save: "not-available",
     presentationKey: shareCardPresentationKey(viewModel),
