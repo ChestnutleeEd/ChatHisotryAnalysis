@@ -15,6 +15,7 @@ export const CUSTOM_HIDDEN_WORDS_STORAGE_VERSION =
 export const MAX_CUSTOM_HIDDEN_WORDS = 200;
 export const MAX_WORD_EVIDENCE_ITEMS = 20;
 export const MAX_KEYWORD_EVIDENCE_ITEMS = 10;
+export const MAX_SHARE_CARD_VOCABULARY_ITEMS = 5;
 
 export type WordFrequencyMetric = "raw-count" | "per-10000-eligible-tokens";
 
@@ -41,6 +42,21 @@ export interface WordFrequencyPresentation {
   readonly cleanHiddenCandidateCount: number;
   readonly customHiddenCandidateCount: number;
   readonly boundedPoolExhausted: boolean;
+}
+
+/**
+ * A deliberately narrow source for share-card vocabulary. The caller must
+ * provide the result of createWordFrequencyPresentation, after Clean Mode and
+ * custom-hidden filtering have already been applied.
+ */
+export type ShareCardVocabularySourceV1 = Pick<
+  WordFrequencyPresentation,
+  "status" | "items" | "frequencyDtoKey" | "role" | "year"
+>;
+
+export interface ShareCardVocabularyCandidateV1 {
+  readonly displayRank: number;
+  readonly displayToken: string;
 }
 
 export interface KeywordPresentationItem {
@@ -173,6 +189,40 @@ export function writeCustomHiddenWords(
 
 function hiddenSet(words: readonly string[]): ReadonlySet<string> {
   return new Set(mergeCustomHiddenWords([], words));
+}
+
+export function selectShareCardVocabularyV1(
+  source: ShareCardVocabularySourceV1,
+  limit = MAX_SHARE_CARD_VOCABULARY_ITEMS,
+): readonly ShareCardVocabularyCandidateV1[] {
+  if (!Number.isSafeInteger(limit) || limit < 0) {
+    throw new Error("INVALID_SHARE_CARD_VOCABULARY_LIMIT");
+  }
+  if (source.status !== "ready" || source.items.length === 0 || limit === 0) {
+    return [];
+  }
+  const boundedLimit = Math.min(limit, MAX_SHARE_CARD_VOCABULARY_ITEMS);
+  const seen = new Set<string>();
+  let previousSourceRank = 0;
+  return source.items.slice(0, boundedLimit).map((item, index) => {
+    if (
+      item.displayRank !== index + 1 ||
+      !Number.isSafeInteger(item.sourceRank) ||
+      item.sourceRank <= previousSourceRank ||
+      item.sourceRank < item.displayRank ||
+      item.displayToken === "" ||
+      [...item.displayToken].length > 32 ||
+      seen.has(item.displayToken)
+    ) {
+      throw new Error("INVALID_SHARE_CARD_VOCABULARY_SOURCE");
+    }
+    seen.add(item.displayToken);
+    previousSourceRank = item.sourceRank;
+    return {
+      displayRank: item.displayRank,
+      displayToken: item.displayToken,
+    };
+  });
 }
 
 export function createWordFrequencyPresentation(

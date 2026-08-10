@@ -135,10 +135,10 @@
 
 ### B5.1 — Summary + Share Card presentation contracts
 
-- [ ] 6.1 [Implementation][Luna Max][Scope: Beta report/summary contracts only] Add exact-key versioned `BetaSummaryDtoV1` and privacy-stripped `ShareCardViewModelV1` with the frozen scope, required/optional facts, anonymous roles, vocabulary option, footer labels, and renderer/copy/art versions; keep session/generation/result/query correlation out of the final share-card model.
-- [ ] 6.2 [Implementation][Luna Max][Scope: pure adapter/presenter] Implement committed report facts → pure summary adapter → fixed `zh-CN` presenter; retain canonical ties/availability/partial semantics, use fixed descriptive templates and `Intl.NumberFormat("zh-CN")`, and prohibit React analytics/prose/inference.
-- [ ] 6.3 [Implementation + Test][Luna Max][Scope: vocabulary privacy] Select zero-to-five frequent words only after Clean Mode and custom-hidden filtering, default vocabulary off, disable it at zero candidates, invalidate on role/year/filter/preference changes, and prove hidden/full-cloud/distinctive evidence never resurfaces.
-- [ ] 6.4 [Test + gate][Luna Max STOP][Scope: contract/unit/privacy] Test single year, all years, partial, long values/ties, empty required evidence, missing optional facts, stale correlation, forbidden fields/copy, and exact-key validators; run targeted/full frontend tests, strict/full OpenSpec validation, `git diff --check`, exact-path commit/push, then stop before UI work.
+- [x] 6.1 [Implementation][Luna Max][Scope: Beta report/summary contracts only] Add exact-key versioned `BetaSummaryDtoV1` and privacy-stripped `ShareCardViewModelV1` with the frozen scope, required/optional facts, anonymous roles, vocabulary option, footer labels, and renderer/copy/art versions; keep session/generation/result/query correlation out of the final share-card model.
+- [x] 6.2 [Implementation][Luna Max][Scope: pure adapter/presenter] Implement committed report facts → pure summary adapter → fixed `zh-CN` presenter; retain canonical ties/availability/partial semantics, use fixed descriptive templates and `Intl.NumberFormat("zh-CN")`, and prohibit React analytics/prose/inference.
+- [x] 6.3 [Implementation + Test][Luna Max][Scope: vocabulary privacy] Select zero-to-five frequent words only after Clean Mode and custom-hidden filtering, default vocabulary off, disable it at zero candidates, invalidate on role/year/filter/preference changes, and prove hidden/full-cloud/distinctive evidence never resurfaces.
+- [x] 6.4 [Test + gate][Luna Max STOP][Scope: contract/unit/privacy] Test single year, all years, partial, long values/ties, empty required evidence, missing optional facts, stale correlation, forbidden fields/copy, and exact-key validators; run targeted/full frontend tests, strict/full OpenSpec validation, `git diff --check`, exact-path commit/push, then stop before UI work.
 
 ### B5.2 — Share Preview visual implementation + generated asset
 
