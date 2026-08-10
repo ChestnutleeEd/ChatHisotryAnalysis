@@ -121,6 +121,7 @@ function ExactVisualTable({
   readonly visual: BetaLocalizedVisualV1;
   readonly summary?: string;
 }) {
+  const rows = visual.detailRows ?? visual.rows;
   return (
     <details className="beta-core-visual-details">
       <summary>{summary}</summary>
@@ -130,7 +131,7 @@ function ExactVisualTable({
           <tr><th scope="col">项目</th><th scope="col">数值</th><th scope="col">补充</th></tr>
         </thead>
         <tbody>
-          {visual.rows.map((row) => (
+          {rows.map((row) => (
             <tr key={row.key}>
               <th scope="row">{row.label}</th>
               <td>{row.displayValue}</td>
@@ -173,27 +174,61 @@ function BarRows({
 }
 
 function LandscapeChart({ visual }: { readonly visual: BetaLocalizedVisualV1 }) {
+  const groups = new Map<string, Map<number, BetaLocalizedVisualV1["rows"][number]>>();
+  for (const row of visual.rows) {
+    const [yearPart, monthPart] = row.key.split("-");
+    const year = monthPart === undefined ? "当前范围" : yearPart ?? "当前范围";
+    const month = monthPart === undefined ? 1 : Number(monthPart);
+    const months = groups.get(year) ?? new Map<number, BetaLocalizedVisualV1["rows"][number]>();
+    months.set(Number.isSafeInteger(month) && month >= 1 && month <= 12 ? month : 1, row);
+    groups.set(year, months);
+  }
+  const timelineGroups = [...groups.entries()].map(([year, months]) => ({
+    year,
+    months: Array.from({ length: 12 }, (_, index) => months.get(index + 1) ?? null),
+  }));
   return (
     <figure className="beta-v2-landscape-chart" aria-label={visual.ariaLabel}>
-      <BarRows visual={visual} />
-      <figcaption>主图：按时间顺序排列；峰值直接标注，完整数值收在下方。</figcaption>
+      <div className="beta-v2-month-timeline" aria-hidden="true">
+        <div className="beta-v2-month-timeline-head">
+          <span>年份</span>
+          {Array.from({ length: 12 }, (_, index) => <span key={index}>{index + 1}</span>)}
+        </div>
+        {timelineGroups.map((group) => (
+          <div className="beta-v2-month-timeline-row" key={group.year}>
+            <strong>{group.year}</strong>
+            <ol>
+              {group.months.map((row, index) => (
+                <li key={row?.key ?? `${group.year}-${index + 1}`} data-peak={(row?.widthPercent ?? 0) >= 100 ? "true" : undefined} title={row === null ? `${group.year} 年 ${index + 1} 月：0 条` : `${row.label}：${row.displayValue}`}>
+                  <span className="beta-v2-month-cell-track">
+                    <span className="beta-v2-month-cell-fill" style={{ "--beta-v2-height": `${row?.widthPercent ?? 0}%` } as CSSProperties} />
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        ))}
+      </div>
+      <figcaption>每年一行、每月一格；峰值直接标注，完整数值收在下方。</figcaption>
       <ExactVisualTable visual={visual} summary="查看完整月份数据" />
     </figure>
   );
 }
 
 function DistributionStrip({ visual }: { readonly visual: BetaLocalizedVisualV1 }) {
+  const isHourly = visual.rows.length === 24;
+  const visibleHourTicks = new Set([0, 6, 12, 18, 23]);
   return (
-    <div className="beta-v2-distribution-strip">
+    <div className={`beta-v2-distribution-strip${isHourly ? " beta-v2-hour-distribution" : ""}`}>
       <figure aria-label={visual.ariaLabel}>
         <ol aria-hidden="true">
-          {visual.rows.map((row) => (
+          {visual.rows.map((row, index) => (
             <li key={row.key} data-peak={row.widthPercent >= 100 ? "true" : undefined} title={`${row.label}：${row.displayValue}`}>
               <span
                 className="beta-v2-strip-value"
                 style={{ "--beta-v2-height": `${Math.max(8, row.widthPercent)}%` } as CSSProperties}
               />
-              <small>{row.label}</small>
+              <small>{isHourly && !visibleHourTicks.has(index) ? "" : row.label}</small>
             </li>
           ))}
         </ol>
@@ -235,6 +270,7 @@ function RankBars({ visual }: { readonly visual: BetaLocalizedVisualV1 }) {
     <figure className="beta-v2-rank-bars" aria-label={visual.ariaLabel}>
       <BarRows visual={visual} compact />
       <figcaption>{visual.ariaLabel}；排序和精确数值保留在明细中。</figcaption>
+      <ExactVisualTable visual={visual} summary={visual.detailRows === undefined ? "查看完整类别数据" : "查看全部消息类型"} />
     </figure>
   );
 }
@@ -344,6 +380,12 @@ function CoreOpeningSection({
   readonly message: BetaLocalizedReportSectionV1;
   readonly viewModel: BetaReportViewModelV1;
 }) {
+  const openingTitle = viewModel.metadata.year === null
+    ? viewModel.metadata.scopeLabel
+    : `${viewModel.metadata.year} 年`;
+  const openingChips = viewModel.metadata.year === null
+    ? viewModel.metadata.queryChips
+    : viewModel.metadata.queryChips.filter((chip) => chip.id !== "date");
   return (
     <Scene
       id="opening"
@@ -359,9 +401,9 @@ function CoreOpeningSection({
           {section.status === "PARTIAL" ? <Badge tone="partial">部分日期范围</Badge> : null}
         </div>
         <p className="beta-type-eyebrow">{section.eyebrow} · {String(section.order).padStart(2, "0")}</p>
-        <h1 id="beta-report-heading" className="beta-type-display" tabIndex={-1}>{viewModel.metadata.scopeLabel}</h1>
+        <h1 id="beta-report-heading" className="beta-type-display" tabIndex={-1}>{openingTitle}</h1>
         <p className="beta-v2-opening-lead">{section.lead}</p>
-        <QueryChips chips={viewModel.metadata.queryChips} />
+        <QueryChips chips={openingChips} />
         {section.scopeNote !== null ? <p className="beta-v2-scope-note">{section.scopeNote}</p> : null}
         {message.metric !== null ? (
           <Metric
@@ -369,7 +411,7 @@ function CoreOpeningSection({
             label={message.metric.label}
             value={message.metric.value}
             unit={message.metric.unit}
-            description="post-dedup 用户消息；当前报告只显示本地聚合结果。"
+            description="去重后用户消息；当前报告只显示本地聚合结果。"
           />
         ) : null}
         <DetailList section={section} />
@@ -430,7 +472,10 @@ function BalanceScene({ sections }: { readonly sections: readonly BetaLocalizedR
         <LogicalSection section={sender} className="beta-v2-balance-primary" />
         <div className="beta-v2-balance-support">
           <LogicalSection section={length} className="beta-v2-support-block" />
-          <LogicalSection section={types} className="beta-v2-support-block" />
+          <LogicalSection
+            section={types}
+            className={`beta-v2-support-block${(types.visual?.detailRows?.length ?? types.visual?.rows.length ?? 0) > 6 ? " beta-v2-message-types-expanded" : ""}`}
+          />
         </div>
       </div>
     </Scene>

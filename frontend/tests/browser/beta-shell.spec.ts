@@ -39,16 +39,26 @@ test("keeps all eight Detailed routes, committed query context, and responsive o
     "Replies & Sessions",
     "Export",
   ];
-  await expect(page.getByRole("tab", { name: "Overview", exact: true })).toHaveCount(1);
+  const routeLabels: Record<string, string> = {
+    Overview: "概览",
+    Trends: "趋势",
+    Comparison: "双方比较",
+    Activity: "活跃时间",
+    "Words & Years": "词汇与年份",
+    "Message Types": "消息类型",
+    "Replies & Sessions": "回复与会话",
+    Export: "导出",
+  };
+  await expect(page.getByRole("tab", { name: routeLabels.Overview, exact: true })).toHaveCount(1);
   await expect(page.getByRole("tab")).toHaveCount(routes.length);
 
   for (const route of routes) {
-    const tab = page.getByRole("tab", { name: route, exact: true });
+    const tab = page.getByRole("tab", { name: routeLabels[route], exact: true });
     await tab.click();
     await expect(tab).toHaveAttribute("aria-selected", "true");
-    await expect(page.getByRole("tabpanel", { name: route })).toBeVisible();
+    await expect(page.getByRole("tabpanel", { name: routeLabels[route] })).toBeVisible();
     if (route !== "Overview") {
-      await expect(page.getByRole("tabpanel", { name: route })).toBeFocused();
+      await expect(page.getByRole("tabpanel", { name: routeLabels[route] })).toBeFocused();
     }
   }
 
@@ -61,17 +71,17 @@ test("keeps all eight Detailed routes, committed query context, and responsive o
   await applyQuery.click();
   await expect(appliedSummary).toContainText("2025-01-01 → 2025-01-04");
 
-  await page.getByRole("tab", { name: "Words & Years", exact: true }).click();
+  await page.getByRole("tab", { name: routeLabels["Words & Years"], exact: true }).click();
   const methodology = page.locator("details.dashboard-words-methodology");
   await expect(methodology).not.toHaveAttribute("open");
   await methodology.locator("summary").click();
   await expect(methodology).toHaveAttribute("open", "");
 
-  await page.getByRole("tab", { name: "Overview", exact: true }).click();
-  await page.getByRole("tab", { name: "Overview", exact: true }).focus();
+  await page.getByRole("tab", { name: routeLabels.Overview, exact: true }).click();
+  await page.getByRole("tab", { name: routeLabels.Overview, exact: true }).focus();
   await page.keyboard.press("ArrowRight");
-  await expect(page.getByRole("tab", { name: "Trends", exact: true })).toBeFocused();
-  await expect(page.getByRole("tab", { name: "Trends", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab", { name: routeLabels.Trends, exact: true })).toBeFocused();
+  await expect(page.getByRole("tab", { name: routeLabels.Trends, exact: true })).toHaveAttribute("aria-selected", "true");
 
   for (const width of [1180, 760, 380]) {
     await page.setViewportSize({ width, height: 900 });

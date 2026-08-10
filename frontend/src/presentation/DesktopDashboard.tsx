@@ -16,6 +16,7 @@ import type {
 import type { TrendBucket } from "../worker-analysis/activity-metrics";
 import {
   DASHBOARD_ROUTES,
+  DASHBOARD_ROUTE_LABELS,
   ROUTE_DESCRIPTIONS,
   categoryLabel,
   comparativeScopeNotice,
@@ -24,7 +25,7 @@ import {
   formatMetricValue,
   formatSeconds,
   formatShare,
-  methodologyCopy,
+  methodologyFacts,
   routeAt,
   routeIndex,
   senderLabel,
@@ -101,8 +102,8 @@ function MetricCard({
         <dd className="dashboard-kpi-definition">{unavailableReason ?? definition}</dd>
       </dl>
       {href !== undefined && onNavigate !== undefined ? (
-        <button className="dashboard-kpi-link" type="button" onClick={() => onNavigate(href)} aria-label={`${label}，打开${href}`}>
-          查看{href}
+        <button className="dashboard-kpi-link" type="button" onClick={() => onNavigate(href)} aria-label={`${label}，打开${DASHBOARD_ROUTE_LABELS[href]}`}>
+          查看{DASHBOARD_ROUTE_LABELS[href]}
         </button>
       ) : null}
     </div>
@@ -243,7 +244,7 @@ function RoleComparison({
     <div className="dashboard-role-comparison" aria-label="owner 与 other 消息比较">
       <div className="dashboard-role-comparison-heading">
         <strong>消息数量</strong>
-        <span>分母：{formatCount(denominator)} 条 user messages</span>
+        <span>分母：{formatCount(denominator)} 条用户消息</span>
       </div>
       {rows.map((row) => (
         <div className={`dashboard-role-row dashboard-role-${row.key}`} key={row.key}>
@@ -321,7 +322,7 @@ function OverviewPage({
     <section className="dashboard-page" aria-labelledby="overview-page-heading">
       <div className="dashboard-page-heading">
         <div>
-          <p className="dashboard-eyebrow">01 / OVERVIEW</p>
+          <p className="dashboard-eyebrow">01 / 概览</p>
           <h2 id="overview-page-heading" tabIndex={-1}>概览</h2>
           <p>从当前已应用条件出发，先看规模，再看活动、双方比较和回复区间。</p>
         </div>
@@ -329,28 +330,28 @@ function OverviewPage({
       </div>
       <div className="dashboard-overview-grid">
         <MetricCard
-          label="筛选后 user messages"
+          label="筛选后用户消息"
           value={formatCount(model.overview.selectedUserMessages)}
           unit="条"
           variant="hero"
           className="dashboard-overview-primary"
-          definition="post-dedup user messages；排除 system。"
+          definition="去重后用户消息；排除系统消息。"
           href="Trends"
           onNavigate={onNavigate}
         />
         <section className="dashboard-overview-group dashboard-overview-activity" aria-labelledby="overview-activity-heading">
           <div className="dashboard-overview-group-heading">
-            <div><p className="dashboard-eyebrow">ACTIVITY</p><h3 id="overview-activity-heading">活动节奏</h3></div>
+            <div><p className="dashboard-eyebrow">活动</p><h3 id="overview-activity-heading">活动节奏</h3></div>
             <button className="dashboard-inline-link" type="button" onClick={() => onNavigate("Activity")}>查看活动</button>
           </div>
           <div className="dashboard-overview-pair">
-            <MetricCard label="聊天日" value={formatCount(model.overview.totalChatDays)} unit="天" variant="compact" definition="UTC+08:00 日历日内至少一条符合筛选的 user message。" />
+            <MetricCard label="聊天日" value={formatCount(model.overview.totalChatDays)} unit="天" variant="compact" definition="UTC+08:00 日历日内至少一条符合筛选的用户消息。" />
             <MetricCard label="最长连续聊天日" value={formatCount(longestStreak)} unit="天" variant="compact" definition="相邻自然日组成的最长筛选后连续区间。" />
           </div>
         </section>
         <section className="dashboard-overview-group dashboard-overview-comparison" aria-labelledby="overview-comparison-heading">
           <div className="dashboard-overview-group-heading">
-            <div><p className="dashboard-eyebrow">COMPARISON</p><h3 id="overview-comparison-heading">Owner / Other</h3></div>
+            <div><p className="dashboard-eyebrow">双方比较</p><h3 id="overview-comparison-heading">Owner / Other</h3></div>
             <button className="dashboard-inline-link" type="button" onClick={() => onNavigate("Comparison")}>查看比较</button>
           </div>
           <RoleComparison
@@ -361,13 +362,13 @@ function OverviewPage({
         </section>
         <section className="dashboard-overview-group dashboard-overview-conversation" aria-labelledby="overview-conversation-heading">
           <div className="dashboard-overview-group-heading">
-            <div><p className="dashboard-eyebrow">CONVERSATION</p><h3 id="overview-conversation-heading">回复与会话</h3></div>
+            <div><p className="dashboard-eyebrow">会话</p><h3 id="overview-conversation-heading">回复与会话</h3></div>
             <button className="dashboard-inline-link" type="button" onClick={() => onNavigate("Replies & Sessions")}>查看详情</button>
           </div>
           <div className="dashboard-overview-pair">
             <MetricCard label="会话开场次数" value={formatCount(initiatorTotal)} unit="个会话" variant="compact" definition={`当前阈值为 ${result.replySessions.conversationSessions.thresholdHours} 小时。`} />
             <div className="dashboard-reply-summary">
-              <span className="dashboard-metric-label">reply interval 中位数</span>
+              <span className="dashboard-metric-label">回复间隔中位数</span>
               <div><strong>owner</strong><span>{formatSeconds(ownerReply?.seconds ?? null)}</span></div>
               <div><strong>other</strong><span>{formatSeconds(otherReply?.seconds ?? null)}</span></div>
             </div>
@@ -376,10 +377,10 @@ function OverviewPage({
       </div>
       <div className="dashboard-overview-support-grid">
         <section className="dashboard-chart-card dashboard-overview-support-primary" aria-labelledby="overview-trend-heading">
-          <div className="dashboard-card-heading-row"><div><p className="dashboard-eyebrow">TIMELINE</p><h3 id="overview-trend-heading">范围内趋势</h3></div><span className="dashboard-card-kicker">按年</span></div>
+          <div className="dashboard-card-heading-row"><div><p className="dashboard-eyebrow">时间趋势</p><h3 id="overview-trend-heading">范围内趋势</h3></div><span className="dashboard-card-kicker">按年</span></div>
           <BarChart
-            title="年度 user-message 数量"
-            description="所有类别的 post-dedup user messages；完整数据见 Trends。"
+            title="年度用户消息数量"
+            description="所有类别的去重后用户消息；完整数据见趋势。"
             rows={result.activity.trends.yearly.map((bucket) => ({
               label: bucket.key,
               value: bucket.count,
@@ -389,7 +390,7 @@ function OverviewPage({
           />
         </section>
         <section className="dashboard-chart-card" aria-labelledby="overview-type-heading">
-          <div className="dashboard-card-heading-row"><div><p className="dashboard-eyebrow">DISTRIBUTION</p><h3 id="overview-type-heading">主要消息类别</h3></div><span className="dashboard-card-kicker">当前范围</span></div>
+          <div className="dashboard-card-heading-row"><div><p className="dashboard-eyebrow">消息构成</p><h3 id="overview-type-heading">主要消息类别</h3></div><span className="dashboard-card-kicker">当前范围</span></div>
           <BarChart
             title="当前范围的类别计数"
             description="类别顺序和计数来自同一份本地结果；完整类别表见消息类型。"
@@ -400,12 +401,12 @@ function OverviewPage({
             }))}
           />
           {model.overview.leadingTypes.length === 0 ? (
-            <p className="dashboard-empty" role="status">当前筛选没有 user-message 类别。</p>
+            <p className="dashboard-empty" role="status">当前筛选没有用户消息类别。</p>
           ) : null}
         </section>
       </div>
       <Definition>
-        <p>post-dedup user messages 包含媒体、未知类别和 ineligible text，排除 system。</p>
+        <p>去重后用户消息包含媒体、未知类别和不符合文字规则的消息，排除系统消息。</p>
         <p>聊天日和 streak 使用 UTC+08:00 日历日；发送方比较固定同时包含 owner 与 other。</p>
         <p>{comparativeScopeNotice()}</p>
         <p>缺少证据时显示 unavailable，不以零替代。</p>
@@ -417,14 +418,14 @@ function OverviewPage({
 function TrendsPage({ result }: { readonly result: CanonicalAnalysisResult }) {
   return (
     <section className="dashboard-page" aria-labelledby="trends-page-heading">
-      <PageHeading eyebrow="02 / TRENDS" id="trends-page-heading" title="趋势" description="日、月、年趋势都统计 post-dedup user messages，使用固定 UTC+08:00。" schema={result.activity.schemaVersion} />
+      <PageHeading eyebrow="02 / 趋势" id="trends-page-heading" title="趋势" description="日、月、年趋势都统计去重后用户消息，使用固定 UTC+08:00。" schema={result.activity.schemaVersion} />
       <div className="dashboard-trends-layout">
-        <TrendChart title="每月" definition="部分月份保留 partial 标记；计数只来自筛选日期。" buckets={result.activity.trends.monthly} />
+        <TrendChart title="每月" definition="部分月份保留“部分周期”标记；计数只来自筛选日期。" buckets={result.activity.trends.monthly} />
         <aside className="dashboard-trends-support" aria-label="年度趋势摘要">
-          <p className="dashboard-eyebrow">SUPPORTING VIEW</p>
+          <p className="dashboard-eyebrow">辅助视图</p>
           <h3>年度范围</h3>
           <BarChart
-            title="年度 user-message 数量"
+            title="年度用户消息数量"
             description="按年概览；精确数据在下方展开。"
             rows={result.activity.trends.yearly.map((bucket) => ({
               label: bucket.key,
@@ -439,7 +440,7 @@ function TrendsPage({ result }: { readonly result: CanonicalAnalysisResult }) {
         <summary>查看每日与年度精确数据</summary>
         <div className="dashboard-trends-details">
           <TrendChart title="每日" definition="包含筛选区间内的零值日期；日期筛选包含首尾。" buckets={result.activity.trends.daily} />
-          <TrendChart title="每年" definition="部分年份保留 partial 标记；计数只来自筛选日期。" buckets={result.activity.trends.yearly} />
+          <TrendChart title="每年" definition="部分年份保留“部分周期”标记；计数只来自筛选日期。" buckets={result.activity.trends.yearly} />
         </div>
       </details>
     </section>
@@ -456,10 +457,10 @@ function ComparisonPage({ result }: { readonly result: CanonicalAnalysisResult }
   ] as const;
   return (
     <section className="dashboard-page" aria-labelledby="comparison-page-heading">
-      <PageHeading eyebrow="03 / COMPARISON" id="comparison-page-heading" title="比较" description="发送方比较固定同时包含 owner 与 other；全局 sender filter 不改变比较分母。" schema={result.activity.schemaVersion} />
+      <PageHeading eyebrow="03 / 双方比较" id="comparison-page-heading" title="比较" description="发送方比较固定同时包含 Owner 与 Other；全局发送方筛选不改变比较分母。" schema={result.activity.schemaVersion} />
       <div className="dashboard-two-column">
         <section className="dashboard-chart-card" aria-labelledby="sender-comparison-heading">
-          <div className="dashboard-card-heading-row"><div><p className="dashboard-eyebrow">COMPARISON BAR</p><h3 id="sender-comparison-heading">发送方消息数量与占比</h3></div><span className="dashboard-card-kicker">Owner / Other</span></div>
+          <div className="dashboard-card-heading-row"><div><p className="dashboard-eyebrow">比较条</p><h3 id="sender-comparison-heading">发送方消息数量与占比</h3></div><span className="dashboard-card-kicker">Owner / Other</span></div>
           <p className="dashboard-primary-insight">{senderDifference === 0 ? "两个发送方的消息数量相同。" : `${senderDifference > 0 ? "owner" : "other"} 多 ${formatCount(Math.abs(senderDifference))} 条消息。`}</p>
           <RoleComparison
             owner={result.activity.senderComparison.owner}
@@ -476,11 +477,11 @@ function ComparisonPage({ result }: { readonly result: CanonicalAnalysisResult }
           </details>
         </section>
         <section className="dashboard-chart-card" aria-labelledby="length-heading">
-          <h3 id="length-heading">Eligible text 长度</h3>
-          <p className="dashboard-definition-copy">单位是清洗后 Unicode code points；不包含媒体、system、URL-only 或 ineligible text。</p>
+          <h3 id="length-heading">符合条件文字长度</h3>
+          <p className="dashboard-definition-copy">单位是清洗后的 Unicode 字符数；不包含媒体、系统消息、纯 URL 或不符合文字规则的消息。</p>
           <Table
-            caption="Eligible text 长度统计"
-            columns={["范围", "消息数", "总 code points", "平均", "中位数", "p90"]}
+            caption="符合条件文字长度统计"
+            columns={["范围", "消息数", "总字符数", "平均", "中位数", "p90"]}
             rows={lengthRows.map(([scope, stats]) => [
               scope,
               formatCount(stats.count),
@@ -489,12 +490,12 @@ function ComparisonPage({ result }: { readonly result: CanonicalAnalysisResult }
               formatMetricValue(stats.median),
               formatMetricValue(stats.p90),
             ])}
-            emptyText="当前筛选没有 eligible text。"
+            emptyText="当前筛选没有符合条件的文字消息。"
           />
         </section>
       </div>
       <Definition>
-        <p>整体平均长度使用合并后的 code-point 总数除以 eligible text 消息数，不是两个发送方平均值的平均。</p>
+        <p>整体平均长度使用合并后的字符总数除以符合条件的文字消息数，不是两个发送方平均值的平均。</p>
         <p>{comparativeScopeNotice()}</p>
       </Definition>
     </section>
@@ -514,22 +515,22 @@ function ActivityPage({ result }: { readonly result: CanonicalAnalysisResult }) 
   }));
   return (
     <section className="dashboard-page" aria-labelledby="activity-page-heading">
-      <PageHeading eyebrow="04 / ACTIVITY" id="activity-page-heading" title="活动" description="小时和星期分布使用当前全局日期与 sender scope；所有固定桶保留零值。" schema={result.activity.schemaVersion} />
+      <PageHeading eyebrow="04 / 活跃时间" id="activity-page-heading" title="活动" description="小时和星期分布使用当前日期与发送方范围；所有固定桶保留零值。" schema={result.activity.schemaVersion} />
       <div className="dashboard-activity-layout">
-        <TrendChart title="每月活动" definition="月份趋势保留 partial 标记；计数只来自筛选日期。" buckets={result.activity.trends.monthly} />
+        <TrendChart title="每月活动" definition="月份趋势保留部分周期标记；计数只来自筛选日期。" buckets={result.activity.trends.monthly} />
         <div className="dashboard-activity-distributions">
           <section className="dashboard-chart-card dashboard-chart-micro" aria-labelledby="hour-activity-heading">
-            <div className="dashboard-card-heading-row"><div><p className="dashboard-eyebrow">DISTRIBUTION STRIP</p><h3 id="hour-activity-heading">小时分布</h3></div><span className="dashboard-card-kicker">UTC+08:00</span></div>
-            <BarChart title="UTC+08:00 小时" description={"分母：" + formatCount(result.activity.hourActivity.denominator) + " 条筛选后的 user messages。"} rows={hourRows} />
+            <div className="dashboard-card-heading-row"><div><p className="dashboard-eyebrow">分布带</p><h3 id="hour-activity-heading">小时分布</h3></div><span className="dashboard-card-kicker">UTC+08:00</span></div>
+            <BarChart title="UTC+08:00 小时" description={"分母：" + formatCount(result.activity.hourActivity.denominator) + " 条筛选后的用户消息。"} rows={hourRows} />
           </section>
           <section className="dashboard-chart-card dashboard-chart-micro" aria-labelledby="weekday-activity-heading">
-            <div className="dashboard-card-heading-row"><div><p className="dashboard-eyebrow">DISTRIBUTION STRIP</p><h3 id="weekday-activity-heading">星期分布</h3></div><span className="dashboard-card-kicker">固定桶</span></div>
-            <BarChart title="周一至周日" description="按 canonical calendar date 归类，不使用主机 locale。" rows={weekdayRows} />
+            <div className="dashboard-card-heading-row"><div><p className="dashboard-eyebrow">分布带</p><h3 id="weekday-activity-heading">星期分布</h3></div><span className="dashboard-card-kicker">固定桶</span></div>
+            <BarChart title="周一至周日" description="按固定日历日期归类，不使用主机语言环境。" rows={weekdayRows} />
           </section>
         </div>
       </div>
       <div className="dashboard-overview-pair dashboard-activity-metrics">
-        <MetricCard label="聊天日" value={formatCount(result.activity.chatActivity.totalChatDays)} unit="天" definition="有至少一条符合当前筛选的 user message 的 UTC+08:00 日期。" />
+        <MetricCard label="聊天日" value={formatCount(result.activity.chatActivity.totalChatDays)} unit="天" definition="有至少一条符合当前筛选用户消息的 UTC+08:00 日期。" />
         <MetricCard label="最长连续聊天日" value={formatCount(result.activity.chatActivity.longestStreakLength)} unit="天" definition="连续日期之间只允许相差一天；完整并列区间见下表。" />
       </div>
       <details className="dashboard-definition dashboard-progressive-disclosure">
@@ -541,7 +542,7 @@ function ActivityPage({ result }: { readonly result: CanonicalAnalysisResult }) 
         </div>
       </details>
       <Definition>
-        <p>system events 不计入活动、聊天日或 streak；sender filter 会重新计算 scope-aware activity。</p>
+        <p>系统事件不计入活动、聊天日或连续天数；发送方筛选会重新计算当前范围内的活动。</p>
         <p>所有日期、小时和星期使用 UTC+08:00。</p>
       </Definition>
     </section>
@@ -569,7 +570,7 @@ function WordsYearsPage({
   const summaryLead = result.stage7.summary.clauses[0]?.text ?? "当前筛选没有足够证据形成固定摘要。";
   return (
     <section className="dashboard-page" aria-labelledby="words-page-heading">
-      <PageHeading eyebrow="05 / WORDS & YEARS" id="words-page-heading" title="词汇与年度" description="词汇只来自符合条件的文字；年度关键词和摘要保留统计口径，完整明细按需展开。" schema={result.stage7.schemaVersion} />
+      <PageHeading eyebrow="05 / 词汇与年份" id="words-page-heading" title="词汇与年度" description="词汇只来自符合条件的文字；年度关键词和摘要保留统计口径，完整明细按需展开。" schema={result.stage7.schemaVersion} />
       <section className="dashboard-summary-banner" aria-labelledby="words-summary-heading">
         <p className="dashboard-eyebrow">当前摘要</p>
         <h3 id="words-summary-heading">{summaryLead}</h3>
@@ -584,14 +585,14 @@ function WordsYearsPage({
         <button className="dashboard-button dashboard-button-primary" type="button" disabled={pending || selectedYear === result.filters.selectedYear} onClick={applyYear}>应用年度</button>
       </div>
       <section className="dashboard-words-visualization" aria-labelledby="words-visualization-heading">
-        <div className="dashboard-card-heading-row"><div><p className="dashboard-eyebrow">KEY VISUALIZATION</p><h3 id="words-visualization-heading">词汇概览</h3></div><span className="dashboard-card-kicker">频率 · 年度关键词</span></div>
+        <div className="dashboard-card-heading-row"><div><p className="dashboard-eyebrow">关键视图</p><h3 id="words-visualization-heading">词汇概览</h3></div><span className="dashboard-card-kicker">频率 · 年度关键词</span></div>
         <div className="dashboard-words-visualization-grid">
           <div className="dashboard-words-frequency">
-            <p className="dashboard-primary-insight">{rankingPreview[0] === undefined ? "当前没有可展示的 eligible text 词汇。" : `“${rankingPreview[0].token}”是当前跨年合并排名中的首位词汇。`}</p>
-            <BarChart title="跨年词汇 raw count" description="先看整体频率，再查看排名与逐年比较。" rows={rankingPreview.slice(0, 8).map((word) => ({ label: word.token, value: word.count, displayValue: formatCount(word.count) }))} />
+            <p className="dashboard-primary-insight">{rankingPreview[0] === undefined ? "当前没有可展示的符合条件文字词汇。" : `“${rankingPreview[0].token}”是当前跨年合并排名中的首位词汇。`}</p>
+            <BarChart title="跨年词汇出现次数" description="先看整体频率，再查看排名与逐年比较。" rows={rankingPreview.slice(0, 8).map((word) => ({ label: word.token, value: word.count, displayValue: formatCount(word.count) }))} />
           </div>
           <section className="dashboard-words-keywords" aria-labelledby="keywords-heading">
-            <p className="dashboard-eyebrow">YEAR COMPARISON SIGNAL</p>
+            <p className="dashboard-eyebrow">年度比较信号</p>
             <h4 id="keywords-heading">年度关键词</h4>
             <p className="dashboard-definition-copy">当前年份中相对突出的候选；不等同于最高频词。</p>
             {selectedKeywordYear?.mode === "insufficient-evidence" ? <p className="dashboard-empty" role="status">当前年份证据不足：{selectedKeywordYear.omissionReason ?? "没有可用候选"}。</p> : null}
@@ -608,15 +609,15 @@ function WordsYearsPage({
             ) : <p className="dashboard-empty-inline">当前年份没有可展示的年度关键词。</p>}
             <details className="dashboard-definition dashboard-progressive-disclosure">
               <summary>查看关键词统计明细</summary>
-              <p>候选需满足 count ≥ 5 且 distinct messages ≥ 3；单年份会标为 frequency-fallback。</p>
-              <Table caption="年度关键词 trace" columns={["年份", "模式", "词", "count", "year total", "rest count", "rest total", "message DF", "score"]} rows={(selectedKeywordYear?.keywords ?? []).map((keyword) => [selectedKeywordYear?.year ?? "—", selectedKeywordYear?.mode ?? "—", keyword.token, formatCount(keyword.count), formatCount(keyword.yearTokenTotal), formatCount(keyword.restCount), formatCount(keyword.restTokenTotal), formatCount(keyword.distinctMessageFrequency), formatMetricValue(keyword.score)])} emptyText="当前年份没有可展示的年度关键词。" />
+              <p>候选需满足出现次数 ≥ 5 且覆盖消息 ≥ 3；单年份会标为频次回退。</p>
+              <Table caption="年度关键词统计依据" columns={["年份", "模式", "词", "次数", "当年词元总数", "其他年份次数", "其他年份词元总数", "消息覆盖", "分数"]} rows={(selectedKeywordYear?.keywords ?? []).map((keyword) => [selectedKeywordYear?.year ?? "—", selectedKeywordYear?.mode ?? "—", keyword.token, formatCount(keyword.count), formatCount(keyword.yearTokenTotal), formatCount(keyword.restCount), formatCount(keyword.restTokenTotal), formatCount(keyword.distinctMessageFrequency), formatMetricValue(keyword.score)])} emptyText="当前年份没有可展示的年度关键词。" />
             </details>
           </section>
         </div>
       </section>
       <section className="dashboard-chart-card dashboard-words-ranking" aria-labelledby="word-ranking-heading">
-        <div className="dashboard-card-heading-row"><div><p className="dashboard-eyebrow">PRIMARY RANKING</p><h3 id="word-ranking-heading">主要词汇排名</h3></div><span className="dashboard-card-kicker">最多 12 项</span></div>
-        <p className="dashboard-primary-insight">保留 raw count，并同时显示每 10,000 个 eligible token 的频率。</p>
+        <div className="dashboard-card-heading-row"><div><p className="dashboard-eyebrow">主要排名</p><h3 id="word-ranking-heading">主要词汇排名</h3></div><span className="dashboard-card-kicker">最多 12 项</span></div>
+        <p className="dashboard-primary-insight">保留出现次数，并同时显示每 10,000 个符合条件词元的频率。</p>
         {rankingPreview.length > 0 ? (
           <ol className="dashboard-ranking-list dashboard-word-ranking-list" aria-label="主要词汇排名">
             {rankingPreview.map((word, index) => (
@@ -627,27 +628,27 @@ function WordsYearsPage({
               </li>
             ))}
           </ol>
-        ) : <p className="dashboard-empty" role="status">当前没有可展示的 eligible text 词汇。</p>}
+        ) : <p className="dashboard-empty" role="status">当前没有可展示的符合条件文字词汇。</p>}
       </section>
       <section className="dashboard-chart-card dashboard-words-year-comparison" aria-labelledby="word-years-heading">
-        <div className="dashboard-card-heading-row"><div><p className="dashboard-eyebrow">YEAR COMPARISON</p><h3 id="word-years-heading">逐年比较</h3></div><span className="dashboard-card-kicker">partial 保留</span></div>
-        <p className="dashboard-primary-insight">每年保留 partial 标记与 token 总数；逐词 count 和 rate 在明细中查看。</p>
+        <div className="dashboard-card-heading-row"><div><p className="dashboard-eyebrow">年度比较</p><h3 id="word-years-heading">逐年比较</h3></div><span className="dashboard-card-kicker">保留部分年份</span></div>
+        <p className="dashboard-primary-insight">每年保留周期状态与词元总数；逐词出现次数和频率在明细中查看。</p>
         <Table
           caption="各年词汇概览"
-          columns={["年份", "周期", "eligible token 总数", "词汇单元"]}
+          columns={["年份", "周期", "符合条件词元总数", "词汇单元"]}
           rows={result.stage7.wordEvolution.years.map((year) => [year.year, year.partial ? "部分年份" : "完整年份", formatCount(year.totalTokenCount), formatCount(year.values.length)])}
-          emptyText="当前筛选没有 eligible text。"
+          emptyText="当前筛选没有符合条件的文字消息。"
         />
       </section>
       <details className="dashboard-definition dashboard-progressive-disclosure dashboard-words-year-details">
         <summary>查看逐年明细</summary>
-        <p>保留每年每个词的 count、rate 和当前排序；展开后可横向查看完整数据。</p>
-        <Table caption="跨年词汇逐年数据" columns={["年份", "周期", "token 总数", "词汇值"]} rows={result.stage7.wordEvolution.years.map((year) => [year.year, year.partial ? "部分年份" : "完整年份", formatCount(year.totalTokenCount), year.values.map((cell) => `${cell.token}: ${formatCount(cell.count)} / ${formatMetricValue(cell.ratePer10000)} / 10,000`).join("；") || "—"])} emptyText="当前筛选没有 eligible text。" />
+        <p>保留每年每个词的出现次数、频率和当前排序；展开后可横向查看完整数据。</p>
+        <Table caption="跨年词汇逐年数据" columns={["年份", "周期", "词元总数", "词汇值"]} rows={result.stage7.wordEvolution.years.map((year) => [year.year, year.partial ? "部分年份" : "完整年份", formatCount(year.totalTokenCount), year.values.map((cell) => `${cell.token}: ${formatCount(cell.count)} / ${formatMetricValue(cell.ratePer10000)} / 10,000`).join("；") || "—"])} emptyText="当前筛选没有符合条件的文字消息。" />
       </details>
       <details className="dashboard-definition dashboard-progressive-disclosure dashboard-words-methodology">
-        <summary>查看统计口径与摘要 trace</summary>
-        <p>关键词 score、count、year total、rest total 和 distinct-message frequency 均由 Worker DTO 提供；摘要使用固定本地模板。</p>
-        {result.stage7.summary.clauses.length === 0 ? <p className="dashboard-empty" role="status">当前筛选没有足够证据形成固定摘要。</p> : <ol className="dashboard-summary-list">{result.stage7.summary.clauses.map((clause) => <li key={clause.id}><span>{clause.text}</span><details><summary>查看 trace</summary><small>{clause.trace.metricId} · {clause.trace.definitionVersion}</small><p>{clause.trace.filters.startDate} → {clause.trace.filters.endDate} · {senderLabel(clause.trace.filters.sender)}</p><dl>{Object.entries(clause.trace.values).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{value === null ? "—" : String(value)}</dd></div>)}</dl></details></li>)}</ol>}
+        <summary>查看统计口径与摘要依据</summary>
+        <p>关键词分数、次数、当年总量、其他年份总量和消息覆盖均由本地结果提供；摘要使用固定本地模板。</p>
+        {result.stage7.summary.clauses.length === 0 ? <p className="dashboard-empty" role="status">当前筛选没有足够证据形成固定摘要。</p> : <ol className="dashboard-summary-list">{result.stage7.summary.clauses.map((clause) => <li key={clause.id}><span>{clause.text}</span><details><summary>查看依据</summary><small>{clause.trace.metricId} · {clause.trace.definitionVersion}</small><p>{clause.trace.filters.startDate} → {clause.trace.filters.endDate} · {senderLabel(clause.trace.filters.sender)}</p><dl>{Object.entries(clause.trace.values).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{value === null ? "—" : String(value)}</dd></div>)}</dl></details></li>)}</ol>}
         {result.stage7.summary.omissions.length > 0 ? <details className="dashboard-definition"><summary>查看省略原因</summary><ul>{result.stage7.summary.omissions.map((omission) => <li key={omission.metricId}>{omission.metricId}：{omission.reason}</li>)}</ul></details> : null}
         <p>这些结果不表达情感、关系质量、心理状态或真实意图。</p>
       </details>
@@ -663,21 +664,21 @@ function MessageTypesPage({ result }: { readonly result: CanonicalAnalysisResult
   }));
   return (
     <section className="dashboard-page" aria-labelledby="types-page-heading">
-      <PageHeading eyebrow="06 / MESSAGE TYPES" id="types-page-heading" title="消息类型" description="exact v2 category order；system diagnostic 独立于 user-message denominator。" schema={result.stage7.messageTypes.schemaVersion} />
+      <PageHeading eyebrow="06 / 消息类型" id="types-page-heading" title="消息类型" description="消息类别按固定顺序展示；系统诊断独立于用户消息分母。" schema={result.stage7.messageTypes.schemaVersion} />
       <section className="dashboard-chart-card" aria-labelledby="types-chart-heading">
-        <div className="dashboard-card-heading-row"><div><p className="dashboard-eyebrow">RANK BARS</p><h3 id="types-chart-heading">用户消息类别</h3></div><span className="dashboard-card-kicker">count · share</span></div>
-        <BarChart title="类别计数与占比" description={`分母：${formatCount(result.stage7.messageTypes.denominator)} 条筛选后的 user messages。`} rows={categoryRows} />
+        <div className="dashboard-card-heading-row"><div><p className="dashboard-eyebrow">类别条</p><h3 id="types-chart-heading">用户消息类别</h3></div><span className="dashboard-card-kicker">数量 · 占比</span></div>
+        <BarChart title="类别计数与占比" description={`分母：${formatCount(result.stage7.messageTypes.denominator)} 条筛选后的用户消息。`} rows={categoryRows} />
         <details className="dashboard-definition dashboard-progressive-disclosure">
           <summary>查看精确类别统计</summary>
           <Table caption="精确消息类别统计" columns={["类别", "消息数", "占比"]} rows={result.stage7.messageTypes.categories.map((bucket) => [categoryLabel(bucket.category), formatCount(bucket.count), formatShare(bucket.share)])} />
         </details>
         <dl className="dashboard-inline-metrics">
-          <div><dt>eligible text</dt><dd>{formatCount(result.stage7.messageTypes.eligibleTextCount)}</dd></div>
-          <div><dt>system diagnostic</dt><dd>{formatCount(result.stage7.messageTypes.systemDiagnosticCount)}</dd></div>
+          <div><dt>符合条件文字</dt><dd>{formatCount(result.stage7.messageTypes.eligibleTextCount)}</dd></div>
+          <div><dt>系统诊断</dt><dd>{formatCount(result.stage7.messageTypes.systemDiagnosticCount)}</dd></div>
         </dl>
       </section>
       <Definition>
-        <p>text 类别包含 eligible 与 ineligible text；unknown 保持可见；system 不进入 user-message share denominator。</p>
+        <p>文字类别包含符合与不符合规则的文字消息；未知类别保持可见；系统消息不进入用户消息占比的分母。</p>
       </Definition>
     </section>
   );
@@ -698,7 +699,7 @@ function RepliesSessionsPage({
   const sessions = result.replySessions.conversationSessions;
   return (
     <section className="dashboard-page" aria-labelledby="replies-page-heading">
-      <PageHeading eyebrow="07 / REPLIES & SESSIONS" id="replies-page-heading" title="回复与会话" description="回复 interval 只描述时间差；会话开场次数是阈值敏感的比较统计。" schema={replies.schemaVersion} />
+      <PageHeading eyebrow="07 / 回复与会话" id="replies-page-heading" title="回复与会话" description="回复间隔只描述时间差；会话开场次数是阈值敏感的比较统计。" schema={replies.schemaVersion} />
       <div className="dashboard-local-control">
         <label htmlFor="dashboard-threshold">不活跃阈值</label>
         <select id="dashboard-threshold" value={threshold} onChange={(event) => setThreshold(Number(event.currentTarget.value) as typeof threshold)}>
@@ -707,7 +708,7 @@ function RepliesSessionsPage({
         <button className="dashboard-button dashboard-button-primary" type="button" disabled={pending || threshold === result.filters.sessionThresholdHours} onClick={() => onLocalFilterChange({ ...result.filters, sessionThresholdHours: threshold })}>应用阈值</button>
         <span className="dashboard-control-note">只重新计算回复、会话、开场次数和依赖它们的摘要。</span>
       </div>
-      <p className="dashboard-scope-note">当前阈值：{replies.thresholdHours} 小时 · 两端消息都必须在日期范围内 · sender filter 不适用于 reply / initiator metrics。</p>
+      <p className="dashboard-scope-note">当前阈值：{replies.thresholdHours} 小时 · 两端消息都必须在日期范围内 · 发送方筛选不适用于回复和开场统计。</p>
       <div className="dashboard-replies-summary">
         <MetricCard
           label="会话数量"
@@ -718,33 +719,33 @@ function RepliesSessionsPage({
           definition={"阈值为 " + sessions.thresholdHours + " 小时；会话数量是阈值敏感统计。"}
         />
         <MetricCard
-          label="整体 reply interval 中位数"
+          label="整体回复间隔中位数"
           value={formatSeconds(replies.overall.medianSeconds)}
           variant="standard"
           definition="只描述可判定回复区间的时间差；样本量见详细数据。"
         />
         <section className="dashboard-replies-initiators" aria-labelledby="initiator-summary-heading">
-          <div className="dashboard-card-heading-row"><div><p className="dashboard-eyebrow">INITIATOR SPLIT</p><h3 id="initiator-summary-heading">会话开场发送方</h3></div><span className="dashboard-card-kicker">{formatCount(sessions.shareDenominator)} 个样本</span></div>
-          <BarChart title="会话开场次数" description="unknown 保留为独立类别。" rows={[sessions.initiatorCounts.owner, sessions.initiatorCounts.other, sessions.initiatorCounts.unknown].map((bucket) => ({ label: bucket.initiator, value: bucket.count, displayValue: formatCount(bucket.count) + " · " + formatShare(bucket.share) }))} />
+          <div className="dashboard-card-heading-row"><div><p className="dashboard-eyebrow">开场发送方</p><h3 id="initiator-summary-heading">会话开场发送方</h3></div><span className="dashboard-card-kicker">{formatCount(sessions.shareDenominator)} 个样本</span></div>
+          <BarChart title="会话开场次数" description="未知保留为独立类别。" rows={[sessions.initiatorCounts.owner, sessions.initiatorCounts.other, sessions.initiatorCounts.unknown].map((bucket) => ({ label: bucket.initiator, value: bucket.count, displayValue: formatCount(bucket.count) + " · " + formatShare(bucket.share) }))} />
         </section>
       </div>
       <details className="dashboard-definition dashboard-progressive-disclosure dashboard-replies-details">
         <summary>查看回复方向与区间分布</summary>
         <div className="dashboard-two-column">
         <section className="dashboard-chart-card" aria-labelledby="reply-stats-heading">
-          <h3 id="reply-stats-heading">按 responder 的 reply interval</h3>
-          <Table caption="回复方向与 responder 统计" columns={["方向", "responder", "数量", "平均", "p25", "中位数", "p75", "p90"]} rows={replies.directions.map((direction) => [direction.direction, direction.responder, formatCount(direction.stats.count), formatSeconds(direction.stats.meanSeconds), formatSeconds(direction.stats.p25Seconds), formatSeconds(direction.stats.medianSeconds), formatSeconds(direction.stats.p75Seconds), formatSeconds(direction.stats.p90Seconds)])} emptyText="当前筛选没有可判定的 reply interval。" />
+          <h3 id="reply-stats-heading">按回复方查看回复间隔</h3>
+          <Table caption="回复方向与回复方统计" columns={["方向", "回复方", "数量", "平均", "p25", "中位数", "p75", "p90"]} rows={replies.directions.map((direction) => [direction.direction, direction.responder, formatCount(direction.stats.count), formatSeconds(direction.stats.meanSeconds), formatSeconds(direction.stats.p25Seconds), formatSeconds(direction.stats.medianSeconds), formatSeconds(direction.stats.p75Seconds), formatSeconds(direction.stats.p90Seconds)])} emptyText="当前筛选没有可判定的回复间隔。" />
         </section>
         <section className="dashboard-chart-card" aria-labelledby="reply-bins-heading">
           <h3 id="reply-bins-heading">回复区间分布</h3>
-          <BarChart title="reply interval bins" description="长于当前阈值的 gap 被视为新会话，不作为 reply。" rows={replies.overall.bins.map((bin) => ({ label: bin.label, value: bin.count, displayValue: formatCount(bin.count) }))} />
-          <Table caption="回复区间 bins" columns={["区间", "最小秒数", "最大秒数", "数量"]} rows={replies.overall.bins.map((bin) => [bin.label, formatCount(bin.minSeconds), formatCount(bin.maxSeconds), formatCount(bin.count)])} />
+          <BarChart title="回复间隔分布" description="长于当前阈值的间隔被视为新会话，不作为回复。" rows={replies.overall.bins.map((bin) => ({ label: bin.label, value: bin.count, displayValue: formatCount(bin.count) }))} />
+          <Table caption="回复区间分组" columns={["区间", "最小秒数", "最大秒数", "数量"]} rows={replies.overall.bins.map((bin) => [bin.label, formatCount(bin.minSeconds), formatCount(bin.maxSeconds), formatCount(bin.count)])} />
         </section>
       </div>
       </details>
       <section className="dashboard-chart-card" aria-labelledby="initiator-heading">
         <h3 id="initiator-heading">会话开场次数</h3>
-        <p className="dashboard-definition-copy">会话使用首条 user message 的日期；跨午夜本身不分会话；该统计不是关系质量判断。</p>
+        <p className="dashboard-definition-copy">会话使用首条用户消息的日期；跨午夜本身不分会话；该统计不是关系质量判断。</p>
         <Table caption="会话开场次数与占比" columns={["开场发送方", "数量", "占比"]} rows={[sessions.initiatorCounts.owner, sessions.initiatorCounts.other, sessions.initiatorCounts.unknown].map((bucket) => [bucket.initiator, formatCount(bucket.count), formatShare(bucket.share)])} emptyText="当前筛选没有会话。" />
         <dl className="dashboard-inline-metrics"><div><dt>会话总数</dt><dd>{formatCount(sessions.sessionCount)}</dd></div><div><dt>阈值敏感</dt><dd>{sessions.sensitivityChanged ? "是" : "默认阈值"}</dd></div></dl>
       </section>
@@ -781,8 +782,8 @@ function ExportPage({
           <div><dt>时区</dt><dd>UTC+08:00</dd></div>
           <div><dt>结果范围</dt><dd>当前已提交结果</dd></div>
           <div><dt>会话阈值</dt><dd>{result.filters.sessionThresholdHours} 小时</dd></div>
-          <div><dt>包含字段</dt><dd>聚合计数、占比、趋势、类别、时间差、会话、筛选、定义版本、partial 标记</dd></div>
-          <div><dt>排除字段</dt><dd>正文、参与者、标识符、路径、token、关键词、源元数据</dd></div>
+          <div><dt>包含字段</dt><dd>聚合计数、占比、趋势、类别、时间差、会话、筛选、定义版本、周期状态</dd></div>
+          <div><dt>排除字段</dt><dd>正文、参与者、标识符、路径、词元、关键词、源元数据</dd></div>
         </dl>
         <DeveloperDetails label="查看结果代次" value={String(result.generation)} />
         <label className="dashboard-export-chart-select" htmlFor="dashboard-export-chart">
@@ -808,7 +809,7 @@ function ExportPage({
           <button className="dashboard-button" type="button" disabled={stale} onClick={() => onExport("json", selectedChart)}>导出聚合 JSON</button>
         </div>
         {reason !== undefined ? <p id="export-disabled-reason" className="dashboard-empty" role="status">{reason}</p> : null}
-        <p className="dashboard-definition-copy">当前筛选、时区和阈值会写入导出契约；文件不包含正文、token-level source text、参与者身份、标识符、源路径或隐藏元数据。</p>
+        <p className="dashboard-definition-copy">当前筛选、时区和阈值会写入导出契约；文件不包含正文、词元级源文本、参与者身份、标识符、源路径或隐藏元数据。</p>
         <p className="dashboard-export-warning" role="note">本地聚合数据仍可能包含敏感信息，请谨慎选择保存位置和分享对象。</p>
       </section>
       <Definition>
@@ -861,7 +862,7 @@ function DashboardNavigation({ route, onRouteChange }: { readonly route: Dashboa
             onClick={() => onRouteChange(item, "content")}
             onKeyDown={onKeyDown}
           >
-            {item}
+            {DASHBOARD_ROUTE_LABELS[item]}
           </button>
         ))}
       </div>
@@ -931,7 +932,7 @@ export function DesktopDashboard({
     <section id="beta-main-content" className="dashboard-shell dashboard-content-shell" aria-label="本地分析结果 Dashboard" aria-busy={pending} tabIndex={-1}>
       <header className="dashboard-header dashboard-shell-header">
         <div>
-          <p className="dashboard-eyebrow">LOCAL ANALYSIS / DETAILED</p>
+          <p className="dashboard-eyebrow">本地分析 · 详细</p>
           <h1>详细分析</h1>
           <p>用当前已应用条件查看趋势、比较、活动和词汇证据。</p>
         </div>
@@ -941,15 +942,15 @@ export function DesktopDashboard({
         </div>
       </header>
       <div className="dashboard-context-row dashboard-applied-summary" aria-label="已应用条件">
-        <div><p className="dashboard-eyebrow">APPLIED QUERY</p><strong>已应用条件</strong></div>
+        <div><p className="dashboard-eyebrow">已应用筛选</p><strong>已应用条件</strong></div>
         <ScopeLine result={result} />
-        <span className="dashboard-comparative-note">比较面板：both senders</span>
+        <span className="dashboard-comparative-note">比较面板固定包含双方</span>
       </div>
       <form className="dashboard-filter-bar dashboard-filter-toolbar dashboard-query-bar" aria-labelledby="dashboard-filters-heading" onSubmit={submitFilters}>
-        <div className="dashboard-filter-heading"><div><p className="dashboard-eyebrow">EDIT QUERY</p><h2 id="dashboard-filters-heading">编辑筛选</h2></div><span>修改日期或发送方后，点击应用筛选。</span></div>
+        <div className="dashboard-filter-heading"><div><p className="dashboard-eyebrow">编辑筛选</p><h2 id="dashboard-filters-heading">筛选条件</h2></div><span>修改日期或发送方后，点击应用筛选。</span></div>
         <label>开始日期<input name="startDate" autoComplete="off" type="date" value={draftFilters.startDate} min={result.dataset.minimumCalendarDate} max={result.dataset.maximumCalendarDate} aria-invalid={filterErrors.startDate !== undefined || filterErrors.range !== undefined} aria-describedby={filterErrors.startDate !== undefined ? "dashboard-start-error" : filterErrors.range !== undefined ? "dashboard-range-error" : undefined} onChange={(event) => updateDraft({ startDate: event.currentTarget.value })} /></label>
         <label>结束日期<input name="endDate" autoComplete="off" type="date" value={draftFilters.endDate} min={result.dataset.minimumCalendarDate} max={result.dataset.maximumCalendarDate} aria-invalid={filterErrors.endDate !== undefined || filterErrors.range !== undefined} aria-describedby={filterErrors.endDate !== undefined ? "dashboard-end-error" : filterErrors.range !== undefined ? "dashboard-range-error" : undefined} onChange={(event) => updateDraft({ endDate: event.currentTarget.value })} /></label>
-        <label>发送方<select name="sender" autoComplete="off" value={draftFilters.sender} onChange={(event) => updateDraft({ sender: event.currentTarget.value as CanonicalAnalysisFilters["sender"] })}><option value="both">owner 与 other</option><option value="owner">仅 owner</option><option value="other">仅 other</option></select></label>
+        <label>发送方<select name="sender" autoComplete="off" value={draftFilters.sender} onChange={(event) => updateDraft({ sender: event.currentTarget.value as CanonicalAnalysisFilters["sender"] })}><option value="both">Owner 与 Other</option><option value="owner">仅 Owner</option><option value="other">仅 Other</option></select></label>
         <button className="dashboard-button dashboard-button-primary" type="submit" disabled={pending || filtersEqual(draftFilters, result.filters)}>应用筛选</button>
         {filterErrors.startDate !== undefined ? <p id="dashboard-start-error" className="dashboard-field-error" role="alert">{filterErrors.startDate}</p> : null}
         {filterErrors.endDate !== undefined ? <p id="dashboard-end-error" className="dashboard-field-error" role="alert">{filterErrors.endDate}</p> : null}
@@ -957,7 +958,7 @@ export function DesktopDashboard({
       </form>
       {pending ? <div className="dashboard-pending" role="status" aria-live="polite"><strong>正在本地更新统计</strong><span>上一次完整结果仍可阅读；当前筛选未完成前不能导出。</span></div> : null}
       <DashboardNavigation route={route} onRouteChange={handleRouteChange} />
-      <div ref={headingRef} id={`dashboard-panel-${activePanelIndex}`} role="tabpanel" aria-labelledby={`dashboard-tab-${activePanelIndex}`} tabIndex={-1} aria-label={route} className="dashboard-panel-wrap dashboard-content-canvas">
+      <div ref={headingRef} id={`dashboard-panel-${activePanelIndex}`} role="tabpanel" aria-labelledby={`dashboard-tab-${activePanelIndex}`} tabIndex={-1} aria-label={DASHBOARD_ROUTE_LABELS[route]} className="dashboard-panel-wrap dashboard-content-canvas">
         {route === "Overview" ? <OverviewPage model={model} onNavigate={handleRouteChange} /> : null}
         {route === "Trends" ? <TrendsPage result={result} /> : null}
         {route === "Comparison" ? <ComparisonPage result={result} /> : null}
@@ -969,7 +970,12 @@ export function DesktopDashboard({
       </div>
       <details className="dashboard-methodology">
         <summary id="dashboard-methodology-heading">查看全局方法与隐私边界</summary>
-        <div><ul>{methodologyCopy().map((item) => <li key={item}>{item}</li>)}</ul><p>统计描述数据分布、时间差和阈值，不提供情感、关系质量或心理推断。</p></div>
+        <div className="dashboard-methodology-facts">
+          <dl>
+            {methodologyFacts().map((fact) => <div key={fact.label}><dt>{fact.label}</dt><dd>{fact.value}</dd></div>)}
+          </dl>
+          <p>统计描述数据分布、时间差和阈值，不提供情感、关系质量或心理推断。</p>
+        </div>
       </details>
     </section>
   );

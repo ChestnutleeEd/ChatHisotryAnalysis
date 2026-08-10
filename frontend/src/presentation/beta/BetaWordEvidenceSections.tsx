@@ -32,6 +32,12 @@ const ROLE_LABELS: Readonly<Record<WordFrequencyRole, string>> = {
 
 const DEFAULT_VISIBLE_WORDS = 8;
 
+function formatWordMetric(item: WordFrequencyPresentationItem, metric: WordFrequencyMetric): string {
+  return metric === "raw-count"
+    ? `${item.count.toLocaleString("zh-CN")} 次`
+    : `${item.ratePer10000.toLocaleString("zh-CN", { maximumFractionDigits: 2 })} / 万`;
+}
+
 function FrequencyRanking({
   items,
   metric,
@@ -49,11 +55,30 @@ function FrequencyRanking({
         <li key={item.normalizedToken} data-rank={item.displayRank}>
           <span className="beta-word-rank">{item.displayRank}</span>
           <strong>{item.displayToken}</strong>
-          <span>
-            {metric === "raw-count"
-              ? `${item.count.toLocaleString("zh-CN")} 次`
-              : `${item.ratePer10000.toLocaleString("zh-CN", { maximumFractionDigits: 2 })} / 万`}
-          </span>
+          <span className="beta-word-count">{formatWordMetric(item, metric)}</span>
+          <BetaButton variant="tertiary" onClick={() => onHideWord(item.normalizedToken)}>隐藏</BetaButton>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function FrequencyPodium({
+  items,
+  metric,
+  onHideWord,
+}: {
+  readonly items: readonly WordFrequencyPresentationItem[];
+  readonly metric: WordFrequencyMetric;
+  readonly onHideWord: (token: string) => void;
+}) {
+  return (
+    <ol className="beta-word-ranking beta-word-ranking-podium" aria-label="当前范围常用词前三名">
+      {items.map((item) => (
+        <li key={item.normalizedToken} data-rank={item.displayRank}>
+          <span className="beta-word-rank">{item.displayRank}</span>
+          <strong title={item.displayToken}>{item.displayToken}</strong>
+          <span className="beta-word-count">{formatWordMetric(item, metric)}</span>
           <BetaButton variant="tertiary" onClick={() => onHideWord(item.normalizedToken)}>隐藏</BetaButton>
         </li>
       ))}
@@ -92,6 +117,7 @@ export function BetaWordEvidenceSections({
   pending,
   error,
   onRoleChange,
+  onSelectYear,
 }: {
   readonly result: CanonicalAnalysisResult;
   readonly frequency?: WorkerWordFrequencyDtoV1;
@@ -100,6 +126,7 @@ export function BetaWordEvidenceSections({
   readonly pending: boolean;
   readonly error?: string;
   readonly onRoleChange: (role: WordFrequencyRole) => void;
+  readonly onSelectYear?: () => void;
 }) {
   const [metric, setMetric] = useState<WordFrequencyMetric>("raw-count");
   const [cleanMode, setCleanMode] = useState(readVocabularyCleanMode);
@@ -158,56 +185,58 @@ export function BetaWordEvidenceSections({
           <Badge tone={pending ? "partial" : "privacy"}>{pending ? "更新中" : "本地词频"}</Badge>
         </div>
 
-        <fieldset className="beta-word-control-group" disabled={pending}>
-          <legend>发送方范围</legend>
-          {(["both", "owner", "other"] as const).map((role) => (
-            <label key={role}>
+        <div className="beta-vocabulary-control-bar" aria-label="词汇控制">
+          <fieldset className="beta-word-control-group" disabled={pending}>
+            <legend>发送方</legend>
+            {(["both", "owner", "other"] as const).map((role) => (
+              <label key={role}>
+                <input
+                  type="radio"
+                  name="beta-word-role"
+                  value={role}
+                  checked={requestedRole === role}
+                  onChange={() => onRoleChange(role)}
+                />
+                <span>{ROLE_LABELS[role]}</span>
+              </label>
+            ))}
+          </fieldset>
+
+          <fieldset className="beta-word-control-group beta-v2-word-role-control">
+            <legend>口径</legend>
+            <label>
               <input
                 type="radio"
-                name="beta-word-role"
-                value={role}
-                checked={requestedRole === role}
-                onChange={() => onRoleChange(role)}
+                name="beta-word-metric"
+                checked={metric === "raw-count"}
+                onChange={() => setMetric("raw-count")}
               />
-              <span>{ROLE_LABELS[role]}</span>
+              <span>原始次数</span>
             </label>
-          ))}
-        </fieldset>
+            <label>
+              <input
+                type="radio"
+                name="beta-word-metric"
+                checked={metric === "per-10000-eligible-tokens"}
+                onChange={() => setMetric("per-10000-eligible-tokens")}
+              />
+              <span>每万词频率</span>
+            </label>
+          </fieldset>
 
-        <fieldset className="beta-word-control-group beta-v2-word-role-control">
-          <legend>显示口径</legend>
-          <label>
-            <input
-              type="radio"
-              name="beta-word-metric"
-              checked={metric === "raw-count"}
-              onChange={() => setMetric("raw-count")}
+          <fieldset className="beta-word-control-group beta-clean-mode-control">
+            <legend>展示</legend>
+            <ToggleChip
+              className="beta-v2-clean-toggle"
+              label={cleanMode ? "✓ 净化常用词" : "净化常用词"}
+              checked={cleanMode}
+              onChange={changeCleanMode}
+              description={cleanMode
+                ? "只改变展示候选，不改变分析结果。"
+                : "显示所有通过基础质量规则的词语。"}
             />
-            <span>原始次数</span>
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="beta-word-metric"
-              checked={metric === "per-10000-eligible-tokens"}
-              onChange={() => setMetric("per-10000-eligible-tokens")}
-            />
-            <span>每万词频率</span>
-          </label>
-        </fieldset>
-
-        <fieldset className="beta-word-control-group beta-clean-mode-control">
-          <legend>词汇展示</legend>
-          <ToggleChip
-            className="beta-v2-clean-toggle"
-            label={cleanMode ? "✓ 净化常用词" : "净化常用词"}
-            checked={cleanMode}
-            onChange={changeCleanMode}
-            description={cleanMode
-              ? "只改变展示候选，不改变分析结果。"
-              : "显示所有通过基础质量规则的词语。"}
-          />
-        </fieldset>
+          </fieldset>
+        </div>
 
         {scopeIsRefreshing && frequency !== undefined ? (
           <p className="beta-word-status" role="status">
@@ -218,10 +247,13 @@ export function BetaWordEvidenceSections({
         {frequencyPresentation.status === "unavailable" ? (
           <p className="beta-word-status" role="status">{pending ? "正在计算当前范围的有界词频列表。" : "当前词频证据尚未就绪。"}</p>
         ) : frequencyPresentation.status === "empty" ? (
-          <p className="beta-word-status" role="status">当前年份、角色与已提交范围内没有符合内置质量策略的 eligible token。</p>
+          <p className="beta-word-status" role="status">当前年份、角色与已提交范围内没有符合内置质量策略的词元。</p>
         ) : (
           <>
-            <FrequencyRanking items={visibleFrequencyItems} metric={metric} onHideWord={hideWord} />
+            <FrequencyPodium items={visibleFrequencyItems.slice(0, 3)} metric={metric} onHideWord={hideWord} />
+            {visibleFrequencyItems.length > 3 ? (
+              <FrequencyRanking items={visibleFrequencyItems.slice(3)} metric={metric} onHideWord={hideWord} className="beta-word-ranking beta-word-ranking-remaining" />
+            ) : null}
             {frequencyPresentation.items.length > visibleFrequencyItems.length ? (
               <details className="beta-word-ranking-disclosure">
                 <summary>查看全部 {frequencyPresentation.items.length} 个</summary>
@@ -260,35 +292,51 @@ export function BetaWordEvidenceSections({
         </details>
 
         <MethodologyDisclosure summary="查看常用词统计口径" chips={["NFKC", "每万词频率", "最多 400 候选", cleanMode ? "净化展示开启" : "完整展示"]}>
-          <p>原始次数是当前范围内的出现次数；每万词频率以当前角色、年份和内置词汇策略过滤后的 {frequencyPresentation.denominator?.eligibleTokenCount.toLocaleString("zh-CN") ?? "当前"} 个 eligible tokens 为分母。</p>
-          <p>内置中英文停用词、纯数字、URL、标点/符号/emoji、单字符、不可见/控制字符、超过 32 个 code points、固定扩展名和无效 mixed fragments 会参与 eligibility 与分母。</p>
-          <p>token 化后不能可靠还原全部邮箱或路径来源，因此只采用保守 token-shape 规则；不做 stemming、lemmatization、NER 或姓名推断，缩写默认保留。</p>
-          <p>净化常用词使用 {BETA_VOCABULARY_CLEAN_PRESENTATION_VERSION} 本地启发式列表，只过滤展示候选；不会改变原始次数、每万词频率、分母、底层排名或 frequencyDtoKey。</p>
+          <p>原始次数是当前范围内的出现次数；每万词频率以当前角色、年份和内置词汇策略过滤后的 {frequencyPresentation.denominator?.eligibleTokenCount.toLocaleString("zh-CN") ?? "当前"} 个符合条件词元为分母。</p>
+          <p>内置中英文停用词、纯数字、URL、标点/符号/emoji、单字符、不可见/控制字符、超过 32 个字符、固定扩展名和无效混合片段会参与符合条件规则与分母。</p>
+          <p>词元化后不能可靠还原全部邮箱或路径来源，因此只采用保守的词元形状规则；不做词干化、词形还原、实体识别或姓名推断，缩写默认保留。</p>
+          <p>净化常用词使用 {BETA_VOCABULARY_CLEAN_PRESENTATION_VERSION} 本地启发式列表，只过滤展示候选；不会改变原始次数、每万词频率、分母、底层排名或词频结果标识。</p>
         </MethodologyDisclosure>
       </section>
 
       <section id="distinctive-keywords" className="beta-v2-word-section beta-v2-distinctive-keywords" data-keyword-year={keywordPresentation.year ?? "all-years"}>
-        <p className="beta-type-eyebrow">年度关键词 · 14</p>
-        <h3 className="beta-type-title beta-word-section-heading">哪些词更能代表这一年？</h3>
-        <p className="beta-type-report-lead">{keywordPresentation.explanation}</p>
-        <p className="beta-type-metadata">年度关键词展示范围：{keywordPresentation.year === null ? "全部年份（不适用）" : `${keywordPresentation.year} 年`}</p>
-        {keywordPresentation.items.length === 0 ? (
-          <p className="beta-word-status">当前没有可展示的年度关键词证据。</p>
+        {keywordPresentation.year === null ? (
+          <div className="beta-keyword-empty-notice" role="status">
+            <div>
+              <p className="beta-type-eyebrow">年度关键词 · 14</p>
+              <h3 className="beta-type-title beta-word-section-heading">年度关键词</h3>
+              <p className="beta-type-report-lead">选择一个具体年份后，可查看该年相对其他年份更具区分度的词。</p>
+              <p className="beta-type-secondary">{keywordPresentation.explanation}</p>
+            </div>
+            {onSelectYear !== undefined ? (
+              <BetaButton variant="tertiary" onClick={onSelectYear}>选择具体年份</BetaButton>
+            ) : null}
+          </div>
         ) : (
           <>
-            <KeywordRanking items={visibleKeywordItems} onHideWord={hideWord} />
-            {keywordPresentation.items.length > visibleKeywordItems.length ? (
-              <details className="beta-word-ranking-disclosure">
-                <summary>查看全部 {keywordPresentation.items.length} 个</summary>
-                <KeywordRanking items={keywordPresentation.items} onHideWord={hideWord} className="beta-keyword-ranking beta-keyword-ranking-full" />
-              </details>
-            ) : null}
+            <p className="beta-type-eyebrow">年度关键词 · 14</p>
+            <h3 className="beta-type-title beta-word-section-heading">哪些词更能代表这一年？</h3>
+            <p className="beta-type-report-lead">{keywordPresentation.explanation}</p>
+            <p className="beta-type-metadata">年度关键词展示范围：{keywordPresentation.year} 年</p>
+            {keywordPresentation.items.length === 0 ? (
+              <p className="beta-word-status">当前没有可展示的年度关键词证据。</p>
+            ) : (
+              <>
+                <KeywordRanking items={visibleKeywordItems} onHideWord={hideWord} />
+                {keywordPresentation.items.length > visibleKeywordItems.length ? (
+                  <details className="beta-word-ranking-disclosure">
+                    <summary>查看全部 {keywordPresentation.items.length} 个</summary>
+                    <KeywordRanking items={keywordPresentation.items} onHideWord={hideWord} className="beta-keyword-ranking beta-keyword-ranking-full" />
+                  </details>
+                ) : null}
+              </>
+            )}
+            <MethodologyDisclosure summary="查看年度关键词统计口径" chips={[keywordPresentation.mode === "frequency-fallback" ? "频次回退" : keywordPresentation.mode === "log-odds" ? "年度对比统计" : "当前范围不适用"]}>
+              <p>年度关键词继续使用现有 Stage7 的候选阈值与平滑年度对比统计。常用词的出现次数/频率与关键词的区分度分数是两种独立语义。</p>
+              <p>净化常用词只隐藏展示行并从既有候选顺序补位，不重新计算或改写分数、次数、消息覆盖与底层排名。</p>
+            </MethodologyDisclosure>
           </>
         )}
-        <MethodologyDisclosure summary="查看年度关键词统计口径" chips={[keywordPresentation.mode === "frequency-fallback" ? "频次回退" : keywordPresentation.mode === "log-odds" ? "year-vs-rest log-odds" : "当前范围不适用"]}>
-          <p>年度关键词继续使用现有 Stage7 的候选阈值与平滑 year-vs-rest log-odds。常用词的 count/rate 与关键词的 distinctiveness score 是两种独立语义。</p>
-          <p>净化常用词只隐藏展示行并从既有候选顺序补位，不重新计算或改写 score、count、DF 与底层排名。</p>
-        </MethodologyDisclosure>
       </section>
 
       <BetaWordCloud

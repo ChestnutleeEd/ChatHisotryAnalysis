@@ -271,7 +271,7 @@ export function createKeywordPresentation(
       displayRank: index + 1,
     }));
   const explanation = active.mode === "log-odds"
-    ? "按既有平滑 year-vs-rest log-odds 选出更具年度区分度的词；这里不把它们当作最高频词。"
+    ? "按既有平滑的年度对比统计选出更具年度区分度的词；这里不把它们当作最高频词。"
     : active.mode === "frequency-fallback"
       ? "当前只有一个有词频证据的年份，以下内容明确使用频次回退，不宣称年度区分度。"
       : "当前年度没有达到既有候选阈值的关键词证据。";

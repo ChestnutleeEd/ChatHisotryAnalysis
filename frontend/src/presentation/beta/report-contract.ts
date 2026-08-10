@@ -385,6 +385,8 @@ export interface BetaLocalizedVisualV1 {
   readonly ariaLabel: string;
   readonly rows: readonly BetaLocalizedVisualRowV1[];
   readonly legend: readonly string[];
+  /** Presentation-only complete rows kept behind a local disclosure. */
+  readonly detailRows?: readonly BetaLocalizedVisualRowV1[];
 }
 
 export interface BetaLocalizedDetailRowV1 {

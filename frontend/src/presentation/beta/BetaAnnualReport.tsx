@@ -99,12 +99,13 @@ function ReportNavigator({
 }) {
   const currentSection = BETA_REPORT_SECTIONS.find((section) => section.id === selectedSection) ?? BETA_REPORT_SECTIONS[0];
   const currentScene = REPORT_SCENES.find((scene) => scene.key === currentSection?.scene) ?? REPORT_SCENES[0];
+  const currentSceneIndex = REPORT_SCENES.findIndex((scene) => scene.key === currentScene.key);
   return (
     <Navigation label="年度报告导航" className="beta-report-navigation" data-testid="beta-report-navigator">
       <div className="beta-report-navigation-context" aria-live="polite">
         <span>年度回顾</span>
         <strong>{currentScene.label}</strong>
-        <small>{currentSection?.order ?? 1} / {BETA_REPORT_SECTIONS.length}</small>
+        <small>场景 {currentSceneIndex + 1} / {REPORT_SCENES.length} · 章节 {currentSection?.order ?? 1} / {BETA_REPORT_SECTIONS.length}</small>
       </div>
       <ol className="beta-report-progress" aria-label="七个报告场景">
         {REPORT_SCENES.map((scene, index) => {
@@ -208,6 +209,10 @@ export function BetaAnnualReport({
     analyticsResult !== undefined &&
     wordRole !== undefined &&
     onWordRoleChange !== undefined;
+  const selectLatestYear = () => {
+    const latestYear = representedYears[representedYears.length - 1]?.year;
+    if (latestYear !== undefined) onRangeChange(`year:${latestYear}`);
+  };
   return (
     <section
       id="beta-main-content"
@@ -295,6 +300,7 @@ export function BetaAnnualReport({
             pending={wordFrequencyPending ?? false}
             error={wordFrequencyError}
             onRoleChange={onWordRoleChange}
+            onSelectYear={selectLatestYear}
           />
         ) : BETA_REPORT_SECTIONS.filter((section) => section.order >= 13 && section.order <= 14).map((section) => (
           <span key={section.id} id={section.id} className="beta-report-section-anchor" aria-hidden="true" />
@@ -327,7 +333,7 @@ export function BetaAnnualReport({
           </ol>
           <MethodologyDisclosure
             summary="查看范围、时区与当前骨架边界"
-            chips={["UTC+08", "post-dedup", "本地聚合"]}
+            chips={["UTC+08", "去重后消息", "本地聚合"]}
           >
             <p>当前卡片只使用已提交的安全聚合与范围元数据，不读取源文件、正文、文件名、路径或联系人信息。</p>
             <p>消息数来自当前已提交结果；其他年度指标尚未接入时会保持明确的未就绪状态。</p>
@@ -400,6 +406,10 @@ function BetaCoreAnnualReport({
   onWordRoleChange,
 }: BetaAnnualReportProps & { readonly viewModel: BetaReportViewModelV1 }) {
   const canRenderWordEvidence = analyticsResult !== undefined && wordRole !== undefined && onWordRoleChange !== undefined;
+  const selectLatestYear = () => {
+    const latestYear = representedYears[representedYears.length - 1]?.year;
+    if (latestYear !== undefined) onRangeChange(`year:${latestYear}`);
+  };
   return (
     <section
       id="beta-main-content"
@@ -453,6 +463,7 @@ function BetaCoreAnnualReport({
             pending={wordFrequencyPending ?? false}
             error={wordFrequencyError}
             onRoleChange={onWordRoleChange}
+            onSelectYear={selectLatestYear}
           />
         ) : (
           <BetaUnavailableReportSections />

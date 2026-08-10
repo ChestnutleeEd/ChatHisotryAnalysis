@@ -21,13 +21,24 @@ export const DASHBOARD_ROUTES = [
 
 export type DashboardRoute = (typeof DASHBOARD_ROUTES)[number];
 
+export const DASHBOARD_ROUTE_LABELS: Readonly<Record<DashboardRoute, string>> = {
+  Overview: "概览",
+  Trends: "趋势",
+  Comparison: "双方比较",
+  Activity: "活跃时间",
+  "Words & Years": "词汇与年份",
+  "Message Types": "消息类型",
+  "Replies & Sessions": "回复与会话",
+  Export: "导出",
+};
+
 export const ROUTE_DESCRIPTIONS: Readonly<Record<DashboardRoute, string>> = {
   Overview: "高层摘要与当前结果范围",
   Trends: "日、月、年消息趋势",
   Comparison: "发送方数量与文本长度比较",
   Activity: "小时、星期与连续聊天日",
   "Words & Years": "跨年词汇、年度关键词与固定摘要",
-  "Message Types": "消息类别和 eligible-text 统计",
+  "Message Types": "消息类别和符合条件文字统计",
   "Replies & Sessions": "回复间隔、会话与开场次数",
   Export: "当前聚合结果的本地导出预览",
 };
@@ -131,7 +142,7 @@ export function senderLabel(sender: CanonicalAnalysisFilters["sender"]): string 
 
 export function categoryLabel(category: CanonicalMessageCategory): string {
   const labels: Partial<Record<CanonicalMessageCategory, string>> = {
-    text: "文本",
+    text: "文字",
     image: "图片",
     voice: "语音",
     video: "视频",
@@ -142,7 +153,7 @@ export function categoryLabel(category: CanonicalMessageCategory): string {
     call: "通话",
     "mini-program": "小程序",
     reply: "回复引用",
-    "contact-card": "联系人卡片",
+    "contact-card": "名片",
     system: "系统诊断",
     other: "其他",
     unknown: "未知类别",
@@ -307,15 +318,19 @@ export function createDashboardViewModel(
 }
 
 export function comparativeScopeNotice(): string {
-  return "比较、回复和会话开场次数固定同时包含 owner 与 other；全局 sender 筛选不适用于这些指标。";
+  return "比较、回复和会话开场次数固定同时包含 Owner 与 Other；全局发送方筛选不适用于这些指标。";
+}
+
+export function methodologyFacts(): readonly { readonly label: string; readonly value: string }[] {
+  return [
+    { label: "处理位置", value: "所有处理均在本地完成；应用不会上传聊天记录，也不会自动发现文件。" },
+    { label: "数据来源", value: "统计只基于用户主动选择的源文件；多个年度源会验证、合并、排序并确定性去重。" },
+    { label: "日期与时区", value: "日期使用固定 UTC+08:00；日期筛选包含开始和结束日期。" },
+    { label: "会话规则", value: "会话阈值会影响会话、回复和开场次数；回复间隔只描述时间差。" },
+    { label: "解读边界", value: "关键词和年度摘要是确定性的本地统计，不是情感、关系质量或心理推断。" },
+  ];
 }
 
 export function methodologyCopy(): readonly string[] {
-  return [
-    "所有处理均在本地完成；应用不会上传聊天记录，也不会自动发现文件。",
-    "统计只基于用户主动选择的源文件；多个年度源会验证、合并、排序并确定性去重。",
-    "日期使用固定 UTC+08:00；日期筛选包含开始和结束日期。",
-    "会话阈值会影响会话、回复和开场次数；reply interval 只描述时间差。",
-    "关键词和年度摘要是确定性的本地统计，不是情感、关系质量或心理推断。",
-  ];
+  return methodologyFacts().map((fact) => fact.value);
 }

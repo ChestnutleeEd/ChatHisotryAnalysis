@@ -126,8 +126,11 @@ function visual(
   ariaLabel: string,
   rows: readonly BetaLocalizedVisualRowV1[],
   legend: readonly string[] = [],
+  detailRows?: readonly BetaLocalizedVisualRowV1[],
 ): BetaLocalizedVisualV1 {
-  return { kind, ariaLabel, rows, legend };
+  return detailRows === undefined
+    ? { kind, ariaLabel, rows, legend }
+    : { kind, ariaLabel, rows, legend, detailRows };
 }
 
 function sectionDefinition(id: BetaReportSectionId) {
@@ -409,14 +412,40 @@ function lengthSection(dto: BetaReportDtoV1, facts: CoreReportFactsV1): BetaLoca
 
 function messageTypesSection(dto: BetaReportDtoV1, facts: CoreReportFactsV1): BetaLocalizedReportSectionV1 {
   const types = facts.messageTypes;
-  const visible = types.categories.filter((bucket) => bucket.count > 0);
+  const ranked = types.categories
+    .map((bucket, index) => ({ bucket, index }))
+    .filter(({ bucket }) => bucket.count > 0)
+    .sort((left, right) => right.bucket.count - left.bucket.count || left.index - right.index)
+    .map(({ bucket }) => bucket);
+  const primary = ranked.slice(0, 5);
+  const hidden = ranked.slice(5);
+  const otherCount = hidden.reduce((total, bucket) => total + bucket.count, 0);
+  const visible = otherCount > 0
+    ? [
+        ...primary,
+        {
+          category: "other" as const,
+          count: otherCount,
+          share: types.denominator === 0 ? null : otherCount / types.denominator,
+        },
+      ]
+    : primary;
   const maximum = visible.reduce((current, bucket) => Math.max(current, bucket.count), 0);
   const rows = visible.map((bucket) => ({
+    key: bucket.category,
+    label: bucket.category === "other" && hidden.length > 0 ? "其他" : betaReportMetricCategoryLabel(bucket.category),
+    value: bucket.count,
+    displayValue: `${formatNumber(bucket.count)} 条 · ${formatPercent(bucket.share)}`,
+    secondaryLabel: null,
+    widthPercent: widthPercent(bucket.count, maximum),
+    tone: bucket.category === "text" ? "primary" as const : "supporting" as const,
+  }));
+  const detailRows = ranked.map((bucket) => ({
     key: bucket.category,
     label: betaReportMetricCategoryLabel(bucket.category),
     value: bucket.count,
     displayValue: `${formatNumber(bucket.count)} 条 · ${formatPercent(bucket.share)}`,
-    secondaryLabel: bucket.category,
+    secondaryLabel: null,
     widthPercent: widthPercent(bucket.count, maximum),
     tone: bucket.category === "text" ? "primary" as const : "supporting" as const,
   }));
@@ -426,9 +455,10 @@ function messageTypesSection(dto: BetaReportDtoV1, facts: CoreReportFactsV1): Be
       ? "当前没有可展示的用户消息类型分布。"
       : "消息类型按当前用户消息分母排列，系统诊断不加入这个分母。",
     metric: types.denominator === 0 ? null : metric("用户消息", formatNumber(types.denominator), "条"),
-    visual: rows.length === 0 ? null : visual("bars", "用户消息类型分布", rows),
+    visual: rows.length === 0 ? null : visual("bars", "用户消息类型分布", rows, [], detailRows),
     details: details(
-      { label: "合资格文字", value: `${formatNumber(types.eligibleTextCount)} 条` },
+      hidden.length > 0 ? { label: "完整类别", value: "可在“查看全部消息类型”中查看" } : null,
+      { label: "符合条件文字", value: `${formatNumber(types.eligibleTextCount)} 条` },
       types.systemDiagnosticCount > 0
         ? { label: "系统诊断", value: `${formatNumber(types.systemDiagnosticCount)} 条（不计入分母）` }
         : null,
@@ -518,7 +548,7 @@ function methodology(dto: BetaReportDtoV1): readonly BetaLocalizedMethodologyFac
         : "当前范围覆盖所选日历范围",
     "reply-limitation": "只统计满足现有边界的跨发送方回复区间；没有样本时显示数据不足",
     "non-evaluative-language": "仅描述数量、分布和时间间隔，不对聊天作额外判断",
-    "word-denominator": "词频原始次数与每万词频率使用内置策略过滤后的 eligible token 分母",
+    "word-denominator": "词频原始次数与每万词频率使用内置策略过滤后的符合条件词元分母",
   };
   return dto.methodology.map((fact) => ({
     id: fact.id,
