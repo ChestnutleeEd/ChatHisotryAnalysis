@@ -49,6 +49,12 @@
   --beta-depth-flat: none;
   --beta-depth-raised: 0 8px 24px rgb(23 26 24 / 8%);
   --beta-depth-overlay: 0 18px 48px rgb(23 26 24 / 14%);
+  --beta-motion-fast: 120ms;
+  --beta-motion-standard: 220ms;
+  --beta-motion-completion: 420ms;
+  --beta-motion-stagger: 36ms;
+  --beta-motion-stagger-max: 180ms;
+  --beta-motion-easing: cubic-bezier(.2, .8, .2, 1);
   --beta-font-display: "Iowan Old Style", "Baskerville", "Songti SC", "STSong", serif;
   --beta-font-ui: "Helvetica Neue", "Avenir Next", "PingFang SC", "Hiragino Sans GB", sans-serif;
   --beta-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -3790,6 +3796,29 @@
   scroll-margin-top: 88px;
 }
 
+.desktop-app.beta-enabled [data-motion="scene"][data-motion-state="entering"] {
+  animation: beta-scene-reveal var(--beta-motion-standard) var(--beta-motion-easing)
+    var(--beta-motion-delay, 0ms) both;
+  transform-origin: center top;
+  will-change: opacity, transform;
+}
+
+.desktop-app.beta-enabled [data-motion="scene"][data-motion-state="complete"] {
+  opacity: 1;
+  transform: none;
+}
+
+@keyframes beta-scene-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .desktop-app.beta-enabled .beta-v2-opening {
   display: grid;
   grid-template-columns: minmax(0, 7fr) minmax(280px, 5fr);
@@ -5458,9 +5487,11 @@
 .desktop-app.beta-enabled .beta-share-preview-dialog {
   width: min(1120px, calc(100% - 32px));
   max-width: none;
+  max-inline-size: 100vw;
   max-height: calc(100vh - 32px);
   margin: auto;
   padding: 0;
+  box-sizing: border-box;
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
@@ -5476,7 +5507,7 @@
 }
 
 .desktop-app.beta-enabled .beta-share-preview-dialog[open] .beta-share-preview-shell {
-  animation: beta-share-preview-enter 220ms cubic-bezier(.2, .8, .2, 1) both;
+  animation: beta-share-preview-enter var(--beta-motion-standard) var(--beta-motion-easing) both;
 }
 
 @keyframes beta-share-preview-enter {
@@ -5518,6 +5549,7 @@
   color: var(--beta-color-text-secondary);
   font-size: 14px;
   line-height: 1.55;
+  overflow-wrap: anywhere;
 }
 
 .desktop-app.beta-enabled .beta-share-preview-close {
@@ -5530,6 +5562,10 @@
   background: transparent;
   color: var(--beta-color-text-secondary);
   cursor: pointer;
+  transition:
+    background-color var(--beta-motion-fast) var(--beta-motion-easing),
+    border-color var(--beta-motion-fast) var(--beta-motion-easing),
+    color var(--beta-motion-fast) var(--beta-motion-easing);
 }
 
 .desktop-app.beta-enabled .beta-share-preview-close:hover {
@@ -5851,6 +5887,7 @@
   font-size: 20px;
   line-height: 1.15;
   text-wrap: balance;
+  overflow-wrap: anywhere;
 }
 
 .desktop-app.beta-enabled .beta-share-preview-control-intro > span,
@@ -5875,6 +5912,10 @@
   border-radius: var(--beta-radius-control);
   background: var(--beta-color-surface);
   cursor: pointer;
+  transition:
+    background-color var(--beta-motion-fast) var(--beta-motion-easing),
+    border-color var(--beta-motion-fast) var(--beta-motion-easing),
+    color var(--beta-motion-fast) var(--beta-motion-easing);
 }
 
 .desktop-app.beta-enabled .beta-share-preview-toggle:has(input:checked) {
@@ -5905,9 +5946,69 @@
 
 .desktop-app.beta-enabled .beta-share-preview-save .beta-button { width: 100%; }
 .desktop-app.beta-enabled .beta-share-preview-privacy { color: var(--beta-color-text); }
-.desktop-app.beta-enabled .beta-share-preview-status { min-height: 36px; }
+.desktop-app.beta-enabled .beta-share-preview-status {
+  min-height: 36px;
+  overflow-wrap: anywhere;
+}
 .desktop-app.beta-enabled .beta-share-preview-dialog[data-state="stale"] .beta-share-card { opacity: .78; }
-.desktop-app.beta-enabled .beta-share-preview-dialog[data-state="stale"] .beta-share-preview-status { color: var(--beta-color-error); font-weight: 700; }
+.desktop-app.beta-enabled .beta-share-preview-dialog[data-save-state="failed"] .beta-share-preview-status,
+.desktop-app.beta-enabled .beta-share-preview-dialog[data-state="stale"] .beta-share-preview-status {
+  padding: 8px 10px;
+  border-left: 3px solid var(--beta-color-error);
+  background: rgb(180 35 24 / 7%);
+  color: var(--beta-color-error);
+  font-weight: 700;
+}
+
+.desktop-app.beta-enabled .beta-share-preview-retry-render {
+  width: 100%;
+}
+
+.desktop-app.beta-enabled .beta-share-preview-success-feedback {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 8px;
+  color: var(--beta-color-success);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.desktop-app.beta-enabled .beta-share-preview-success-mark {
+  display: inline-grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid var(--beta-color-success);
+  border-radius: 50%;
+  animation: beta-share-preview-success var(--beta-motion-completion) var(--beta-motion-easing) both;
+  transform-origin: center;
+}
+
+.desktop-app.beta-enabled .beta-share-preview-success-mark svg {
+  width: 18px;
+  height: 18px;
+  overflow: visible;
+}
+
+.desktop-app.beta-enabled .beta-share-preview-success-mark path {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+@keyframes beta-share-preview-success {
+  from {
+    opacity: 0;
+    transform: scale(.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
 
 @media (max-width: 900px) {
   .desktop-app.beta-enabled .beta-share-preview-layout {
@@ -5953,8 +6054,17 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .desktop-app.beta-enabled [data-motion="scene"],
   .desktop-app.beta-enabled .beta-share-preview-dialog[open] .beta-share-preview-shell {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+  }
+
+  .desktop-app.beta-enabled .beta-share-preview-success-mark {
     animation: none;
+    opacity: 1;
+    transform: none;
   }
 }
 

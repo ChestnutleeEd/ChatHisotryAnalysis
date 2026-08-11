@@ -40,12 +40,14 @@ interface BetaShareCardPreviewProps {
   readonly open: boolean;
   readonly viewModel: ShareCardViewModelV1;
   readonly onRenderStateChange: (update: ShareCardCanvasRenderUpdateV1) => void;
+  readonly renderAttempt?: number;
 }
 
 export const BetaShareCardPreview = forwardRef<BetaShareCardPreviewHandle, BetaShareCardPreviewProps>(function BetaShareCardPreview({
   open,
   viewModel,
   onRenderStateChange,
+  renderAttempt = 0,
 }, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pngBytesRef = useRef<Uint8Array | undefined>(undefined);
@@ -149,7 +151,7 @@ export const BetaShareCardPreview = forwardRef<BetaShareCardPreviewHandle, BetaS
         canvas.height = 0;
       }
     };
-  }, [open, viewModel]);
+  }, [open, renderAttempt, viewModel]);
 
   return (
     <article
@@ -178,7 +180,7 @@ export const BetaShareCardPreview = forwardRef<BetaShareCardPreviewHandle, BetaS
         aria-hidden="true"
       />
       {renderUpdate.status === "failed" ? (
-        <p className="beta-share-card-render-failure" role="status">回顾卡预览暂时无法生成，请重试。</p>
+        <p className="beta-share-card-render-failure" aria-hidden="true">回顾卡预览暂时无法生成，请重试。</p>
       ) : null}
       <p id="beta-share-card-accessible-summary" className="visually-hidden">{accessibleSummary(viewModel)}</p>
     </article>

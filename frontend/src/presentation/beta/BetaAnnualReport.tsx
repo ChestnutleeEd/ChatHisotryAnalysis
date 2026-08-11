@@ -378,7 +378,7 @@ function ClosingScene({
 }) {
   const shareCardUnavailable = shareCardViewModel?.exportAvailability.status === "unavailable";
   return (
-    <Scene id="summary-share" scene="closing" className="beta-closing-scene" aria-labelledby="beta-closing-heading">
+    <Scene id="summary-share" scene="closing" className="beta-closing-scene" reveal motionIndex={5} aria-labelledby="beta-closing-heading">
       <div className="beta-closing-copy">
         <p className="beta-type-eyebrow">总结与分享 · 16</p>
         <h2 id="beta-closing-heading" className="beta-type-heading">把这段本地记录留在手边</h2>
@@ -505,6 +505,8 @@ function BetaCoreAnnualReport({
         id="vocabulary-scene"
         scene="vocabulary"
         className="beta-v2-scene beta-v2-vocabulary"
+        reveal
+        motionIndex={4}
         aria-labelledby="beta-v2-scene-vocabulary-heading"
       >
         <header className="beta-v2-scene-heading">

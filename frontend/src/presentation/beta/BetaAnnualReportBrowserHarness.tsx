@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import {
   buildBetaReportDto,
@@ -42,13 +42,13 @@ function reportStateFor(
 }
 
 export function BetaAnnualReportBrowserHarness() {
-  const syntheticSaveOutcome = new URLSearchParams(window.location.search).get("save") === "cancelled"
-    ? "cancelled"
-    : "saved";
+  const saveScenario = new URLSearchParams(window.location.search).get("save") ?? "saved";
   const [mode, setMode] = useState<HarnessMode>("annual");
   const [year, setYear] = useState(2025);
   const [wordRole, setWordRole] = useState<WordFrequencyRole>("both");
   const [selectedSection, setSelectedSection] = useState<BetaReportSectionId>("opening");
+  const saveAttemptsRef = useRef(0);
+  const [saveAttempts, setSaveAttempts] = useState(0);
   const result = useMemo(
     () => mode === "annual" ? syntheticBetaAnnualReportResult(year) : syntheticBetaAllYearsReportResult(),
     [mode, year],
@@ -99,11 +99,21 @@ export function BetaAnnualReportBrowserHarness() {
   }
 
   async function saveSyntheticShareCardPng(): Promise<"saved" | "cancelled"> {
-    return syntheticSaveOutcome;
+    saveAttemptsRef.current += 1;
+    setSaveAttempts(saveAttemptsRef.current);
+    if (saveScenario === "delayed") {
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 550));
+    }
+    if (saveScenario === "failed") {
+      const error = new Error("synthetic save failure") as Error & { code?: string };
+      error.code = "EXPORT_WRITE_FAILED";
+      throw error;
+    }
+    return saveScenario === "cancelled" ? "cancelled" : "saved";
   }
 
   return (
-    <main className="desktop-app beta-enabled" data-testid="beta-annual-recap-harness">
+    <main className="desktop-app beta-enabled" data-testid="beta-annual-recap-harness" data-save-attempts={saveAttempts}>
       <SkipLink />
       <header className="desktop-app-header">
         <div className="beta-product-identity">

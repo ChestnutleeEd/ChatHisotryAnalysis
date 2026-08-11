@@ -1,6 +1,7 @@
 import { useState, type ButtonHTMLAttributes, type CSSProperties, type HTMLAttributes, type ImgHTMLAttributes, type ReactNode, type Ref } from "react";
 
 import type { QueryChipViewModel } from "./view-model";
+import { motionDelayMs, useOneShotSceneReveal } from "./motion";
 
 export type BetaCardVariant = "hero" | "metric" | "narrative" | "chart" | "split" | "word" | "privacy";
 export type BetaButtonVariant = "primary" | "secondary" | "tertiary" | "exit";
@@ -13,16 +14,32 @@ export function Scene({
   scene,
   className,
   children,
+  reveal = false,
+  motionIndex = 0,
+  style,
   ...props
 }: HTMLAttributes<HTMLElement> & {
   readonly scene?: string;
   readonly children: ReactNode;
+  readonly reveal?: boolean;
+  readonly motionIndex?: number;
 }) {
+  const motion = useOneShotSceneReveal(reveal);
+  const motionStyle = reveal
+    ? {
+      ...style,
+      "--beta-motion-delay": `${motionDelayMs(motionIndex)}ms`,
+    } as CSSProperties
+    : style;
   return (
     <section
       {...props}
+      ref={reveal ? motion.ref : undefined}
+      style={motionStyle}
       className={joinClasses("beta-scene", scene === undefined ? undefined : `beta-scene-${scene}`, className)}
       data-scene={scene}
+      data-motion={reveal ? "scene" : undefined}
+      data-motion-state={reveal ? motion.state : undefined}
     >
       {children}
     </section>

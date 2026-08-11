@@ -166,10 +166,10 @@
 
 ### B5.5 — Motion + accessibility polish
 
-- [ ] 6.20 [Implementation][Luna Max][Scope: B5 motion consumers only] Add 120/220/420ms tokens, shared easing and ≤180ms stagger; implement only one-shot scene opacity/8px reveal, preview opacity/scale, and one non-looping success mark using explicit transform/opacity properties, with no count-up/delayed chart/cloud/parallax/drift/particles/scroll hijack.
-- [ ] 6.21 [Implementation][Luna Max][Scope: reduced motion/failure] Make `prefers-reduced-motion`, missing observer, animation failure, background throttling, and interruption show the same final state immediately without changing focus, Canvas pixels, query/view-model identity, or controls.
-- [ ] 6.22 [Accessibility + responsive][Luna Max][Scope: complete B5 flow] Re-audit semantic buttons/labels/dialog, focus-visible/trap/return, live regions, error next steps, Canvas summary, contrast, 44px targets, 200% zoom, 380px flow, long content, and no `transition: all` against current Web Interface Guidelines.
-- [ ] 6.23 [Test + Human gate][Luna Max STOP][Scope: motion/a11y/browser] Test standard/reduced/interrupted motion, no query on scroll, every state keyboard-only and screen-reader-readable, fixed width/zoom set, screenshot sequence, exact-path commit/push, strict/full validation, and stop for acceptance before packaged export smoke.
+- [x] 6.20 [Implementation][Luna Max][Scope: B5 motion consumers only] Add 120/220/420ms tokens, shared easing and ≤180ms stagger; implement only one-shot scene opacity/8px reveal, preview opacity/scale, and one non-looping success mark using explicit transform/opacity properties, with no count-up/delayed chart/cloud/parallax/drift/particles/scroll hijack.
+- [x] 6.21 [Implementation][Luna Max][Scope: reduced motion/failure] Make `prefers-reduced-motion`, missing observer, animation failure, background throttling, and interruption show the same final state immediately without changing focus, Canvas pixels, query/view-model identity, or controls.
+- [x] 6.22 [Accessibility + responsive][Luna Max][Scope: complete B5 flow] Re-audit semantic buttons/labels/dialog, focus-visible/trap/return, live regions, error next steps, Canvas summary, contrast, 44px targets, 200% zoom, 380px flow, long content, and no `transition: all` against current Web Interface Guidelines.
+- [x] 6.23 [Test + Human gate][Luna Max STOP][Scope: motion/a11y/browser] Test standard/reduced/interrupted motion, no query on scroll, every state keyboard-only and screen-reader-readable, fixed width/zoom set, screenshot sequence, exact-path commit/push, strict/full validation, and stop for acceptance before packaged export smoke.
 
 ### B5.6 — Packaged export acceptance
 
