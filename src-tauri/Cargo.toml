@@ -12,6 +12,7 @@ default = ["synthetic-test-helpers"]
 synthetic-test-helpers = []
 synthetic-dialog-adapter = []
 packaged-b5-acceptance = ["synthetic-dialog-adapter"]
+packaged-b6-acceptance = ["synthetic-dialog-adapter"]
 
 [[bin]]
 name = "chat-history-analysis"

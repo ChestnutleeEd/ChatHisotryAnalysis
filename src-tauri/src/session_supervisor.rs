@@ -1155,9 +1155,16 @@ impl SessionSupervisor {
         let mut inner = self.lock_inner()?;
         validate_active(&inner, window_label, session_id, generation)?;
         let active = inner.active.as_mut().expect("validated active session");
+        // The sidecar session is terminal after its first canonical dataset
+        // result, but the renderer may still replace aggregate filters within
+        // the same dataset session. Keep that host lease lifecycle separate
+        // from the terminal sidecar state.
         if !matches!(
             active.state,
-            SessionState::Preprocessing | SessionState::Handoff | SessionState::Analyzing
+            SessionState::Preprocessing
+                | SessionState::Handoff
+                | SessionState::Analyzing
+                | SessionState::Complete
         ) {
             return Err(SupervisorError::new(SupervisorErrorCode::InvalidState));
         }
@@ -1215,16 +1222,21 @@ impl SessionSupervisor {
         validate_active(&inner, window_label, session_id, generation)?;
         let active = inner.active.as_mut().expect("validated active session");
         if !matches!(active.terminal, Some(SessionTerminal::Complete(_)))
-            || active.state != SessionState::Analyzing
+            || !matches!(
+                active.state,
+                SessionState::Analyzing | SessionState::Complete
+            )
             || active.worker.is_none()
         {
             return Err(SupervisorError::new(SupervisorErrorCode::InvalidState));
         }
         active.worker = None;
-        transition(active, SessionState::Complete)?;
-        active
-            .events
-            .push(SessionEvent::State(SessionState::Complete));
+        if active.state == SessionState::Analyzing {
+            transition(active, SessionState::Complete)?;
+            active
+                .events
+                .push(SessionEvent::State(SessionState::Complete));
+        }
         Ok(snapshot(active))
     }
 

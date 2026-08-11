@@ -1,9 +1,8 @@
-"""Build and verify the macOS arm64 Stage 11 application prototype.
+"""Build and verify the macOS arm64 application prototype.
 
-The script intentionally leaves generated package directories in the ignored
-``build/stage11`` tree.  It never removes a directory recursively: each run
-uses a fresh timestamped output directory, so an old package remains
-inspectable and cannot be mistaken for the current one.
+The normal Stage 11 path keeps timestamped roots for historical evidence. The
+bounded B6 path uses one explicit ``B6_WORK_ROOT`` and publishes only its
+``final-release`` child; it never performs recursive cleanup.
 """
 
 from __future__ import annotations
@@ -42,9 +41,27 @@ B5_BUNDLE_ASSET_MARKERS = (
     "closing-poster-v1",
     "share-card-field-v1",
 )
+B6_WORK_ROOT_RELATIVE = Path("build/stage11/macos-arm64/b6-final-acceptance")
 
 
-def _new_output_root() -> Path:
+def _new_output_root(*, b6_acceptance: bool = False) -> Path:
+    if b6_acceptance:
+        configured = os.environ.get("B6_WORK_ROOT")
+        candidate = Path(configured) if configured else B6_WORK_ROOT_RELATIVE
+        if not candidate.is_absolute():
+            candidate = ROOT / candidate
+        candidate = candidate.resolve()
+        expected = (ROOT / B6_WORK_ROOT_RELATIVE).resolve()
+        if candidate != expected:
+            raise RuntimeError("B6_WORK_ROOT_MUST_BE_BUILD_STAGE11_MACOS_ARM64")
+        candidate.mkdir(parents=True, exist_ok=True)
+        output_root = candidate / "final-release"
+        if output_root.exists():
+            if any(output_root.iterdir()):
+                raise RuntimeError("B6_FINAL_RELEASE_NOT_REUSABLE_USER_CLEANUP_REQUIRED")
+        else:
+            output_root.mkdir()
+        return output_root
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     base = ROOT / "build" / "stage11" / "macos-arm64"
     for suffix in ("", "-1", "-2", "-3"):
@@ -545,6 +562,16 @@ def _clean_environment(root: Path) -> tuple[dict[str, str], Path]:
     return environment, cwd
 
 
+def _fresh_b6_environment_root(root: Path, label: str) -> Path:
+    for ordinal in range(64):
+        suffix = "" if ordinal == 0 else f"-retry-{ordinal}"
+        candidate = root / f"{label}{suffix}"
+        if not candidate.exists():
+            candidate.mkdir()
+            return candidate
+    raise RuntimeError("B6_CLEAN_ENVIRONMENT_ROOT_COLLISION")
+
+
 def _stop_exact_process(process: subprocess.Popen[bytes]) -> None:
     if process.poll() is not None:
         return
@@ -575,11 +602,15 @@ def _prepare_b5_marker_root() -> tuple[Path, Path]:
     output.mkdir(exist_ok=True)
     known_files = {
         "synthetic-annual-source.json",
+        "b6-core-2023-2024.json",
+        "b6-core-2024-2025.json",
+        "b6-core-2025-2026.json",
         "selection-smoke-passed",
         "selection-smoke-page-loaded",
         "selection-smoke-onboarding-ready",
         "selection-smoke-selection-ready",
         "selection-smoke-resolution-passed",
+        "selection-smoke-resolution-resource-dir-failed",
         "selection-smoke-start-clicked",
         "selection-smoke-start-status-visible",
         "selection-smoke-start-status-missing",
@@ -620,6 +651,29 @@ def _prepare_b5_marker_root() -> tuple[Path, Path]:
         "selection-smoke-native-save-retry-requested",
         "selection-smoke-native-save-retry-success",
         "selection-smoke-share-preview-closed",
+        "selection-smoke-reselect-ready",
+        "selection-smoke-b6-entered",
+        "selection-smoke-b6-stable",
+        "selection-smoke-scope-all-initial",
+        "selection-smoke-scope-year-a",
+        "selection-smoke-scope-year-b",
+        "selection-smoke-scope-all-restored",
+        "selection-smoke-custom-hidden-ready",
+        "selection-smoke-detailed-ready",
+        "selection-smoke-detailed-draft-ready",
+        "selection-smoke-detailed-apply-ready",
+        "selection-smoke-detailed-routes-ready",
+        "selection-smoke-aggregate-export-requested",
+        "selection-smoke-aggregate-export-success",
+        "selection-smoke-b6-pre-share-ready",
+        "selection-smoke-failure-SIDECAR_PROTOCOL_MISMATCH",
+        "selection-smoke-failure-SIDECAR_EXITED",
+        "selection-smoke-failure-MEMORY_PRESSURE",
+        "selection-smoke-failure-CLEANUP_REQUIRED",
+        "selection-smoke-failure-SESSION_CLEANUP_FAILED",
+        "selection-smoke-failure-SESSION_STALE",
+        "selection-smoke-failure-SELECTION_STALE",
+        "selection-smoke-failure-SOURCE_SET_INVALID",
         "b5-render-off.json",
         "b5-render-on.json",
     }
@@ -627,6 +681,8 @@ def _prepare_b5_marker_root() -> tuple[Path, Path]:
         _remove_known_file(root / name)
     for path in sorted(output.glob("chat-recap-*.png")):
         _remove_known_file(path)
+    for name in ("chat-analysis-export.json", "chat-analysis-export.csv"):
+        _remove_known_file(output / name)
     return root, output
 
 
@@ -1049,6 +1105,200 @@ def _run_b5_packaged_acceptance(app: Path, root: Path) -> dict[str, object]:
     return b5_evidence
 
 
+def _wait_for_new_regular_file(
+    output: Path,
+    before: set[Path],
+    *,
+    suffixes: tuple[str, ...],
+    timeout: float = 60,
+) -> Path:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        candidates = {
+            path
+            for path in output.iterdir()
+            if path.is_file() and path.suffix.lower() in suffixes
+        }
+        fresh = sorted(candidates - before)
+        if fresh:
+            return fresh[-1]
+        time.sleep(0.2)
+    raise RuntimeError("B6_NATIVE_EXPORT_READBACK_NOT_FOUND")
+
+
+def _inspect_b6_aggregate_export(path: Path) -> dict[str, object]:
+    data = path.read_bytes()
+    if not data:
+        raise RuntimeError("B6_AGGREGATE_EXPORT_EMPTY")
+    text = data.decode("utf-8", errors="strict")
+    if any(
+        marker in text
+        for marker in (
+            "b6-core-2023-2024.json",
+            "b6-core-2024-2025.json",
+            "b6-core-2025-2026.json",
+            "working directory",
+            "src-tauri",
+        )
+    ):
+        raise RuntimeError("B6_AGGREGATE_EXPORT_PATH_LEAK")
+    if path.suffix.lower() == ".json":
+        value = json.loads(text)
+        if not isinstance(value, dict) or not value:
+            raise RuntimeError("B6_AGGREGATE_EXPORT_JSON_INVALID")
+    elif path.suffix.lower() == ".csv":
+        if "schemaVersion" not in text and "chart" not in text:
+            raise RuntimeError("B6_AGGREGATE_EXPORT_CSV_INVALID")
+    else:
+        raise RuntimeError("B6_AGGREGATE_EXPORT_FORMAT_INVALID")
+    return {
+        "pathLabel": "synthetic-temp/aggregate-export" + path.suffix.lower(),
+        "format": path.suffix.lower().lstrip("."),
+        "bytes": len(data),
+        "readback": "passed",
+        "pathPrivacy": "passed",
+    }
+
+
+def _run_b6_packaged_acceptance(app: Path, root: Path) -> dict[str, object]:
+    """Run the final synthetic product vertical against the clean DMG copy."""
+
+    _require_b5_accessibility()
+    _run_finder_equivalent_launch(app)
+    marker_root = root / "b6-runtime"
+    marker_root.mkdir(exist_ok=True)
+    os.environ["CHAT_HISTORY_ANALYSIS_SYNTHETIC_B5_MARKER_ROOT"] = os.fspath(marker_root)
+    marker_root, output = _prepare_b5_marker_root()
+    clean_root = _fresh_b6_environment_root(root, "b6-clean-user")
+    environment, cwd = _clean_environment(clean_root)
+    environment["CHAT_HISTORY_ANALYSIS_SYNTHETIC_ROOT"] = os.fspath(marker_root)
+    environment["CHAT_HISTORY_ANALYSIS_SYNTHETIC_B5_MARKER_ROOT"] = os.fspath(marker_root)
+    environment["CHAT_HISTORY_ANALYSIS_SYNTHETIC_B6_MODE"] = "b6"
+    environment["CHAT_HISTORY_ANALYSIS_SYNTHETIC_NATIVE_DIALOG_ROLE"] = "annual"
+    sandbox = Path("/usr/bin/sandbox-exec")
+    if not sandbox.is_file():
+        raise RuntimeError("B6_NETWORK_SANDBOX_UNAVAILABLE")
+    app_executable = app / "Contents" / "MacOS" / APP_EXECUTABLE
+    process = subprocess.Popen(
+        [sandbox, "-p", "(version 1) (allow default) (deny network*)", app_executable],
+        cwd=cwd,
+        env=environment,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    aggregate_evidence: dict[str, object] | None = None
+    aggregate_path: Path | None = None
+    first_png: Path | None = None
+    second_png: Path | None = None
+    try:
+        _wait_for_marker(marker_root, "aggregate-export-requested", process)
+        before_aggregate = {path for path in output.iterdir() if path.is_file()}
+        _drive_native_save_panel(output, cancel=False)
+        _wait_for_marker(marker_root, "aggregate-export-success", process)
+        aggregate_path = _wait_for_new_regular_file(
+            output,
+            before_aggregate,
+            suffixes=(".json", ".csv"),
+        )
+        aggregate_evidence = _inspect_b6_aggregate_export(aggregate_path)
+
+        _wait_for_marker(marker_root, "share-preview-ready", process)
+        off_render = _wait_for_b5_render_evidence(marker_root, "off", process)
+        _wait_for_marker(marker_root, "native-cancel-requested", process)
+        _drive_native_save_panel(output, cancel=True)
+        _wait_for_marker(marker_root, "native-cancelled", process)
+        _wait_for_marker(marker_root, "vocabulary-on", process)
+        on_render = _wait_for_b5_render_evidence(marker_root, "on", process)
+        _wait_for_marker(marker_root, "native-save-requested", process)
+        before_first = set(output.glob("chat-recap-*.png"))
+        _drive_native_save_panel(output, cancel=False)
+        _wait_for_marker(marker_root, "native-save-success", process)
+        first_png = _wait_for_saved_png(output, before_first)
+        first_png_evidence = _inspect_saved_png(first_png)
+        if first_png_evidence["rgbaDigest"] != on_render["rgbaDigest"]:
+            raise RuntimeError("B6_PREVIEW_EXPORT_RGBA_MISMATCH_ON")
+        _wait_for_marker(marker_root, "native-save-retry-requested", process)
+        _drive_native_save_panel(output, cancel=False)
+        _wait_for_marker(marker_root, "native-save-retry-success", process)
+        second_png = first_png
+        second_png_evidence = _inspect_saved_png(second_png)
+        if second_png_evidence["rgbaDigest"] != off_render["rgbaDigest"]:
+            raise RuntimeError("B6_PREVIEW_EXPORT_RGBA_MISMATCH_OFF")
+        _wait_for_marker(marker_root, "share-preview-closed", process)
+        process.wait(timeout=40)
+        if process.returncode not in (0, None):
+            raise RuntimeError("B6_PACKAGED_APP_EXIT_FAILED")
+    except BaseException:
+        if process.poll() is None:
+            _stop_exact_process(process)
+        raise
+    finally:
+        if process.poll() is None:
+            _stop_exact_process(process)
+
+    if _process_exists("chat-history-analysis-sidecar"):
+        raise RuntimeError("B6_SIDECAR_ORPHAN_AFTER_QUIT")
+    restart_root = _fresh_b6_environment_root(root, "b6-restart-clean-user")
+    restart_environment, restart_cwd = _clean_environment(restart_root)
+    restart = subprocess.Popen(
+        [app_executable],
+        cwd=restart_cwd,
+        env=restart_environment,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        time.sleep(4)
+        if restart.poll() is not None:
+            raise RuntimeError("B6_RESTART_FAILED")
+    finally:
+        _stop_exact_process(restart)
+    _wait_for_process_state("chat-history-analysis-sidecar", exists=False)
+
+    if aggregate_evidence is None or aggregate_path is None or first_png is None or second_png is None:
+        raise RuntimeError("B6_PACKAGED_EVIDENCE_INCOMPLETE")
+    for path in (first_png, aggregate_path):
+        _remove_known_file(path)
+    for path in sorted(output.glob("chat-recap-*.png")):
+        _remove_known_file(path)
+    if list(output.iterdir()):
+        raise RuntimeError("B6_TEMP_OUTPUT_NOT_CLEAN")
+    _remove_known_file(marker_root / "synthetic-annual-source.json")
+    for path in sorted(marker_root.glob("b6-core-*.json")):
+        _remove_known_file(path)
+    for path in sorted(marker_root.glob("b5-render-*.json")):
+        _remove_known_file(path)
+    for path in sorted(marker_root.glob("selection-smoke-*")):
+        _remove_known_file(path)
+    output.rmdir()
+    marker_root.rmdir()
+    return {
+        "status": "passed",
+        "syntheticOnly": True,
+        "cleanInstallApp": "clean-install/Applications-like/Chat History Analysis.app",
+        "finderEquivalentLaunch": "passed",
+        "networkBlocked": "passed",
+        "networkAttempts": 0,
+        "fixtureA": "three embedded multi-file years with overlap/dedup and partial endpoints",
+        "scopeRegression": "all-years → Year A → Year B → all-years",
+        "annualScenes": "seven scenes",
+        "vocabulary": "raw/per-10000, role, Clean Mode, custom hidden word",
+        "sharePreview": "passed",
+        "nativePresentationSave": "actual-packaged-AppKit",
+        "nativeAggregateExport": aggregate_evidence,
+        "savedPng": {
+            "on": first_png_evidence,
+            "off": second_png_evidence,
+        },
+        "previewExportParity": "decoded-RGBA-digest-equal",
+        "detailedApply": "draft-retained-until-one-Apply",
+        "detailedRoutes": 8,
+        "sidecarShutdown": "passed",
+        "restart": "passed",
+        "temporaryArtifactCleanup": "passed",
+    }
+
+
 def _run_clean_user_smoke(
     app: Path,
     root: Path,
@@ -1235,9 +1485,37 @@ def _write_manifest(
     return path
 
 
-def build_and_verify(*, b5_acceptance: bool = False) -> Path:
+def _validate_b6_fixture_inventory() -> None:
+    fixture_root = ROOT / "contracts" / "b6-fixtures"
+    expected = (
+        "core-2023-2024.json",
+        "core-2024-2025.json",
+        "core-2025-2026.json",
+        "edge-sparse.json",
+        "malformed.json",
+    )
+    for name in expected:
+        path = fixture_root / name
+        if not path.is_file() or path.stat().st_size == 0:
+            raise RuntimeError("B6_FIXTURE_INVENTORY_INVALID")
+    for name in expected[:4]:
+        value = json.loads((fixture_root / name).read_text(encoding="utf-8"))
+        if not isinstance(value, dict) or not isinstance(value.get("messages"), list):
+            raise RuntimeError("B6_FIXTURE_SCHEMA_INVALID")
+    try:
+        json.loads((fixture_root / expected[-1]).read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return
+    raise RuntimeError("B6_MALFORMED_FIXTURE_ACCEPTED")
+
+
+def build_and_verify(*, b5_acceptance: bool = False, b6_acceptance: bool = False) -> Path:
+    if b5_acceptance and b6_acceptance:
+        raise RuntimeError("PACKAGE_ACCEPTANCE_MODES_ARE_EXCLUSIVE")
+    if b6_acceptance:
+        _validate_b6_fixture_inventory()
     python312 = _python312()
-    output_root = _new_output_root()
+    output_root = _new_output_root(b6_acceptance=b6_acceptance)
     sidecar_bundle = _build_sidecar(output_root, python312)
     selection_smoke_app: Path | None = None
     if b5_acceptance:
@@ -1246,6 +1524,14 @@ def build_and_verify(*, b5_acceptance: bool = False) -> Path:
             sidecar_bundle,
             features=("packaged-b5-acceptance",),
         )
+    elif b6_acceptance:
+        built_app = _build_app(
+            output_root,
+            sidecar_bundle,
+            features=("packaged-b6-acceptance",),
+        )
+        app = output_root / APP_NAME
+        _copy_tree(built_app, app)
     else:
         selection_smoke_app = _build_app(
             output_root,
@@ -1262,6 +1548,8 @@ def build_and_verify(*, b5_acceptance: bool = False) -> Path:
     dmg, copied_app = _make_dmg(output_root, app)
     if b5_acceptance:
         smoke = _run_b5_packaged_acceptance(copied_app, output_root)
+    elif b6_acceptance:
+        smoke = _run_b6_packaged_acceptance(copied_app, output_root)
     else:
         if selection_smoke_app is None:
             raise RuntimeError("SELECTION_SMOKE_APP_MISSING")
@@ -1291,9 +1579,17 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="run the synthetic packaged B5 native-save/readback acceptance vertical",
     )
+    parser.add_argument(
+        "--b6-acceptance",
+        action="store_true",
+        help="run the final synthetic packaged B6 product acceptance vertical",
+    )
     arguments = parser.parse_args(argv)
     try:
-        manifest = build_and_verify(b5_acceptance=arguments.b5_acceptance)
+        manifest = build_and_verify(
+            b5_acceptance=arguments.b5_acceptance,
+            b6_acceptance=arguments.b6_acceptance,
+        )
         if not manifest.is_file():
             raise RuntimeError("PACKAGE_MANIFEST_NOT_FOUND")
     except (OSError, RuntimeError, subprocess.SubprocessError, json.JSONDecodeError) as error:

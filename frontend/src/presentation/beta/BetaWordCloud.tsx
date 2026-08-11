@@ -312,6 +312,8 @@ export function BetaWordCloud({
       id="word-cloud"
       className="beta-v2-word-cloud"
       data-clean-mode={cleanMode ? "on" : "off"}
+      data-word-cloud-year={frequency === undefined ? "pending" : frequency.scope.year === null ? "all-years" : String(frequency.scope.year)}
+      data-word-cloud-role={frequency?.scope.role ?? "pending"}
       aria-labelledby="beta-word-cloud-heading"
     >
       <div className="beta-word-cloud-heading">

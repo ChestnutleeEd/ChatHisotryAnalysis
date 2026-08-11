@@ -739,16 +739,25 @@ export function DesktopImportPanel() {
       setAnalyticsPending(false);
       return undefined;
     }
-    await desktopApi.acknowledgeWorkerStop(
-      requestId() as never,
-      currentSession,
-      currentGeneration,
-    );
-    await desktopApi.cancelAggregateResult(
-      requestId() as never,
-      currentSession,
-      currentGeneration,
-    );
+    try {
+      await desktopApi.acknowledgeWorkerStop(
+        requestId() as never,
+        currentSession,
+        currentGeneration,
+      );
+    } catch {
+      // A committed result already detaches the host Worker lease; the next
+      // aggregate preparation is the authoritative replacement boundary.
+    }
+    try {
+      await desktopApi.cancelAggregateResult(
+        requestId() as never,
+        currentSession,
+        currentGeneration,
+      );
+    } catch {
+      // There may be no pending aggregate after the previous result commit.
+    }
     const attempt = analyticsAttemptRef.current;
     const startedAt = Date.now();
     progressStartedAtRef.current = startedAt;
@@ -1380,6 +1389,32 @@ export function DesktopImportPanel() {
       ),
       { preserveResult: true },
     );
+    if (completed && operation !== undefined) {
+      try {
+        const authoritative = await desktopApi.getAnalysisStatus(
+          requestId() as never,
+          operation.operationId,
+          cursorRef.current.sequence,
+        );
+        if (
+          authoritative.registered &&
+          authoritative.operationId === operation.operationId &&
+          authoritative.sessionId === dataset.sessionId &&
+          authoritative.generation === dataset.generation
+        ) {
+          for (const event of authoritative.events) {
+            const accepted = acceptDesktopEvent(cursorRef.current, event, WINDOW_ID);
+            if (accepted.accepted) {
+              cursorRef.current = accepted.cursor;
+              applyDesktopEvent(accepted.event);
+            }
+          }
+        }
+      } catch {
+        // The command acknowledgement still determines cancellation/error;
+        // a delivered exported event remains the saved-outcome authority.
+      }
+    }
     if (completed) {
       setExportMessage(
         exportOutcomeRef.current === "saved"

@@ -28,6 +28,33 @@ frontend/Tauri `.app`，执行 nested-first ad-hoc signing，生成并验证 DMG
 HOME/TMPDIR、无网络的合成 sidecar smoke，并调用验收脚本。末尾输出本次 `.app`、`.dmg`
 的绝对路径和 SHA-256。构建目录位于被 Git 忽略的 `build/stage11/macos-arm64/`。
 
+## B6 合成 Beta 包验收
+
+B6 使用固定边界目录，仅保留一个正式发布目录，不读取真实聊天数据：
+
+```text
+build/stage11/macos-arm64/b6-final-acceptance/final-release/
+├── Chat History Analysis.app
+├── Chat History Analysis Prototype.dmg
+└── package-manifest.json
+```
+
+当前正式 artifact 可直接从该目录验收。manifest 记录 arm64、nested-first ad-hoc
+签名、DMG 校验与挂载、隔离 clean-install、合成离线 smoke、负向篡改/架构检查和
+临时输出清理结果。B6 的 fixture 清单位于 `contracts/b6-fixtures/`；fixture 只用于
+覆盖多年度、稀疏/不可用和 malformed 输入，不是生产数据替代品。
+
+```bash
+scripts/verify_macos_alpha.sh \
+  build/stage11/macos-arm64/b6-final-acceptance/final-release/package-manifest.json
+```
+
+手动验收时，从 DMG 将 `.app` 复制到 Applications-like 目录后启动，使用自己的
+数据完成 Annual scope、Vocabulary/Clean Mode、Share Preview/native PNG、Detailed
+Apply、aggregate export 和重启检查。完整的 10–20 分钟 checklist 与限制见
+[`docs/BETA_FINAL_ACCEPTANCE.md`](BETA_FINAL_ACCEPTANCE.md)。完成用户验收前，状态仍为
+`PASS WITH USER ACCEPTANCE PENDING`，不代表 Release ready。
+
 ## 单独验收已有 artifact
 
 ```bash

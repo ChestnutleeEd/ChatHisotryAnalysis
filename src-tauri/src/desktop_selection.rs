@@ -232,6 +232,7 @@ pub fn choose_sources(
 fn choose_synthetic_sources(role: SourceRole) -> Result<Option<Vec<PathBuf>>, SelectionError> {
     const ENV_ROLE: &str = "CHAT_HISTORY_ANALYSIS_SYNTHETIC_NATIVE_DIALOG_ROLE";
     const ENV_ROOT: &str = "CHAT_HISTORY_ANALYSIS_SYNTHETIC_ROOT";
+    const ENV_B6_MODE: &str = "CHAT_HISTORY_ANALYSIS_SYNTHETIC_B6_MODE";
     let requested = std::env::var(ENV_ROLE).unwrap_or_default();
     let expected = match role {
         SourceRole::Annual => "annual",
@@ -250,6 +251,32 @@ fn choose_synthetic_sources(role: SourceRole) -> Result<Option<Vec<PathBuf>>, Se
         });
     fs::create_dir_all(&root)
         .map_err(|_| SelectionError::new(SelectionErrorCode::DialogUnavailable))?;
+    if std::env::var(ENV_B6_MODE).ok().as_deref() == Some("b6")
+        && matches!(role, SourceRole::Annual)
+    {
+        let fixtures: &[(&str, &[u8])] = &[
+            (
+                "b6-core-2023-2024.json",
+                include_bytes!("../../contracts/b6-fixtures/core-2023-2024.json"),
+            ),
+            (
+                "b6-core-2024-2025.json",
+                include_bytes!("../../contracts/b6-fixtures/core-2024-2025.json"),
+            ),
+            (
+                "b6-core-2025-2026.json",
+                include_bytes!("../../contracts/b6-fixtures/core-2025-2026.json"),
+            ),
+        ];
+        let mut paths = Vec::with_capacity(fixtures.len());
+        for (filename, contents) in fixtures {
+            let path = root.join(filename);
+            fs::write(&path, contents)
+                .map_err(|_| SelectionError::new(SelectionErrorCode::DialogUnavailable))?;
+            paths.push(path);
+        }
+        return Ok(Some(paths));
+    }
     let filename = match role {
         SourceRole::Annual => "synthetic-annual-source.json",
         SourceRole::Verification => "synthetic-verification-source.json",

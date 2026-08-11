@@ -1,0 +1,76 @@
+{
+  "exportInfo": {
+    "format": "detailed-json",
+    "version": "b6-synthetic-v1"
+  },
+  "session": {
+    "isGroup": false,
+    "type": "私聊",
+    "platform": "synthetic-platform",
+    "ownerId": "b6-synthetic-owner",
+    "wxid": "b6-synthetic-peer"
+  },
+  "messages": [
+    {
+      "localId": 1,
+      "platformMessageId": "b6-msg-001",
+      "createTime": 1702605600,
+      "formattedTime": "2023-12-15 10:00:00",
+      "senderUsername": "b6-synthetic-owner",
+      "content": "合成记录 本地计划 从年末开始",
+      "chatLabType": 0,
+      "type": "文本消息",
+      "localType": 1,
+      "isSend": 1
+    },
+    {
+      "localId": 2,
+      "platformMessageId": "b6-msg-002",
+      "createTime": 1703081700,
+      "formattedTime": "2023-12-20 22:15:00",
+      "senderUsername": "b6-synthetic-peer",
+      "content": "收到 继续合成测试",
+      "chatLabType": 0,
+      "type": "文本消息",
+      "localType": 1,
+      "isSend": 0,
+      "replyToMessageId": "b6-msg-001"
+    },
+    {
+      "localId": 3,
+      "platformMessageId": "b6-msg-003",
+      "createTime": 1704245400,
+      "formattedTime": "2024-01-03 09:30:00",
+      "senderUsername": "b6-synthetic-owner",
+      "content": "本地合成词 共同回顾 早上好",
+      "chatLabType": 0,
+      "type": "文本消息",
+      "localType": 1,
+      "isSend": 1
+    },
+    {
+      "localId": 4,
+      "platformMessageId": "b6-msg-004",
+      "createTime": 1718448300,
+      "formattedTime": "2024-06-15 18:45:00",
+      "senderUsername": "b6-synthetic-peer",
+      "content": "[图片]",
+      "chatLabType": 1,
+      "type": "图片消息",
+      "localType": 3,
+      "isSend": 0
+    },
+    {
+      "localId": 5,
+      "platformMessageId": "b6-msg-005",
+      "createTime": 1735657200,
+      "formattedTime": "2024-12-31 23:00:00",
+      "senderUsername": "b6-synthetic-owner",
+      "content": "系统记录：年度边界",
+      "chatLabType": 80,
+      "type": "系统消息",
+      "localType": 50,
+      "isSend": 1
+    }
+  ]
+}

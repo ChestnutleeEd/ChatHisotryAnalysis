@@ -2134,6 +2134,25 @@ impl IpcCoreState {
         Ok(())
     }
 
+    fn has_active_terminal_complete_session(
+        &self,
+        trusted_window_label: &str,
+        session_id: &str,
+        generation: u64,
+    ) -> Result<bool, FailureCode> {
+        self.validate_owned_session(trusted_window_label, session_id, generation)?;
+        let registry = self
+            .registry
+            .lock()
+            .map_err(|_| FailureCode::InvalidState)?;
+        let active = registry
+            .active
+            .as_ref()
+            .ok_or(FailureCode::InvalidSession)?;
+        Ok(active.terminal_outcome == Some(TerminalOutcome::Complete)
+            && active.cleanup_status.is_none())
+    }
+
     /// Retry is allowed to address the terminal generation that is either
     /// still visible in the active record or already moved to the retained
     /// terminal record by the idempotent finalizer.
@@ -3660,6 +3679,21 @@ pub fn record_selection_smoke_checkpoint(
             "native-save-retry-requested" => "selection-smoke-native-save-retry-requested",
             "native-save-retry-success" => "selection-smoke-native-save-retry-success",
             "share-preview-closed" => "selection-smoke-share-preview-closed",
+            "reselect-ready" => "selection-smoke-reselect-ready",
+            "b6-entered" => "selection-smoke-b6-entered",
+            "b6-stable" => "selection-smoke-b6-stable",
+            "scope-all-initial" => "selection-smoke-scope-all-initial",
+            "scope-year-a" => "selection-smoke-scope-year-a",
+            "scope-year-b" => "selection-smoke-scope-year-b",
+            "scope-all-restored" => "selection-smoke-scope-all-restored",
+            "custom-hidden-ready" => "selection-smoke-custom-hidden-ready",
+            "detailed-ready" => "selection-smoke-detailed-ready",
+            "detailed-draft-ready" => "selection-smoke-detailed-draft-ready",
+            "detailed-apply-ready" => "selection-smoke-detailed-apply-ready",
+            "detailed-routes-ready" => "selection-smoke-detailed-routes-ready",
+            "aggregate-export-requested" => "selection-smoke-aggregate-export-requested",
+            "aggregate-export-success" => "selection-smoke-aggregate-export-success",
+            "b6-pre-share-ready" => "selection-smoke-b6-pre-share-ready",
             "error" => "selection-smoke-error",
             "SIDECAR_UNAVAILABLE" => "selection-smoke-failure-SIDECAR_UNAVAILABLE",
             "SIDECAR_VERIFICATION_FAILED" => "selection-smoke-failure-SIDECAR_VERIFICATION_FAILED",
@@ -3667,7 +3701,9 @@ pub fn record_selection_smoke_checkpoint(
             "SIDECAR_START_FAILED" => "selection-smoke-failure-SIDECAR_START_FAILED",
             "SIDECAR_HANDSHAKE_TIMEOUT" => "selection-smoke-failure-SIDECAR_HANDSHAKE_TIMEOUT",
             "PREPROCESSING_STALLED" => "selection-smoke-failure-PREPROCESSING_STALLED",
+            "SIDECAR_PROTOCOL_MISMATCH" => "selection-smoke-failure-SIDECAR_PROTOCOL_MISMATCH",
             "SIDECAR_PROTOCOL_FAILED" => "selection-smoke-failure-SIDECAR_PROTOCOL_FAILED",
+            "SIDECAR_EXITED" => "selection-smoke-failure-SIDECAR_EXITED",
             "SIDECAR_EXITED_UNEXPECTEDLY" => "selection-smoke-failure-SIDECAR_EXITED_UNEXPECTEDLY",
             "SIDECAR_PROTOCOL_INVALID" => "selection-smoke-failure-SIDECAR_PROTOCOL_INVALID",
             "SIDECAR_CRASHED" => "selection-smoke-failure-SIDECAR_CRASHED",
@@ -3675,6 +3711,12 @@ pub fn record_selection_smoke_checkpoint(
             "DATASET_TRANSPORT_INVALID" => "selection-smoke-failure-DATASET_TRANSPORT_INVALID",
             "WORKER_RUNTIME_FAILED" => "selection-smoke-failure-WORKER_RUNTIME_FAILED",
             "WORKER_TIMEOUT" => "selection-smoke-failure-WORKER_TIMEOUT",
+            "MEMORY_PRESSURE" => "selection-smoke-failure-MEMORY_PRESSURE",
+            "CLEANUP_REQUIRED" => "selection-smoke-failure-CLEANUP_REQUIRED",
+            "SESSION_CLEANUP_FAILED" => "selection-smoke-failure-SESSION_CLEANUP_FAILED",
+            "SESSION_STALE" => "selection-smoke-failure-SESSION_STALE",
+            "SELECTION_STALE" => "selection-smoke-failure-SELECTION_STALE",
+            "SOURCE_SET_INVALID" => "selection-smoke-failure-SOURCE_SET_INVALID",
             "INVALID_REQUEST" => "selection-smoke-failure-INVALID_REQUEST",
             "INVALID_STATE" => "selection-smoke-failure-INVALID_STATE",
             _ => return Err(IpcError::with_code(None, FailureCode::InvalidState)),
@@ -4131,12 +4173,20 @@ pub fn commit_worker_result(
     if command.capability.window_id != window.label() {
         return Err(IpcError::with_code(None, FailureCode::WindowNotAuthorized));
     }
+    let session_id = command.capability.session_id.clone();
+    let generation = command.capability.generation;
     let result_id = state
         .commit_worker_operation(window.label(), command.capability, aggregate)
         .map_err(|code| IpcError::with_code(None, code))?;
-    state
-        .publish_state(&window, "complete")
-        .map_err(|code| IpcError::with_code(None, code))?;
+    if let Err(code) = state.publish_state(&window, "complete") {
+        let terminal_replacement = code == FailureCode::StaleEvent
+            && state
+                .has_active_terminal_complete_session(window.label(), &session_id, generation)
+                .unwrap_or(false);
+        if !terminal_replacement {
+            return Err(IpcError::with_code(None, code));
+        }
+    }
     Ok(WorkerCommitAck {
         protocol_version: WORKER_CAPABILITY_PROTOCOL_VERSION,
         accepted: true,
@@ -4587,6 +4637,9 @@ mod tests {
                 &event(4, "state", serde_json::json!({"state":"complete"})),
             )
             .unwrap();
+        assert!(state
+            .has_active_terminal_complete_session("main", session, 1)
+            .unwrap());
         assert_eq!(
             state.accept_event(
                 "main",
@@ -4604,6 +4657,9 @@ mod tests {
                 ),
             )
             .unwrap();
+        assert!(!state
+            .has_active_terminal_complete_session("main", session, 1)
+            .unwrap());
         assert_eq!(
             state.accept_event(
                 "main",

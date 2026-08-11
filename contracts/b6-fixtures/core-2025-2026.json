@@ -1,0 +1,51 @@
+{
+  "exportInfo": {
+    "format": "detailed-json",
+    "version": "b6-synthetic-v1"
+  },
+  "session": {
+    "isGroup": false,
+    "type": "私聊",
+    "platform": "synthetic-platform",
+    "ownerId": "b6-synthetic-owner",
+    "wxid": "b6-synthetic-peer"
+  },
+  "messages": [
+    {
+      "localId": 7,
+      "platformMessageId": "b6-msg-007",
+      "createTime": 1747713600,
+      "formattedTime": "2025-05-20 12:00:00",
+      "senderUsername": "b6-synthetic-owner",
+      "content": "本地 合成词 午间安排",
+      "chatLabType": 0,
+      "type": "文本消息",
+      "localType": 1,
+      "isSend": 1
+    },
+    {
+      "localId": 9,
+      "platformMessageId": "b6-msg-009",
+      "createTime": 1768001400,
+      "formattedTime": "2026-01-10 07:30:00",
+      "senderUsername": "b6-synthetic-owner",
+      "content": "合成词 部分范围 早安",
+      "chatLabType": 0,
+      "type": "文本消息",
+      "localType": 1,
+      "isSend": 1
+    },
+    {
+      "localId": 10,
+      "platformMessageId": "b6-msg-010",
+      "createTime": 1768037400,
+      "formattedTime": "2026-01-10 17:30:00",
+      "senderUsername": "b6-synthetic-peer",
+      "content": "合成词 部分范围 晚安",
+      "chatLabType": 0,
+      "type": "文本消息",
+      "localType": 1,
+      "isSend": 0
+    }
+  ]
+}

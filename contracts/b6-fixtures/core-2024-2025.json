@@ -1,0 +1,76 @@
+{
+  "exportInfo": {
+    "format": "detailed-json",
+    "version": "b6-synthetic-v1"
+  },
+  "session": {
+    "isGroup": false,
+    "type": "私聊",
+    "platform": "synthetic-platform",
+    "ownerId": "b6-synthetic-owner",
+    "wxid": "b6-synthetic-peer"
+  },
+  "messages": [
+    {
+      "localId": 3,
+      "platformMessageId": "b6-msg-003",
+      "createTime": 1704245400,
+      "formattedTime": "2024-01-03 09:30:00",
+      "senderUsername": "b6-synthetic-owner",
+      "content": "本地合成词 共同回顾 早上好",
+      "chatLabType": 0,
+      "type": "文本消息",
+      "localType": 1,
+      "isSend": 1
+    },
+    {
+      "localId": 4,
+      "platformMessageId": "b6-msg-004",
+      "createTime": 1718448300,
+      "formattedTime": "2024-06-15 18:45:00",
+      "senderUsername": "b6-synthetic-peer",
+      "content": "[图片]",
+      "chatLabType": 1,
+      "type": "图片消息",
+      "localType": 3,
+      "isSend": 0
+    },
+    {
+      "localId": 6,
+      "platformMessageId": "b6-msg-006",
+      "createTime": 1735776600,
+      "formattedTime": "2025-01-02 08:10:00",
+      "senderUsername": "b6-synthetic-peer",
+      "content": "合成词 继续观察节奏",
+      "chatLabType": 0,
+      "type": "文本消息",
+      "localType": 1,
+      "isSend": 0,
+      "replyToMessageId": "b6-msg-003"
+    },
+    {
+      "localId": 7,
+      "platformMessageId": "b6-msg-007",
+      "createTime": 1747713600,
+      "formattedTime": "2025-05-20 12:00:00",
+      "senderUsername": "b6-synthetic-owner",
+      "content": "本地 合成词 午间安排",
+      "chatLabType": 0,
+      "type": "文本消息",
+      "localType": 1,
+      "isSend": 1
+    },
+    {
+      "localId": 8,
+      "platformMessageId": "b6-msg-008",
+      "createTime": 1757424600,
+      "formattedTime": "2025-09-09 21:30:00",
+      "senderUsername": "b6-synthetic-peer",
+      "content": "[语音消息]",
+      "chatLabType": 2,
+      "type": "语音消息",
+      "localType": 34,
+      "isSend": 0
+    }
+  ]
+}

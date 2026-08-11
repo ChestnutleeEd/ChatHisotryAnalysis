@@ -59,6 +59,48 @@ class Stage11SourceContractTests(unittest.TestCase):
         cargo = (ROOT / "src-tauri" / "Cargo.toml").read_text(encoding="utf-8")
         self.assertIn('default = ["synthetic-test-helpers"]', cargo)
         self.assertEqual(cargo.count('required-features = ["synthetic-test-helpers"]'), 2)
+        self.assertIn('packaged-b6-acceptance = ["synthetic-dialog-adapter"]', cargo)
+
+    def test_b6_fixtures_are_small_synthetic_and_cover_the_frozen_families(self) -> None:
+        fixture_root = ROOT / "contracts" / "b6-fixtures"
+        core = [
+            json.loads((fixture_root / name).read_text(encoding="utf-8"))
+            for name in (
+                "core-2023-2024.json",
+                "core-2024-2025.json",
+                "core-2025-2026.json",
+            )
+        ]
+        messages = [message for document in core for message in document["messages"]]
+        self.assertGreaterEqual(
+            len({message["formattedTime"][:4] for message in messages}),
+            3,
+        )
+        self.assertEqual(
+            len({message["platformMessageId"] for message in messages}),
+            len(messages) - 3,
+        )
+        self.assertEqual(
+            {message["isSend"] for message in messages},
+            {0, 1},
+        )
+        self.assertGreaterEqual(len({message["chatLabType"] for message in messages}), 3)
+        self.assertLess(sum(path.stat().st_size for path in fixture_root.glob("core-*.json")), 30_000)
+        edge = json.loads((fixture_root / "edge-sparse.json").read_text(encoding="utf-8"))
+        self.assertLessEqual(len(edge["messages"]), 2)
+        self.assertEqual({message["isSend"] for message in edge["messages"]}, {0, 1})
+        with self.assertRaises(json.JSONDecodeError):
+            json.loads((fixture_root / "malformed.json").read_text(encoding="utf-8"))
+
+    def test_b6_packaging_has_one_explicit_work_root_and_no_recursive_cleanup(self) -> None:
+        source = (ROOT / "scripts" / "package_macos_prototype.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('B6_WORK_ROOT_RELATIVE = Path("build/stage11/macos-arm64/b6-final-acceptance")', source)
+        self.assertIn('output_root = candidate / "final-release"', source)
+        self.assertIn('"--b6-acceptance"', source)
+        self.assertNotIn("shutil.rmtree", source)
+        self.assertNotIn("rm -rf", source)
 
     def test_placeholder_icons_are_real_assets(self) -> None:
         png = (ROOT / "src-tauri" / "icons" / "icon.png").read_bytes()
