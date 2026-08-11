@@ -524,7 +524,7 @@ Home, mode/year/filter/session/role/metric/vocabulary/chapter/export/recovery co
 - **THEN** every heading, metric, chart, control, scope label, privacy statement, and navigation affordance remains complete and understandable
 
 ### Requirement: Synthetic-only verification and packaged Beta boundary
-Automated and agent-run tests SHALL use synthetic fixtures only and SHALL cover the unit, Worker, layout, React, Rust/export, privacy, deterministic, cancellation, stale, responsive, motion, and accessibility matrices frozen in `design.md`. Final B6 SHALL validate the packaged `.app`, prototype `.dmg`, offline, no-account, and zero-external-request synthetic vertical. Real-data acceptance SHALL require separate user authorization and manual user execution.
+Automated and agent-run tests SHALL use synthetic fixtures only and SHALL cover the unit, Worker, layout, React, Rust/export, privacy, deterministic, cancellation, stale, responsive, motion, and accessibility matrices frozen in `design.md`. Final B6 SHALL use only the bounded Core multi-year, Edge/sparse, and Malformed/import-error fixture families; validate one final macOS arm64 ad-hoc packaged `.app`, prototype `.dmg`, clean-install, offline, no-account, and zero-external-request holistic product vertical; and publish source-attributed acceptance evidence. Real-data acceptance SHALL require separate manual user execution and MUST NOT be discovered, selected, opened, parsed, screenshotted, or judged by an agent.
 
 #### Scenario: Run automated acceptance
 - **WHEN** a Luna Max implementation stage reaches its gate
@@ -532,7 +532,56 @@ Automated and agent-run tests SHALL use synthetic fixtures only and SHALL cover 
 
 #### Scenario: Reach real-data gate
 - **WHEN** all synthetic packaged prerequisites pass
-- **THEN** the agent stops at the existing authorization boundary and does not execute productization 12.7/12.8 or legacy 13.10/15.10 without separate explicit authorization
+- **THEN** the agent reports `PASS WITH USER ACCEPTANCE PENDING`, sets `BETA_PACKAGE_READY_FOR_USER_TEST=true`, stops at the real-data boundary, and does not execute productization 12.7/12.8 or legacy 13.10/15.10
+
+#### Scenario: Bound packaged fixtures
+- **WHEN** B6 executes the packaged vertical
+- **THEN** Fixture A supplies at least three synthetic years, multiple files, overlap/dedup, both anonymous roles, varied categories/activity/replies/sessions/vocabulary and all/year scopes, while Fixtures B and C are used only for bounded sparse/fallback and malformed/recovery seams and broad matrices remain automated
+
+### Requirement: Final packaged Beta product gate
+B6 SHALL rerun the complete current source regression matrix at the final HEAD, produce one official package under the single bounded work root frozen in `design.md`, and exercise the whole Beta product rather than only B5. The clean-install vertical SHALL include native user-driven multi-file import, canonical analysis, Home, Annual seven-scene flow, all-years and per-year scopes, vocabulary controls, deterministic Word Cloud, Closing, one Share Preview/native PNG save/readback, Detailed explicit Apply semantics, all eight Detailed routes, one existing aggregate export, critical cancel/retry/reselect, complete quit, sidecar/lease cleanup, restart, and expected bounded preferences. Network attempts SHALL equal zero, and the copied app MUST NOT depend on the repository, source tree, Node/npm, user/system Python, Rust/dev tools, external fonts, CDN, or remote images.
+
+#### Scenario: Correlate annual scopes
+- **WHEN** the packaged vertical commits all years, Year A, Year B, and all years again
+- **THEN** the visible selector, committed report, Annual facts, vocabulary, keywords, word cloud/list, share-card content, export filename, and scope labels move together without old data under a new label
+
+#### Scenario: Preserve explicit Detailed Apply
+- **WHEN** a user edits a Detailed draft filter before selecting Apply
+- **THEN** analytics do not recompute, and selecting Apply publishes exactly one matching committed result while every Detailed route and the aggregate export remain usable
+
+#### Scenario: Complete offline clean install
+- **WHEN** the `.app` copied from the verified prototype DMG runs outside the repository with network blocked
+- **THEN** import, analysis, Home, Annual, Detailed, local artwork, Share Preview, native PNG save/readback, quit, and restart succeed with zero external attempts and a bundle-relative sidecar
+
+#### Scenario: Reuse closed evidence
+- **WHEN** B6 assesses deterministic Canvas pixels, raw IPC/lease behavior, word-cloud geometry, accessibility interactions, or Alpha sidecar/import edges already accepted at the current baseline
+- **THEN** it cites the accepted B5/B4/Alpha evidence, reruns the final integration smoke and current source regressions, and does not repeat every closed low-level matrix manually in the package
+
+### Requirement: B6 visual, performance, accessibility, and recovery threshold
+B6 SHALL block on a broken or unusable standard/narrow/200%-zoom layout, major overflow or accidental whitespace regression, missing required artwork/fallback, unreadable chart/table/list, serious navigation/focus/ARIA/contrast/reduced-motion regression, main-thread word-cloud layout, unusable Worker failure without list fallback, broken cancellation, unbounded cache/item/payload/PNG behavior, stale result publication, privacy leakage, or user-visible freeze. Recorded module-level visual polish debt, minor aesthetic differences, diagnostic target variance without user-visible failure, and Release-grade benchmark/certification work MUST NOT block Beta.
+
+#### Scenario: Retain accepted polish debt
+- **WHEN** final Annual and Detailed screens remain usable, readable, non-overflowing, keyboard-operable, and free of visual-rubric `FAIL` while a known module-level polish item remains
+- **THEN** B6 records the debt and may pass without starting a visual redesign
+
+#### Scenario: Recover from bounded failures
+- **WHEN** malformed import, import/analysis cancellation, renderer failure, native save cancellation/failure, retry, reselect, stale work, or startup recovery is exercised through the packaged critical smoke plus current automated evidence
+- **THEN** no crash, source/path disclosure, stale publication, orphan sidecar, active lease, hidden temporary state, or unsafe fallback remains
+
+### Requirement: B6 evidence, status, and package retention
+The B6 report SHALL separate Automated Source Gates, Packaged Synthetic Gates, Evidence Reused, and User Manual Gate; SHALL distinguish `FAIL`, `BLOCKED`, `PASS`, and `PASS WITH USER ACCEPTANCE PENDING`; and SHALL never claim Release, Production, public-distribution, notarization, or formal supply-chain readiness. Until B6 passes, the verified B5 package SHALL remain the rollback. After the B6 package and every synthetic gate pass, the final retained verified set SHALL be the new B6 package plus B5 `final-release`; the older `package-20260810T065335Z` tree SHALL be removed manually by the user because recursive/batch deletion is prohibited, then verified read-only by the agent. Build caches and `target` MUST NOT be mass-deleted.
+
+#### Scenario: Report successful agent gate
+- **WHEN** all automated and packaged synthetic Beta gates pass but the user has not run real data
+- **THEN** the report states `PASS WITH USER ACCEPTANCE PENDING`, `BETA_PACKAGE_READY_FOR_USER_TEST=true`, and `RELEASE_READY=false` without treating the pending user check as `BLOCKED`
+
+#### Scenario: Preserve rollback on failure
+- **WHEN** the B6 package or holistic vertical fails
+- **THEN** the B5 verified package remains available, the older rollback is not deleted merely to reduce package count, and the report stops as `FAIL` or `BLOCKED` with no real-data or Release work
+
+#### Scenario: Close storage gate after pass
+- **WHEN** the new B6 package is fully verified and the user has manually removed the designated older package tree
+- **THEN** read-only inspection shows exactly the new B6 verified package and B5 `final-release`, at most one active clean-install copy, and no retained synthetic PNG or temporary screenshot required only for the completed smoke
 
 ### Requirement: Beta blockers and Release deferrals
 Beta acceptance SHALL fail for Dashboard regression, source reread, private-data access, network/upload/runtime-art dependency, canonical dataset in React state, main-thread tokenization, changed word-cloud geometry, privacy-leaking export, unresolved visual-rubric `FAIL`, unusable 1180×760/760×900/380×900/200%-zoom layout, broken artwork crop/fallback, lost applied state, packaged startup failure, serious accessibility regression, or stale/cross-year display. B5 and B6 MUST remain blocked until V1–V3 human stop gates pass. The recorded 5B.23 progression acceptance MAY retain known module-level visual polish debt but MUST NOT be represented as complete visual-debt resolution or used to broaden B5 into Annual 1–15/Detailed redesign. Developer ID, notarization, stapling, Windows, auto-update, public Release, D.1–D.10, exhaustive inputs, full dark mode, possible-name filtering, advanced NER/NLP, all image formats, and Release-grade certification SHALL NOT be Beta blockers.

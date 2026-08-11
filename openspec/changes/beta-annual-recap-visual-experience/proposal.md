@@ -1,8 +1,8 @@
 ## Why
 
-The Beta now has the local desktop runtime, complete annual facts, Detailed Analysis, scoped vocabulary evidence, Clean Mode, and deterministic word cloud, but packaged visual acceptance rejected its presentation quality. Repeated cards, unstable column spans, excessive display type, uniform blue-bar charts, toolbar-like navigation, and almost no art direction make Annual Recap feel like a decorated Dashboard and Detailed Analysis feel like an engineering console.
+The Beta now has the local desktop runtime, complete annual facts, Detailed Analysis, scoped vocabulary evidence, Clean Mode, deterministic word cloud, Design System v2, and the completed B5 Summary / Share / PNG export path. The remaining Beta work is one final packaged synthetic acceptance gate proving that the complete local product can be handed to the user for separately performed real-data acceptance.
 
-Visual re-architecture must therefore precede B5 sharing/motion and B6 packaged acceptance. The accepted analytics, privacy, query, vocabulary, word-cloud geometry, and export-authority contracts remain protected; this change refreezes only presentation architecture and a repository-owned generated-art pipeline.
+The completed visual re-architecture and B5 sharing work now form the protected baseline for B6. The accepted analytics, privacy, query, vocabulary, word-cloud geometry, both export authorities, and generated-art pipeline remain protected while the final gate verifies their packaged integration.
 
 ## What Changes
 
@@ -30,6 +30,9 @@ Visual re-architecture must therefore precede B5 sharing/motion and B6 packaged 
 - Add an in-app share-preview dialog/full-screen narrow sheet, deterministic Canvas 2D renderer, one-use raw-binary Tauri lease/save flow, explicit user-selected native destination, stable cancellation/failure recovery, and lightweight reduced-motion-safe completion feedback.
 - Record that 5B.23 is accepted for progression while known module-level visual polish debt remains; this authorizes B5 implementation only and does not claim that all Annual/Detailed visual debt is resolved.
 - Preserve the detailed Dashboard, canonical v2, fixed UTC+08:00 semantics, current filters/query generation/cancellation/stale suppression, local-only runtime, and aggregate export authority.
+- Freeze B6 as one macOS arm64 ad-hoc `.app`/prototype `.dmg` build, one clean-install offline synthetic product vertical, and one source-attributed acceptance report covering Home, Annual, Detailed, both export authorities, lifecycle, privacy, accessibility, performance, package integrity, and storage hygiene.
+- Define B6 success as `BETA READY FOR USER REAL-DATA ACCEPTANCE`, never Release, Production, or public-distribution readiness; a successful agent gate ends as `PASS WITH USER ACCEPTANCE PENDING` until the user completes the separate 10–20 minute real-data checklist.
+- Separate evidence newly executed at the final HEAD from accepted Alpha/B1–B5 evidence that is reused, so B6 retests integration seams without repeating closed deterministic PNG, raw IPC/lease, or complete word-cloud design matrices.
 
 ## Non-goals
 
@@ -41,7 +44,7 @@ Visual re-architecture must therefore precede B5 sharing/motion and B6 packaged 
 - Rewriting Dashboard data logic or Worker query commit semantics as part of visual uplift; Beta may change typography, spacing, surfaces, controls, navigation styling, tables, charts, disclosures, badges, and metadata hierarchy only.
 - Executing private-data Stage 12.7/12.8, legacy Stage 13.10/15.10, or recording any private aggregate as implementation evidence.
 - Full dark mode, possible-name filtering or named-entity recognition, a general-purpose NLP pipeline, chapter-by-chapter PNG, or long/multipage report export in the first Beta.
-- Production React/CSS/Rust/TypeScript implementation or final image generation in this B5 planning-freeze batch. B5 implementation remains split into bounded later batches with independent stop points.
+- Production implementation, package generation, final image generation, private-data acceptance, or Release hardening in the B6 planning-freeze batch.
 
 ## Capabilities
 
@@ -59,4 +62,4 @@ None. The repository has no main `openspec/specs/` capability baseline, and this
 - Planned host areas: compatible additions to `frontend/src/desktop/`, `src-tauri/src/ipc.rs`, `src-tauri/src/export.rs`, and `src-tauri/src/export_schema.rs` for a bounded one-use opaque-binary presentation-PNG save authority. The existing numeric aggregate export remains unchanged; no broader filesystem, shell, HTTP, opener, updater, clipboard, social, or window authority is added.
 - Planned tests use only existing or new synthetic fixtures under `frontend/tests/`, `src-tauri` tests, and packaged synthetic acceptance scripts.
 - Existing dependencies `React`, `ECharts`, `echarts-wordcloud`, `jieba-wasm`, Tauri 2, Rust, and the packaged PyInstaller `onedir` sidecar remain available. V1–V3 add no UI framework, CSS-in-JS system, icon pack, word-cloud library, runtime image-generation client, animation framework, CDN, remote font, or remote image dependency; generated art is copied into and bundled from the repository only after review and optimization.
-- Production implementation is intentionally deferred to separate Luna Max batches; this change contains planning artifacts only.
+- B6 implementation is deferred to one bounded Luna Max acceptance batch. This planning freeze changes only existing OpenSpec artifacts and does not generate a package, fixture output, screenshot, artwork, or production implementation.

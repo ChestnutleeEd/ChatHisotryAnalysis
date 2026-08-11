@@ -2,9 +2,9 @@
 
 ### Repository baseline used by this design
 
-B5 planning was re-baselined on branch `feat/implement-local-chat-wordcloud-mvp` at full initial HEAD `5937a04d11a20227588f2d97259a60e1484a650f` (`fix: tighten annual recap scene rhythm`) with a clean workspace and upstream `0/0`. `data/private` is ignored by `.gitignore:4`; only `git check-ignore -v data/private` was run against that boundary. No private source, aggregate, screenshot content, filename, path, real identity, or real statistic was read or used in planning or an art prompt.
+B6 planning was re-baselined on branch `feat/implement-local-chat-wordcloud-mvp` at full initial HEAD `130fad8d6a89f074e234f7fe6add00c747e88d11` (`fix: complete packaged beta share export`) with a clean workspace and upstream `0/0`. `data/private` is ignored by `.gitignore:4`; only `git check-ignore -v data/private` was run against that boundary. No private directory was listed, searched, or traversed, and no private source, aggregate, screenshot content, filename, path, real identity, or real statistic was read or used.
 
-OpenSpec reports this change artifact-complete with `86/109` checked tasks before the B5 planning freeze. B1a, B1b, B2, B3, B4, Visual Re-architecture V1–V3 implementation, and screenshot polish are complete. The user has accepted 5B.23 for progression with **known module-level visual polish debt**; this is permission to begin the B5 line after this freeze, not a claim that every Annual or Detailed visual debt is resolved. B5 implementation, B6, Release hardening, and deferred work have not begun.
+OpenSpec reports this change at `116/128` checked tasks before the B6 planning freeze. Alpha productization synthetic gates, B1a–B4, Visual Re-architecture V1–V3, screenshot polish, and B5.1–B5.6 are complete. The retained B5 package manifest proves packaged native save/readback, zero network attempts, bundle-relative artwork, quit/restart, and temporary-PNG cleanup with synthetic evidence. B6 implementation, Release hardening, deferred work, and every real-data manual gate remain unstarted.
 
 ### Existing architecture
 
@@ -742,7 +742,151 @@ Rust/IPC tests first prove the one-use lease plus top-level opaque-binary reques
 
 B5 keeps at most the two newest package artifacts already permitted by project practice, one clean-install copy for the active smoke, and only the selected production asset. Temporary screenshots and render probes remain outside tracked paths and are removed one explicit file at a time after evidence is recorded. Rejected ImageGen candidates remain in the tool-owned review area or are removed individually; they are never accumulated in the bundle or committed. Build caches are not mass-deleted. Any cleanup requiring multiple files or recursive deletion stops for user action. The gate audits `git status`, tracked asset sizes, package count, and ignored artifacts without opening or traversing `data/private`.
 
-### 15. Luna Max implementation stages after visual-plan freeze
+### 15. B6 final packaged acceptance freeze
+
+#### 15.1 Meaning, status, and boundary
+
+B6 is the **Beta Packaged Acceptance / Final Beta Gate**. Its only product claim is:
+
+```text
+BETA READY FOR USER REAL-DATA ACCEPTANCE
+BETA_PACKAGE_READY_FOR_USER_TEST=true
+RELEASE_READY=false
+```
+
+Passing B6 means the current macOS arm64 local prototype is suitable for the user to exercise with real data manually. It does not mean Production Ready, Release Ready, Public Distribution Ready, or App Store Ready. Developer ID, notarization, stapling, hardened-runtime Release proof, public installer polish, supply-chain attestation, exhaustive tamper/IPC/lifecycle matrices, Windows, updater, full cross-language conformance, complete WebKit permission proof, and productization D.1–D.10 remain Release-only and cannot block Beta.
+
+The final status taxonomy is:
+
+| Status | Meaning |
+|---|---|
+| `FAIL` | Current source/package behavior violates a frozen Beta requirement and can be corrected in-repository. Stop the acceptance batch, preserve B5 rollback, and plan a bounded fix before rerunning B6. |
+| `BLOCKED` | An external/environmental condition prevents meaningful continuation, or satisfying the gate would require changing a frozen architecture/privacy boundary. Record evidence and stop for direction. |
+| `PASS` | Every agent-runnable source and packaged synthetic gate passed. |
+| `PASS WITH USER ACCEPTANCE PENDING` | The normal final product state after `PASS`: the package is ready, while real-data judgment remains exclusively with the user. This is not `BLOCKED`. |
+
+#### 15.2 Actual B6 tasks and incomplete-change relationship
+
+The pre-freeze B6 tasks found at baseline are classified as follows; tasks 7.1–7.7 in `tasks.md` are the reconciled execution form of this same scope:
+
+| Task | Gate classes | Clarified B6 meaning |
+|---|---|---|
+| 7.1 | A, C, D, E, F, G, H, I | Add only the three bounded synthetic fixture families and acceptance orchestration needed for the final vertical; automated matrices retain broad edge coverage. |
+| 7.2 | A, G, H, I | Run current Python/frontend/Worker/browser/Rust/OpenSpec source regressions once at final HEAD. |
+| 7.3 | B, C, D, E, F, G, J | Run one clean-install `.app` holistic vertical including both export paths, lifecycle, and restart. |
+| 7.4 | B, G, J | Produce and verify one ad-hoc prototype `.dmg`, package manifest, architecture/signature, offline bundle, and dependency independence. |
+| 7.5 | D, E, F, G, H, I | Prove only the high-value packaged visual, scope, accessibility, performance, determinism, and bounds regressions. |
+| 7.6 | K | Record the user-only real-data gate without executing it. |
+| 7.7 | A, B, J, K | Publish source-attributed Beta evidence/docs and the user checklist, enforce exact staging/Git/storage hygiene, and stop. |
+
+Deferred task 8.5 and productization D.1–D.10 are class L, Release-only. Productization 12.7/12.8 and legacy word-cloud 13.10/15.10 remain user-manual real-data stop gates and are not executed or checked by B6. Legacy unchecked 13.1–13.9, 14.1–14.12, and 15.1–15.9 remain historical change bookkeeping: B6 does not retroactively mark them complete, but its current-source matrix MUST cover their Beta-relevant browser/Worker/offline/privacy/capacity regression seams through the completed productization and current frontend suites. Legacy claims superseded by the desktop productization evidence do not create a second Beta gate.
+
+#### 15.3 Evidence reuse versus final rerun
+
+Reused evidence, cited by source and not rerun as a full matrix:
+
+- Alpha/productization canonical-v2 import, deterministic merge/dedup, source-selection privacy, sidecar supervision, cancellation/retry/reselect/recovery, bundle-relative runtime, aggregate export authority, synthetic capacity boundary, and representative tamper/wrong-architecture checks.
+- V1–V3 and 5C synthetic visual/browser acceptance, including accepted known module-level polish debt.
+- B5.3 same-environment Canvas determinism, opaque 1200×1500 PNG, font/art fallback, and renderer cleanup.
+- B5.4 raw Tauri transport, one-use lease, PNG parser/metadata, native save, and atomic-write unit/integration matrices.
+- B5.5 dialog keyboard/focus/ARIA, reduced motion, narrow/200% zoom, and interaction states.
+- B5.6 actual packaged `NSSavePanel`, Preview→Save→readback, vocabulary off/on, zero network attempts, bundle-relative artwork, quit/restart, and temporary-PNG cleanup.
+
+B6 MUST rerun at final HEAD: the complete current source regression commands; one final package build; one DMG verification and clean-install copy; one offline holistic synthetic vertical; all→Year A→Year B→all scope correlation; Detailed draft-versus-applied Apply behavior; all eight Detailed routes; one aggregate export smoke; one share Preview→Save→readback smoke; critical cancel/retry/reselect; quit/restart; dependency independence; package/storage manifest; and strict/full OpenSpec plus Git hygiene. It MUST NOT repeat the full PNG chunk/RGBA/lease matrix, full B4 geometry/design proof, every import edge manually, or every packaged failure injection.
+
+#### 15.4 Synthetic fixture families
+
+Only three small, public, deterministic fixture families may drive packaged acceptance:
+
+| Fixture | Required coverage |
+|---|---|
+| A — Core multi-year | At least three years across multiple annual files; one overlap/duplicate; Owner and Other; text/media/unknown categories; varied daily/month/hour activity; reply/session boundaries; eligible vocabulary; frequent and distinctive terms; a partial first or last period; all-years and per-year reports. Values are plainly synthetic and stable. |
+| B — Edge/sparse | Short range; missing optional facts; zero/near-zero denominators; single/sparse role evidence; unavailable distinctive keywords; optional unavailable vocabulary/cloud/share facts; code-native artwork fallback. |
+| C — Malformed/import error | One bounded unsupported or malformed source proving content-free error, no crash, retained safe state, retry, and reselect. It never enters analytics. |
+
+Fixture A is the only complete packaged vertical. Fixture B is used for targeted automated/browser or one bounded packaged empty/fallback smoke only where current evidence is insufficient. Fixture C is used only for the import error/recovery seam. Large capacity, exhaustive dedup, format, token, lease, and malformed matrices stay automated; B6 does not create dozens of packaged fixture files.
+
+#### 15.5 One package and holistic vertical
+
+The B6 implementation uses one logical `B6_WORK_ROOT`, fixed as `build/stage11/macos-arm64/b6-final-acceptance`, and one final output `final-release`. The current timestamp-per-run packaging entry MUST gain or use a bounded explicit work-root mode before the official build so B6 does not create `b6-rebuild-1/2/3/...`. A transient pre-publication failure may retry only inside the same bounded root. Because repository policy forbids recursive/batch deletion, any failed non-empty root that cannot be reused safely is reported for user deletion before retry; the agent never runs recursive cleanup.
+
+The required vertical is:
+
+```text
+verify final source gates
+→ build one macOS arm64 ad-hoc .app and prototype .dmg
+→ mount/copy/unmount into one Applications-like clean-install location
+→ block/observe network
+→ launch outside repository with isolated user/work/temp roots
+→ select Fixture A through the native user-driven chooser
+→ multi-file/multi-year preprocessing, overlap handling, canonical analysis
+→ Home
+→ Annual all years
+→ Year A
+→ Year B
+→ all years restored
+→ inspect Opening, Scale, Rhythm, Balance, Conversation, Vocabulary, Word Cloud, Closing
+→ toggle raw/per-10k, role, Clean Mode, and one custom hidden word
+→ verify no hidden-word resurrection or stale DTO
+→ Share Preview with vocabulary off, optionally on
+→ native PNG Save and readback
+→ Detailed
+→ edit draft filter and prove no recompute before Apply
+→ Apply and prove one matching committed update
+→ visit all eight routes
+→ run one existing aggregate export smoke
+→ exercise one critical cancel plus retry/reselect path using Fixture C where practical
+→ quit completely
+→ verify no sidecar/orphan/active lease
+→ restart
+→ verify no auto-open Preview/stale save status/hidden temp state and expected bounded preferences
+→ confirm network attempts = 0
+```
+
+For the high-value year regression, the selector, committed report query, Annual facts, vocabulary, keywords, word cloud/list, share-card content, aggregate/share default filenames, and visible scope label MUST all move together through all→A→B→all. Retained old evidence may remain visible only under its old label while pending; “old data + new label” is a hard `FAIL`.
+
+Detailed draft filters MUST differ from applied filters. Editing does not recalculate; Apply commits once and updates the visible query/result. Home/Annual/Detailed mode switching, report scenes, Detailed routes, back/forward where implemented, and return state MUST work without raw reread, duplicate analysis, or reload dependency. The existing aggregate export and the new presentation PNG remain separate authorities; B6 smokes each once and does not refactor them.
+
+#### 15.6 Minimum product gates
+
+- **Visual:** Annual and Detailed retain readable hierarchy, generated artwork, usable word cloud/share card, query bar/routes/tables/charts/methodology, and standard/narrow/200% layouts. Broken layout, accidental giant whitespace regression, overflow, clipped/covered focus, missing artwork fallback, unreadable data, or navigation ambiguity that prevents use is a `FAIL`; minor aesthetic differences and recorded module-level polish debt are not.
+- **Performance:** hard blockers are main-thread word-cloud layout calls above zero, failed/unusable layout Worker without list fallback, pathological synthetic long tasks that make UI unusable, broken cancellation, unbounded cache/item/payload/PNG behavior, or obvious retained-memory growth beyond frozen bounds. Existing repeated diagnostic targets are recorded, not promoted to Release benchmarks or flaky single-run gates.
+- **Accessibility:** rerun final production browser/package regressions for keyboard, labels, semantic actions/navigation, focus-visible/focus return, live regions, exact chart/list alternatives, 200% zoom, narrow layout, contrast, and reduced motion. No full new WCAG audit is required; a serious loss from the accepted baseline is a blocker.
+- **Privacy/offline:** user-selected files only; no discovery; no account/cloud/upload/telemetry; no unnecessary path or OS-error exposure; no generic renderer filesystem authority; native save only after user choice; PNG contains only approved summary fields; Clean Mode/custom-hidden vocabulary cannot resurrect; `networkAttempts` equals zero.
+- **Dependency independence:** the copied clean-install App must launch and complete import, analysis, Annual, Detailed, local artwork, Preview, and PNG save without repository/source tree, Node/npm, system/user Python, Rust/dev tools, external fonts, CDN, or remote images. Sidecar resolution is bundle-relative.
+- **Sidecar/lifecycle:** start/IPC/import/cancel/quit cleanup/restart work; no orphan process, live Worker, active lease, or hidden temporary state remains after handled quit.
+- **Error/recovery:** automated evidence covers malformed/unsupported import, stale suppression, renderer/save failure, save retry, startup recovery, and broad cancellation points. The package vertical manually smokes malformed/reselect, one cancel/retry, save cancel/retry, and restart; it does not manufacture every low-level fault.
+- **Package integrity:** verify arm64 members, nested ad-hoc codesign, `.app`, `hdiutil verify`, mount/copy/unmount, manifest, existing wrong-architecture/tampered-member harness, and bundle contents. An empty-input SHA-256 is invalid evidence. Release trust root, notarization, exhaustive supply-chain/tamper proof, and formal clean-machine certification remain deferred.
+
+#### 15.7 Evidence report and storage contract
+
+The final B6 report MUST keep four evidence classes separate: `Automated Source Gates`, `Packaged Synthetic Gates`, `Evidence Reused`, and `User Manual Gate`. Each PASS cites the command, manifest/report, or retained authority that proves it; a single undifferentiated PASS list is invalid. The report records final HEAD/branch/Git state, fixture versions, `B6_WORK_ROOT`, package/DMG relative paths, manifest identity, architecture/signing/prototype limitations, network-attempt count, source-tree/dependency independence, visual/accessibility/performance diagnostics, lifecycle result, exact retained packages, and the final boolean claim. It contains no private path, source name, body, identity, token, real aggregate, or real screenshot.
+
+Storage is a hard B6 gate with the following order:
+
+1. Keep the currently verified B5 rollback at `build/stage11/macos-arm64/b5-rebuild-4/final-release` throughout B6.
+2. Build only under the single B6 work root; keep at most one active clean-install copy and remove each temporary screenshot or synthetic PNG by one explicit file path after evidence capture.
+3. If B6 fails, preserve the B5 rollback and do not delete the older verified package merely to improve counts.
+4. Only after the new B6 `.app`, `.dmg`, offline vertical, readback, restart, and manifest all pass, designate B6 `final-release` as current.
+5. Then ask the user to manually delete the older recursive tree `build/stage11/macos-arm64/package-20260810T065335Z`; the agent performs only a read-only count afterward because repository policy prohibits recursive/batch deletion.
+6. Final retained verified packages are exactly new B6 current plus B5 `final-release` rollback. Do not run `cargo clean`, delete `target`, use `/tmp` pseudo-cleanup, or remove necessary evidence for a cosmetic size target.
+
+#### 15.8 User real-data acceptance
+
+Agent B6 never discovers, selects, opens, parses, screenshots, or judges real CipherTalk JSON. After agent PASS, only the user performs this 10–20 minute checklist:
+
+1. Open the latest verified prototype DMG, copy the app, and launch the clean copy.
+2. Manually choose the intended real CipherTalk JSON file(s) and confirm import succeeds.
+3. Check Home and Annual all-years, then one represented year.
+4. Inspect Rhythm, Vocabulary, Word Cloud, and Closing for plausible scope and usable presentation.
+5. Generate the recap card; optionally enable vocabulary and save one real PNG to a user-chosen location.
+6. Enter Detailed, change one filter, verify nothing changes before Apply, then Apply.
+7. Inspect one Replies & Sessions or Message Types route and confirm values/labels appear plausible.
+8. Quit, relaunch, and confirm the app remains usable and does not expose stale save/preview state.
+
+The user judges only whether data looks reasonable, years/scopes are correct, UI is usable, and errors/freezes/exports are acceptable. The agent does not receive or inspect the result. If the user passes, Beta is complete and a new conversation may plan later visual polish or Release work. Data-correctness/privacy findings are blockers; functional bugs require a Beta fix; accepted visual-polish debt may go to backlog; Release-only findings remain later work. B6 never starts Release automatically.
+
+### 16. Luna Max implementation stages after visual-plan freeze
 
 B1a–B4 and the correctness/refinement work are the protected functional baseline. Visual implementation is split into three mandatory batches; no batch rewrites analytics, Worker DTOs, canonical v2, Clean Mode semantics, keyword scoring, word-cloud geometry, query identities, or export authority.
 
@@ -757,7 +901,7 @@ B1a–B4 and the correctness/refinement work are the protected functional baseli
 | B5.4 — Native save / Tauri IPC | prepare/cancel/raw-save commands, one-use lease, PNG validation, `NSSavePanel`, atomic write/errors | None | Locked Tauri 2.11.3 raw-body/header contract and Rust integration gate; Sol High only if permissions or transport boundary changes | Luna Max |
 | B5.5 — Motion + accessibility polish | bounded reveals, preview/success feedback, reduced motion, live regions, focus and narrow/zoom polish | No new generated art | Motion/a11y/browser gate; static behavior remains complete | Luna Max |
 | B5.6 — Packaged export acceptance | macOS arm64 `.app` synthetic vertical, offline/native save/art/font/storage audit | Verify selected local assets only | Packaged save/readability/clean-install/zero-network gate; stop before B6 scope | Luna Max |
-| B6 — Packaged Synthetic Beta Acceptance | existing `.app`/`.dmg`, offline and synthetic acceptance | Verify only repository-owned optimized assets are bundled and zero remote requests occur | May begin only after V3 and B5; packaged visual screenshot/rubric pass | Luna Max |
+| B6.1 — Final Synthetic Packaged Beta Gate | final source regression; bounded fixtures/scripts/docs; one official ad-hoc `.app`/prototype `.dmg`; clean-install offline holistic vertical; both exports; lifecycle; report; storage/Git closure | Verify only repository-owned optimized assets are bundled and zero remote requests occur; generate no artwork | Stop on FAIL/BLOCKED or after `PASS WITH USER ACCEPTANCE PENDING`; no real data or Release work | Luna Max |
 
 ```text
 protected B1a–B4 baseline → V1 → human stop → V2 → human stop → V3 → human stop → B5 → B6
@@ -765,7 +909,7 @@ protected B1a–B4 baseline → V1 → human stop → V2 → human stop → V3 �
 
 Every future implementation batch uses exact-path review/staging, synthetic data only, strict OpenSpec validation, `git diff --check`, and offline/no-private checks. Commit/push instructions belong to the future implementation turn, not this planning batch. If visual changes require a data contract, word-cloud geometry, or privacy boundary change, that batch stops for Sol High re-planning instead of broadening scope.
 
-### 16. Visual planning freeze and change control
+### 17. Visual planning freeze and change control
 
 This document, the capability spec, and tasks are the implementation authority for V1–V3. The old “Screenshot-driven refinement backlog” is no longer a loose backlog; its issues are absorbed into v2 diagnosis, scene/grid/type/chart/navigation requirements, generated-asset briefs, and visual gates. V1 may refine exact CSS variable names or component extraction, and image review may reject every candidate, but it may not change scene purposes, data meaning, accessibility, privacy, or stop points without updating OpenSpec first. Low-quality AI artwork is removed and the documented CSS/SVG fallback is used.
 
@@ -797,9 +941,9 @@ This document, the capability spec, and tasks are the implementation authority f
 2. Run V1 to install v2 tokens/grid/primitives, shell/navigation, and the reviewed opening/closing asset foundation; stop for human acceptance.
 3. Run V2 to recompose all Annual scenes and vocabulary/word-cloud framing without changing logical sections or geometry; stop for human acceptance.
 4. Run V3 to recompose Detailed Analysis without changing props, queries, metrics, routes, or exports; stop for human acceptance.
-5. Record 5B.23 as accepted for progression with known module-level polish debt, then implement B5.1→B5.6 in order with independent gates; do not reopen Annual 1–15 or Detailed visual debt inside B5.
-6. Complete B6 synthetic packaged acceptance. Rollback for V1–V3 is removal of the v2 presentation/selected art while the prior Detailed Dashboard, report data contracts, and deterministic cloud remain functional; no user data migration is required.
+5. Preserve the recorded 5B.23 progression decision and completed B5.1→B5.6 baseline with known module-level polish debt; do not reopen Annual 1–15 or Detailed visual debt inside B6.
+6. Run B6.1 once as the final synthetic packaged acceptance batch, retain B5 as rollback until B6 passes, then stop at `PASS WITH USER ACCEPTANCE PENDING`; no user data migration is required.
 
 ## Open Questions
 
-No product or architecture question blocks B5. The locked Tauri 2.11.3 API supports the frozen raw-body/header route, but the packaged contract test still precedes renderer/save integration; failure stops B5.4 for a bounded Sol High transport correction rather than falling back to base64/JSON bytes or granting renderer filesystem access. Asset selection is a quality gate: if no `share-card-field-v1` candidate passes in context, ship the frozen Canvas fallback. Word-cloud geometry is not reopened and the full cloud is not a B5 export.
+No product or architecture question blocks B6. The final gate uses the accepted Tauri 2.11.3 raw-body/header save path, repository-owned artwork plus frozen Canvas fallback, deterministic word-cloud geometry, and existing aggregate export authority unchanged. Any failure that would require altering those authorities stops as `FAIL` or `BLOCKED` for a separate correction; B6 does not fall back to base64/JSON bytes, renderer filesystem access, remote assets, main-thread layout, private-data automation, or Release scope.
