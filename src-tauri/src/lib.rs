@@ -8,6 +8,7 @@ pub mod export;
 pub mod export_schema;
 pub mod ipc;
 pub mod lifecycle;
+pub mod presentation_save;
 pub mod privacy_log;
 pub mod secure_storage;
 pub mod security;
@@ -202,6 +203,9 @@ pub fn run() {
         ipc::commit_worker_result,
         ipc::acknowledge_worker_stop,
         ipc::export_aggregate,
+        presentation_save::prepare_presentation_png,
+        presentation_save::cancel_presentation_png,
+        presentation_save::save_presentation_png,
         ipc::request_application_close,
         dataset_transport::open_dataset_stream,
         dataset_transport::receive_dataset_chunk,
@@ -223,6 +227,9 @@ pub fn run() {
         ipc::commit_worker_result,
         ipc::acknowledge_worker_stop,
         ipc::export_aggregate,
+        presentation_save::prepare_presentation_png,
+        presentation_save::cancel_presentation_png,
+        presentation_save::save_presentation_png,
         ipc::request_application_close,
         dataset_transport::open_dataset_stream,
         dataset_transport::receive_dataset_chunk,

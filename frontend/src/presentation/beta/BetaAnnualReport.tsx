@@ -66,6 +66,7 @@ export interface BetaAnnualReportProps {
   readonly onWordRoleChange?: (role: WordFrequencyRole) => void;
   readonly shareCardViewModel?: ShareCardViewModelV1;
   readonly onBuildSharePreview?: () => ShareCardPreviewModels | undefined;
+  readonly onSaveShareCardPng?: (viewModel: ShareCardViewModelV1, bytes: Uint8Array) => Promise<"saved" | "cancelled">;
 }
 
 function isBetaReportViewModel(
@@ -192,6 +193,7 @@ export function BetaAnnualReport({
   onWordRoleChange,
   shareCardViewModel,
   onBuildSharePreview,
+  onSaveShareCardPng,
 }: BetaAnnualReportProps) {
   if (isBetaReportViewModel(viewModel)) {
     return (
@@ -213,6 +215,7 @@ export function BetaAnnualReport({
         onWordRoleChange={onWordRoleChange}
         shareCardViewModel={shareCardViewModel}
         onBuildSharePreview={onBuildSharePreview}
+        onSaveShareCardPng={onSaveShareCardPng}
       />
     );
   }
@@ -447,6 +450,7 @@ function BetaCoreAnnualReport({
   onWordRoleChange,
   shareCardViewModel,
   onBuildSharePreview,
+  onSaveShareCardPng,
 }: BetaAnnualReportProps & { readonly viewModel: BetaReportViewModelV1 }) {
   const sharePreviewTriggerRef = useRef<HTMLButtonElement>(null);
   const [sharePreviewOpen, setSharePreviewOpen] = useState(false);
@@ -542,6 +546,7 @@ function BetaCoreAnnualReport({
           currentViewModel={shareCardViewModel}
           triggerRef={sharePreviewTriggerRef}
           onClose={() => setSharePreviewOpen(false)}
+          onSavePng={onSaveShareCardPng}
         />
       ) : null}
     </section>

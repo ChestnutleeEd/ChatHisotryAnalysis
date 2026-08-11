@@ -76,6 +76,7 @@ const FAILURE_MESSAGES: Readonly<Partial<Record<DesktopFailureCode, string>>> = 
   DATASET_HANDOFF_INVALID: "本地分析数据交接校验失败，可重试。",
   DATASET_TAMPERED: "本地分析数据完整性校验失败，可重试。",
   DIALOG_UNAVAILABLE: "当前平台无法打开原生文件选择器。",
+  EXPORT_DIALOG_UNAVAILABLE: "本机保存面板暂时不可用，请稍后重试。",
   EXPORT_BUSY: "已有导出正在进行，请等待当前保存流程结束。",
   EXPORT_RESULT_PENDING: "当前聚合结果仍在计算，请等待完整结果后重试。",
   EXPORT_STALE_RESULT: "当前导出结果已过期，请回到最新结果后重试。",

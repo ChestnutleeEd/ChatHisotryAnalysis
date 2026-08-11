@@ -11,7 +11,7 @@ async function openPreview(page: Page): Promise<void> {
   await expect(page.getByTestId("beta-share-card-preview")).toHaveAttribute("data-render-state", "ready");
 }
 
-test("opens a VM-backed preview with vocabulary opt-in, focus return, and no fake save", async ({ page }) => {
+test("opens a VM-backed preview with vocabulary opt-in, synthetic local save, and focus return", async ({ page }) => {
   const consoleErrors: string[] = [];
   page.on("console", (message) => { if (message.type() === "error") consoleErrors.push(message.text()); });
   page.on("pageerror", (error) => consoleErrors.push(error.message));
@@ -47,8 +47,11 @@ test("opens a VM-backed preview with vocabulary opt-in, focus return, and no fak
   expect(backgroundPixel?.[3]).toBe(255);
   await expect(card).toContainText("2025 年聊天回顾");
   await expect(card).toContainText("部分日期范围");
-  await expect(page.getByTestId("beta-share-preview-save")).toBeDisabled();
-  await expect(page.getByText("下一批接入本地保存。", { exact: true })).toBeVisible();
+  const save = page.getByTestId("beta-share-preview-save");
+  await expect(save).toBeEnabled();
+  await save.click();
+  await expect(dialog).toHaveAttribute("data-save-state", "saved");
+  await expect(page.getByText("回顾卡已保存到你选择的位置。", { exact: true })).toBeVisible();
 
   const ratio = await card.evaluate((element) => {
     const rect = element.getBoundingClientRect();
@@ -70,6 +73,18 @@ test("opens a VM-backed preview with vocabulary opt-in, focus return, and no fak
   await expect(dialog).not.toBeVisible();
   await expect(page.getByTestId("beta-share-preview-trigger")).toBeFocused();
   expect(consoleErrors).toEqual([]);
+});
+
+test("treats native cancel as a normal outcome and allows a fresh retry", async ({ page }) => {
+  await page.goto("/?fixture=beta-annual-recap&save=cancelled");
+  await expect(page.getByTestId("beta-annual-recap-harness")).toBeVisible();
+  await page.getByTestId("beta-share-preview-trigger").click();
+  await expect(page.getByTestId("beta-share-card-preview")).toHaveAttribute("data-render-state", "ready");
+  await page.getByTestId("beta-share-preview-save").click();
+  const dialog = page.getByTestId("beta-share-preview-dialog");
+  await expect(dialog).toHaveAttribute("data-save-state", "cancelled");
+  await expect(page.getByText("本地保存已取消；当前结果未改变。", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("beta-share-preview-save")).toBeEnabled();
 });
 
 test("uses a full-screen single-column sheet at compact and narrow widths without overflow", async ({ page }) => {

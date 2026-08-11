@@ -8,7 +8,15 @@ export interface ShareCardPreviewModels {
 export type SharePreviewVocabularyState = "off" | "on" | "unavailable";
 export type SharePreviewArtworkState = "loaded" | "fallback";
 export type SharePreviewEvidenceState = "ready" | "partial" | "missing";
-export type SharePreviewSaveState = "not-available" | "preparing" | "saved" | "cancelled" | "failed";
+export type SharePreviewSaveState =
+  | "not-available"
+  | "ready"
+  | "preparing"
+  | "waiting-native-dialog"
+  | "saving"
+  | "saved"
+  | "cancelled"
+  | "failed";
 export type SharePreviewRendererState = "not-available" | "rendering" | "ready" | "renderer-failed" | "font-failed";
 
 export interface SharePreviewState {
@@ -83,11 +91,30 @@ export function setSharePreviewRendererState(
   state: SharePreviewState,
   renderer: SharePreviewRendererState,
 ): SharePreviewState {
-  return { ...state, renderer };
+  if (renderer === "ready") {
+    return { ...state, renderer, save: "ready" };
+  }
+  return {
+    ...state,
+    renderer,
+    save: state.save === "preparing" || state.save === "waiting-native-dialog" || state.save === "saving"
+      ? state.save
+      : "not-available",
+  };
 }
 
 export function markSharePreviewStale(state: SharePreviewState): SharePreviewState {
-  return state.phase === "closed" ? state : { ...state, phase: "stale", save: "not-available" };
+  if (state.phase === "closed") {
+    return state;
+  }
+  const saveIsInFlight = state.save === "preparing"
+    || state.save === "waiting-native-dialog"
+    || state.save === "saving";
+  return {
+    ...state,
+    phase: "stale",
+    save: saveIsInFlight ? state.save : "not-available",
+  };
 }
 
 export function setSharePreviewSaveState(

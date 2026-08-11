@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 
 import {
   decodeShareCardPngV1,
@@ -32,16 +32,23 @@ function accessibleSummary(viewModel: ShareCardViewModelV1): string {
   return `${viewModel.headline}，范围 ${viewModel.rangeLabel}，${scopeNote}；${metrics}；${sender}；${viewModel.senderFilterContext.appliedFilterLabel}${vocabulary}；${viewModel.privacyLine}，${viewModel.timezoneLabel}。`;
 }
 
-export function BetaShareCardPreview({
-  open,
-  viewModel,
-  onRenderStateChange,
-}: {
+export interface BetaShareCardPreviewHandle {
+  readonly getCurrentPng: () => Uint8Array | undefined;
+}
+
+interface BetaShareCardPreviewProps {
   readonly open: boolean;
   readonly viewModel: ShareCardViewModelV1;
   readonly onRenderStateChange: (update: ShareCardCanvasRenderUpdateV1) => void;
-}) {
+}
+
+export const BetaShareCardPreview = forwardRef<BetaShareCardPreviewHandle, BetaShareCardPreviewProps>(function BetaShareCardPreview({
+  open,
+  viewModel,
+  onRenderStateChange,
+}, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const pngBytesRef = useRef<Uint8Array | undefined>(undefined);
   const [renderUpdate, setRenderUpdate] = useState<ShareCardCanvasRenderUpdateV1>({
     status: "rendering",
     artworkMode: "raster",
@@ -49,8 +56,14 @@ export function BetaShareCardPreview({
   const [rgbaDigest, setRgbaDigest] = useState<string | null>(null);
   const renderSequence = useRef(0);
 
+  useImperativeHandle(ref, () => ({
+    getCurrentPng: () => pngBytesRef.current,
+  }), []);
+
   useEffect(() => {
     if (!open) {
+      pngBytesRef.current?.fill(0);
+      pngBytesRef.current = undefined;
       return;
     }
     const canvas = canvasRef.current;
@@ -61,7 +74,9 @@ export function BetaShareCardPreview({
     renderSequence.current = sequence;
     let active = true;
     let artwork: Awaited<ReturnType<typeof loadShareCardArtworkV1>> | undefined;
-    let bytes: Uint8Array | undefined;
+    let encodedBytes: Uint8Array | undefined;
+    pngBytesRef.current?.fill(0);
+    pngBytesRef.current = undefined;
     const publish = (update: ShareCardCanvasRenderUpdateV1): void => {
       if (!active || renderSequence.current !== sequence) {
         return;
@@ -87,15 +102,17 @@ export function BetaShareCardPreview({
           return;
         }
         const encodeStartedAt = typeof performance === "undefined" ? null : performance.now();
-        bytes = await encodeShareCardPngV1(canvas);
+        encodedBytes = await encodeShareCardPngV1(canvas);
         const encodeDurationMs = encodeStartedAt === null || typeof performance === "undefined"
           ? undefined
           : Math.max(0, Math.round(performance.now() - encodeStartedAt));
-        const png = inspectShareCardPngV1(bytes);
-        const decoded = await decodeShareCardPngV1(bytes);
+        const png = inspectShareCardPngV1(encodedBytes);
+        const decoded = await decodeShareCardPngV1(encodedBytes);
         if (!active || renderSequence.current !== sequence) {
           return;
         }
+        pngBytesRef.current = encodedBytes;
+        encodedBytes = undefined;
         const update: ShareCardCanvasRenderUpdateV1 = {
           status: "ready",
           artworkMode: render.artworkMode,
@@ -119,12 +136,18 @@ export function BetaShareCardPreview({
           error: rendererError,
         });
       } finally {
-        bytes?.fill(0);
+        encodedBytes?.fill(0);
       }
     })();
 
     return () => {
       active = false;
+      if (renderSequence.current === sequence) {
+        pngBytesRef.current?.fill(0);
+        pngBytesRef.current = undefined;
+        canvas.width = 0;
+        canvas.height = 0;
+      }
     };
   }, [open, viewModel]);
 
@@ -160,4 +183,4 @@ export function BetaShareCardPreview({
       <p id="beta-share-card-accessible-summary" className="visually-hidden">{accessibleSummary(viewModel)}</p>
     </article>
   );
-}
+});

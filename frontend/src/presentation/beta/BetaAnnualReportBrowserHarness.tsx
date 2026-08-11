@@ -42,6 +42,9 @@ function reportStateFor(
 }
 
 export function BetaAnnualReportBrowserHarness() {
+  const syntheticSaveOutcome = new URLSearchParams(window.location.search).get("save") === "cancelled"
+    ? "cancelled"
+    : "saved";
   const [mode, setMode] = useState<HarnessMode>("annual");
   const [year, setYear] = useState(2025);
   const [wordRole, setWordRole] = useState<WordFrequencyRole>("both");
@@ -95,6 +98,10 @@ export function BetaAnnualReportBrowserHarness() {
     document.getElementById(section)?.scrollIntoView({ block: "start", behavior: "auto" });
   }
 
+  async function saveSyntheticShareCardPng(): Promise<"saved" | "cancelled"> {
+    return syntheticSaveOutcome;
+  }
+
   return (
     <main className="desktop-app beta-enabled" data-testid="beta-annual-recap-harness">
       <SkipLink />
@@ -123,6 +130,7 @@ export function BetaAnnualReportBrowserHarness() {
         onWordRoleChange={setWordRole}
         shareCardViewModel={shareCardModels.off}
         onBuildSharePreview={() => shareCardModels}
+        onSaveShareCardPng={saveSyntheticShareCardPng}
       />
       <p className="visually-hidden">{BETA_REPORT_SECTIONS.length} 个固定逻辑章节。</p>
     </main>

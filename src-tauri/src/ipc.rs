@@ -70,6 +70,7 @@ pub enum FailureCode {
     DatasetHandoffInvalid,
     DatasetTampered,
     DialogUnavailable,
+    ExportDialogUnavailable,
     ExportBusy,
     ExportResultPending,
     ExportStaleResult,
@@ -103,7 +104,7 @@ impl IpcError {
         }
     }
 
-    fn with_code(request_id: Option<String>, code: FailureCode) -> Self {
+    pub(crate) fn with_code(request_id: Option<String>, code: FailureCode) -> Self {
         Self {
             protocol_version: PROTOCOL_VERSION,
             request_id,
@@ -956,6 +957,7 @@ fn valid_failure_code(value: &str) -> bool {
             | "DATASET_HANDOFF_INVALID"
             | "DATASET_TAMPERED"
             | "DIALOG_UNAVAILABLE"
+            | "EXPORT_DIALOG_UNAVAILABLE"
             | "EXPORT_BUSY"
             | "EXPORT_RESULT_PENDING"
             | "EXPORT_STALE_RESULT"
@@ -1256,12 +1258,14 @@ pub struct IpcCoreState {
     registry: Arc<Mutex<SessionRegistry>>,
     selection: Arc<Mutex<crate::desktop_selection::SelectionRegistry>>,
     result_registry: crate::analytics_results::ResultRegistry,
+    pub(crate) presentation_leases: crate::presentation_save::PresentationLeaseRegistry,
+    pub(crate) presentation_save_fence: Arc<Mutex<()>>,
     privacy_logger: crate::privacy_log::PrivacyLogger,
     session_correlation: Arc<Mutex<Option<crate::privacy_log::CorrelationId>>>,
     supervisor: crate::session_supervisor::SessionSupervisor,
     worker_operations: Arc<Mutex<HashMap<String, WorkerOperationRecord>>>,
     startup_cleanup_required: Arc<AtomicBool>,
-    close_started: Arc<AtomicBool>,
+    pub(crate) close_started: Arc<AtomicBool>,
 }
 
 impl Default for IpcCoreState {
@@ -1272,6 +1276,8 @@ impl Default for IpcCoreState {
                 crate::desktop_selection::SelectionRegistry::default(),
             )),
             result_registry: crate::analytics_results::ResultRegistry::default(),
+            presentation_leases: crate::presentation_save::PresentationLeaseRegistry::default(),
+            presentation_save_fence: Arc::new(Mutex::new(())),
             privacy_logger: crate::privacy_log::PrivacyLogger::default(),
             session_correlation: Arc::new(Mutex::new(None)),
             supervisor: crate::session_supervisor::SessionSupervisor::default(),
@@ -1288,6 +1294,8 @@ impl Clone for IpcCoreState {
             registry: Arc::clone(&self.registry),
             selection: Arc::clone(&self.selection),
             result_registry: self.result_registry.clone(),
+            presentation_leases: self.presentation_leases.clone(),
+            presentation_save_fence: Arc::clone(&self.presentation_save_fence),
             privacy_logger: self.privacy_logger.clone(),
             session_correlation: Arc::clone(&self.session_correlation),
             supervisor: self.supervisor.clone(),
@@ -1340,12 +1348,15 @@ impl IpcCoreState {
                     && record.capability.generation == generation)
             });
         }
+        self.presentation_leases
+            .invalidate_session(window_label, session_id, generation);
     }
 
     fn invalidate_all_worker_operations(&self) {
         if let Ok(mut operations) = self.worker_operations.lock() {
             operations.clear();
         }
+        self.presentation_leases.invalidate_all();
     }
 
     pub fn renderer_disconnected(&self, window_label: &str) {
@@ -1359,6 +1370,7 @@ impl IpcCoreState {
         } else if let Ok(mut operations) = self.worker_operations.lock() {
             operations.retain(|_, record| record.capability.window_id != window_label);
         }
+        self.presentation_leases.invalidate_window(window_label);
         if let Ok(mut correlation) = self.session_correlation.lock() {
             *correlation = None;
         }
@@ -1366,8 +1378,12 @@ impl IpcCoreState {
     }
 
     pub fn shutdown(&self) {
-        self.invalidate_all_worker_operations();
-        self.result_registry.clear_all();
+        {
+            let _fence = self.presentation_save_fence.lock().ok();
+            self.invalidate_all_worker_operations();
+            self.result_registry.clear_all();
+            self.presentation_leases.invalidate_all();
+        }
         if let Ok(mut correlation) = self.session_correlation.lock() {
             *correlation = None;
         }
@@ -1381,8 +1397,12 @@ impl IpcCoreState {
         if self.close_started.swap(true, Ordering::AcqRel) {
             return true;
         }
-        self.invalidate_all_worker_operations();
-        self.result_registry.clear_all();
+        {
+            let _fence = self.presentation_save_fence.lock().ok();
+            self.invalidate_all_worker_operations();
+            self.result_registry.clear_all();
+            self.presentation_leases.invalidate_all();
+        }
         self.supervisor.shutdown();
         if self.supervisor.active_snapshot().is_none() {
             if let Ok(mut correlation) = self.session_correlation.lock() {
@@ -1449,6 +1469,12 @@ impl IpcCoreState {
         minimum_calendar_date: &str,
         maximum_calendar_date: &str,
     ) -> Result<(), FailureCode> {
+        let _fence = self
+            .presentation_save_fence
+            .lock()
+            .map_err(|_| FailureCode::InvalidState)?;
+        self.presentation_leases
+            .invalidate_session(window_label, session_id, generation);
         self.result_registry
             .register_context(
                 crate::analytics_results::ResultKey::new(window_label, session_id, generation),
@@ -1477,6 +1503,10 @@ impl IpcCoreState {
             .dataset_id_for(&key)
             .ok_or(FailureCode::InvalidState)?;
         parse_worker_query_key(query_key, &dataset_id, generation)?;
+        let _fence = self
+            .presentation_save_fence
+            .lock()
+            .map_err(|_| FailureCode::InvalidState)?;
         // A replacement operation invalidates every earlier bearer before the
         // new pending result is registered.  This closes the old-operation
         // commit race even when the previous Worker has not acknowledged yet.
@@ -1561,6 +1591,10 @@ impl IpcCoreState {
         generation: u64,
     ) -> Result<(), FailureCode> {
         self.validate_owned_session(window_label, session_id, generation)?;
+        let _fence = self
+            .presentation_save_fence
+            .lock()
+            .map_err(|_| FailureCode::InvalidState)?;
         self.invalidate_worker_operations_for(window_label, session_id, generation);
         let result = self
             .result_registry
@@ -1612,15 +1646,30 @@ impl IpcCoreState {
         if let Some(record) = operations.get_mut(&capability.operation_id) {
             record.state = WorkerOperationState::Committing;
         }
-        let result_id = match self.result_registry.commit_pending(&key, aggregate) {
-            Ok(result_id) => result_id,
-            Err(error) => {
-                operations.remove(&capability.operation_id);
-                return Err(map_result_registry_code(error));
+        drop(operations);
+        let result_id = {
+            let _fence = self
+                .presentation_save_fence
+                .lock()
+                .map_err(|_| FailureCode::InvalidState)?;
+            self.presentation_leases.invalidate_session(
+                window_label,
+                &capability.session_id,
+                capability.generation,
+            );
+            match self.result_registry.commit_pending(&key, aggregate) {
+                Ok(result_id) => result_id,
+                Err(error) => {
+                    if let Ok(mut operations) = self.worker_operations.lock() {
+                        operations.remove(&capability.operation_id);
+                    }
+                    return Err(map_result_registry_code(error));
+                }
             }
         };
-        operations.remove(&capability.operation_id);
-        drop(operations);
+        if let Ok(mut operations) = self.worker_operations.lock() {
+            operations.remove(&capability.operation_id);
+        }
         if let Err(error) = self.supervisor.worker_result_committed(
             window_label,
             &capability.session_id,
@@ -1652,6 +1701,12 @@ impl IpcCoreState {
         aggregate: crate::export_schema::RendererAggregateInput,
     ) -> Result<String, FailureCode> {
         self.validate_owned_session(window_label, session_id, generation)?;
+        let _fence = self
+            .presentation_save_fence
+            .lock()
+            .map_err(|_| FailureCode::InvalidState)?;
+        self.presentation_leases
+            .invalidate_session(window_label, session_id, generation);
         self.result_registry
             .commit_pending(
                 &crate::analytics_results::ResultKey::new(window_label, session_id, generation),
@@ -1661,6 +1716,7 @@ impl IpcCoreState {
     }
 
     pub fn clear_result(&self, window_label: &str, session_id: &str, generation: u64) {
+        let _fence = self.presentation_save_fence.lock().ok();
         self.invalidate_worker_operations_for(window_label, session_id, generation);
         self.result_registry
             .clear_session(window_label, session_id, generation);
@@ -1706,18 +1762,24 @@ impl IpcCoreState {
         }
         let correlation =
             crate::privacy_log::CorrelationId::random().ok_or(FailureCode::InvalidState)?;
-        let mut registry = self
-            .registry
-            .lock()
-            .map_err(|_| FailureCode::InvalidState)?;
-        let previous = registry.active.replace(SessionRecord::new_with_operation(
-            trusted_window_label,
-            operation_id,
-            session_id,
-            generation,
-        ));
-        registry.retained = previous.clone().or_else(|| registry.retained.take());
-        drop(registry);
+        let previous = {
+            let _fence = self
+                .presentation_save_fence
+                .lock()
+                .map_err(|_| FailureCode::InvalidState)?;
+            let mut registry = self
+                .registry
+                .lock()
+                .map_err(|_| FailureCode::InvalidState)?;
+            let previous = registry.active.replace(SessionRecord::new_with_operation(
+                trusted_window_label,
+                operation_id,
+                session_id,
+                generation,
+            ));
+            registry.retained = previous.clone().or_else(|| registry.retained.take());
+            previous
+        };
         if let Some(previous) = previous {
             self.clear_result(
                 &previous.window_label,

@@ -42,6 +42,7 @@ describe("B5.2 share preview state", () => {
     expect(ready.phase).toBe("ready");
     expect(setSharePreviewVocabulary(ready, "on").vocabulary).toBe("on");
     expect(markSharePreviewArtworkFallback(ready).artwork).toBe("fallback");
+    expect(setSharePreviewRendererState(ready, "ready").save).toBe("ready");
     expect(setSharePreviewRendererState(ready, "font-failed").renderer).toBe("font-failed");
   });
 
@@ -52,6 +53,8 @@ describe("B5.2 share preview state", () => {
     expect(shareCardPresentationKey(changed)).not.toBe(shareCardPresentationKey(viewModel));
     expect(markSharePreviewStale(current)).toMatchObject({ phase: "stale", save: "not-available" });
     expect(setSharePreviewSaveState(current, "saved").save).toBe("saved");
+    const saving = setSharePreviewSaveState(current, "saving");
+    expect(markSharePreviewStale(saving)).toMatchObject({ phase: "stale", save: "saving" });
     expect(createSharePreviewState(viewModel).save).toBe("not-available");
   });
 

@@ -13,6 +13,7 @@ import {
   type EventCursor,
   type Generation,
   type OperationId,
+  type ResultId,
   type ReportFormat,
   type ApprovedChartKey,
   type SessionId,
@@ -24,6 +25,10 @@ import {
   listenForDesktopWorkerControl,
 } from "../desktop/runtime";
 import { isWorkerPreparationAck } from "../desktop/ipc";
+import {
+  nativePresentationSaveApi,
+  NativePresentationSaveError,
+} from "../desktop/presentation-save";
 import { applySelectionCommand } from "../desktop/selection-state";
 import {
   AnalysisWorkerClient,
@@ -75,6 +80,7 @@ import { BetaReportFactsCache } from "./beta/report-cache";
 import type { BetaReportAdapterOptions } from "./beta/report-adapter";
 import { createBetaSummaryDtoV1 } from "./beta/summary-adapter";
 import { presentBetaSummaryZhCN } from "./beta/summary-presenter";
+import type { ShareCardViewModelV1 } from "./beta/summary-contract";
 import type { ShareCardPreviewModels } from "./beta/share-preview-state";
 import {
   createWordFrequencyPresentation,
@@ -1575,6 +1581,33 @@ export function DesktopImportPanel() {
     };
   }
 
+  async function saveShareCardPng(
+    viewModel: ShareCardViewModelV1,
+    bytes: Uint8Array,
+  ): Promise<"saved" | "cancelled"> {
+    const current = analyticsResultRef.current;
+    if (
+      dataset === undefined ||
+      dataset.resultId === undefined ||
+      current === undefined ||
+      current.sessionId !== dataset.sessionId ||
+      current.generation !== dataset.generation ||
+      cursorRef.current.sessionId !== dataset.sessionId ||
+      cursorRef.current.generation !== dataset.generation
+    ) {
+      throw new NativePresentationSaveError("EXPORT_STALE_RESULT");
+    }
+    return nativePresentationSaveApi.save(
+      {
+        sessionId: dataset.sessionId,
+        generation: dataset.generation,
+        resultId: dataset.resultId as ResultId,
+        viewModel,
+      },
+      bytes,
+    );
+  }
+
   return (
     <main className="desktop-app beta-enabled" aria-busy={isBusy}>
       <SkipLink />
@@ -1728,6 +1761,7 @@ export function DesktopImportPanel() {
           onWordRoleChange={setWordRole}
           shareCardViewModel={shareCardViewModel}
           onBuildSharePreview={buildSharePreviewModels}
+          onSaveShareCardPng={saveShareCardPng}
         />
       ) : null}
 

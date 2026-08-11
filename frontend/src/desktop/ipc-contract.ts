@@ -88,6 +88,7 @@ export type DesktopFailureCode =
   | "DATASET_HANDOFF_INVALID"
   | "DATASET_TAMPERED"
   | "DIALOG_UNAVAILABLE"
+  | "EXPORT_DIALOG_UNAVAILABLE"
   | "EXPORT_BUSY"
   | "EXPORT_RESULT_PENDING"
   | "EXPORT_STALE_RESULT"
@@ -1086,6 +1087,7 @@ function isDesktopFailureCode(value: unknown): value is DesktopFailureCode {
       "DATASET_HANDOFF_INVALID",
       "DATASET_TAMPERED",
       "DIALOG_UNAVAILABLE",
+      "EXPORT_DIALOG_UNAVAILABLE",
       "EXPORT_BUSY",
       "EXPORT_RESULT_PENDING",
       "EXPORT_STALE_RESULT",
