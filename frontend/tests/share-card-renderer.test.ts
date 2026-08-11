@@ -13,6 +13,7 @@ import {
   ShareCardRendererErrorV1,
   inspectShareCardPngV1,
   renderShareCardV1,
+  sanitizeShareCardPngV1,
   shareCardPercentageToRatioV1,
   truncateShareCardVocabularyTokenV1,
   wrapShareCardTextV1,
@@ -120,6 +121,16 @@ describe("B5.3 share-card renderer authority", () => {
     const badCrc = valid.slice();
     badCrc[badCrc.length - 1] = (badCrc.at(-1) ?? 0) ^ 0xff;
     expect(() => inspectShareCardPngV1(badCrc)).toThrow("PNG_CRC_INVALID");
+  });
+
+  it("strips WebKit metadata before the final PNG privacy inspection", () => {
+    const withExif = syntheticPng({ metadataType: "eXIf" });
+    const sanitized = sanitizeShareCardPngV1(withExif);
+    expect(sanitized.byteLength).toBeLessThan(withExif.byteLength);
+    expect(inspectShareCardPngV1(sanitized)).toMatchObject({
+      chunkTypes: ["IHDR", "IDAT", "IEND"],
+      forbiddenChunks: [],
+    });
   });
 
   it("enforces the encoded byte bound", () => {

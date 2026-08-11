@@ -813,6 +813,52 @@ export function inspectShareCardPngV1(bytes: Uint8Array): ShareCardPngInspection
   };
 }
 
+/**
+ * WebKit may add an eXIf chunk to canvas-generated PNGs. Strip only the
+ * fixed forbidden metadata chunks while validating every retained chunk so
+ * the final export still passes the same strict privacy/structure inspector.
+ */
+export function sanitizeShareCardPngV1(bytes: Uint8Array): Uint8Array {
+  if (bytes.length < PNG_SIGNATURE.length || PNG_SIGNATURE.some((value, index) => bytes[index] !== value)) {
+    return bytes;
+  }
+  const parts: Uint8Array[] = [bytes.slice(0, PNG_SIGNATURE.length)];
+  let offset = PNG_SIGNATURE.length;
+  let sawIend = false;
+  while (offset + 12 <= bytes.length) {
+    const length = readUint32(bytes, offset);
+    const typeStart = offset + 4;
+    const dataStart = typeStart + 4;
+    const dataEnd = dataStart + length;
+    const crcEnd = dataEnd + 4;
+    if (dataEnd < dataStart || crcEnd < dataEnd || crcEnd > bytes.length) {
+      return bytes;
+    }
+    const type = chunkType(bytes, typeStart);
+    if (chunkCrc(bytes, typeStart, dataEnd) !== readUint32(bytes, dataEnd)) {
+      return bytes;
+    }
+    if (!FORBIDDEN_PNG_CHUNKS.has(type)) {
+      parts.push(bytes.slice(offset, crcEnd));
+    }
+    offset = crcEnd;
+    if (type === "IEND") {
+      sawIend = true;
+      break;
+    }
+  }
+  if (!sawIend || offset !== bytes.length) {
+    return bytes;
+  }
+  const sanitized = new Uint8Array(parts.reduce((total, part) => total + part.byteLength, 0));
+  let writeOffset = 0;
+  parts.forEach((part) => {
+    sanitized.set(part, writeOffset);
+    writeOffset += part.byteLength;
+  });
+  return sanitized;
+}
+
 function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   return new Promise((resolve, reject) => {
     try {
@@ -836,7 +882,7 @@ export async function encodeShareCardPngV1(canvas: HTMLCanvasElement): Promise<U
       throw new ShareCardRendererErrorV1(blob.size > SHARE_CARD_MAX_PNG_BYTES_V1 ? "EXPORT_LIMIT_EXCEEDED" : "EXPORT_PNG_ENCODE_FAILED", "PNG_BLOB_SIZE_INVALID");
     }
     const buffer = await blob.arrayBuffer();
-    const bytes = new Uint8Array(buffer);
+    const bytes = sanitizeShareCardPngV1(new Uint8Array(buffer));
     inspectShareCardPngV1(bytes);
     return bytes;
   } catch (error) {

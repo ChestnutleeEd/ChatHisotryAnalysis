@@ -3651,6 +3651,15 @@ pub fn record_selection_smoke_checkpoint(
             "core-sections-ready" => "selection-smoke-core-sections-ready",
             "word-evidence-ready" => "selection-smoke-word-evidence-ready",
             "word-cloud-ready" => "selection-smoke-word-cloud-ready",
+            "share-preview-ready" => "selection-smoke-share-preview-ready",
+            "native-cancel-requested" => "selection-smoke-native-cancel-requested",
+            "native-cancelled" => "selection-smoke-native-cancelled",
+            "vocabulary-on" => "selection-smoke-vocabulary-on",
+            "native-save-requested" => "selection-smoke-native-save-requested",
+            "native-save-success" => "selection-smoke-native-save-success",
+            "native-save-retry-requested" => "selection-smoke-native-save-retry-requested",
+            "native-save-retry-success" => "selection-smoke-native-save-retry-success",
+            "share-preview-closed" => "selection-smoke-share-preview-closed",
             "error" => "selection-smoke-error",
             "SIDECAR_UNAVAILABLE" => "selection-smoke-failure-SIDECAR_UNAVAILABLE",
             "SIDECAR_VERIFICATION_FAILED" => "selection-smoke-failure-SIDECAR_VERIFICATION_FAILED",
@@ -3732,6 +3741,54 @@ pub fn record_selection_smoke_host_state(
         .map_err(|_| IpcError::with_code(None, FailureCode::InvalidState))?;
     std::fs::write(root.join(filename), b"passed\n")
         .map_err(|_| IpcError::with_code(None, FailureCode::InvalidState))?;
+    Ok(())
+}
+
+/// Test-only renderer evidence sink for the packaged B5 acceptance app. It
+/// accepts only fixed dimensions, bounded diagnostics, and a 64-character
+/// digest; no renderer content or filesystem path crosses this seam.
+#[cfg(feature = "synthetic-dialog-adapter")]
+#[tauri::command]
+pub fn record_b5_render_evidence(
+    window: tauri::WebviewWindow,
+    mode: String,
+    digest: String,
+    width: u32,
+    height: u32,
+    bytes: u64,
+    alpha: bool,
+    artwork: String,
+    font: String,
+    forbidden: String,
+) -> Result<(), IpcError> {
+    if !crate::security::trusted_main_window_label(window.label())
+        || !matches!(mode.as_str(), "off" | "on")
+        || digest.len() != 64
+        || !digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+        || width != crate::presentation_save::PRESENTATION_PNG_WIDTH
+        || height != crate::presentation_save::PRESENTATION_PNG_HEIGHT
+        || bytes == 0
+        || bytes > crate::presentation_save::PRESENTATION_MAX_PNG_BYTES as u64
+        || !alpha
+        || !matches!(artwork.as_str(), "loaded" | "fallback")
+        || !matches!(font.as_str(), "offline-macOS-stack" | "stable-fallback")
+        || !forbidden.is_empty()
+    {
+        return Err(IpcError::with_code(None, FailureCode::ExportSchemaInvalid));
+    }
+    let root = std::env::var_os("CHAT_HISTORY_ANALYSIS_SYNTHETIC_ROOT")
+        .map(std::path::PathBuf::from)
+        .ok_or_else(|| IpcError::with_code(None, FailureCode::InvalidState))?;
+    std::fs::create_dir_all(&root)
+        .map_err(|_| IpcError::with_code(None, FailureCode::InvalidState))?;
+    let evidence = format!(
+        "{{\"mode\":\"{mode}\",\"rgbaDigest\":\"{digest}\",\"width\":{width},\"height\":{height},\"bytes\":{bytes},\"opaque\":true,\"artwork\":\"{artwork}\",\"font\":\"{font}\",\"forbiddenChunks\":[]}}\n"
+    );
+    std::fs::write(
+        root.join(format!("b5-render-{mode}.json")),
+        evidence.as_bytes(),
+    )
+    .map_err(|_| IpcError::with_code(None, FailureCode::InvalidState))?;
     Ok(())
 }
 

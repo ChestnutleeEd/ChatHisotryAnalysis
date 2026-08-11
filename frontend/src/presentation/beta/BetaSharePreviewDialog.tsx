@@ -75,6 +75,7 @@ export function BetaSharePreviewDialog({
   const savePresentationKeyRef = useRef<string | null>(null);
   const cancelledResetTimerRef = useRef<number | undefined>(undefined);
   const [includeVocabulary, setIncludeVocabulary] = useState(false);
+  const [saveBusyState, setSaveBusyState] = useState(false);
   const [artworkState, setArtworkState] = useState<SharePreviewState["artwork"]>("loaded");
   const [previewState, setPreviewState] = useState<SharePreviewState>(createClosedSharePreviewState);
   const [saveErrorCode, setSaveErrorCode] = useState<string>();
@@ -86,7 +87,8 @@ export function BetaSharePreviewDialog({
     : shareCardPresentationKey(currentViewModel);
   const stale = open && (currentPresentationKey === null || currentPresentationKey !== openedPresentationKey);
   const vocabularyUnavailable = models.on.vocabulary.mode === "unavailable";
-  const saveBusy = saveBusyRef.current
+  const saveBusy = saveBusyState
+    || saveBusyRef.current
     || previewState.save === "preparing"
     || previewState.save === "waiting-native-dialog"
     || previewState.save === "saving";
@@ -183,6 +185,7 @@ export function BetaSharePreviewDialog({
     }
     const attemptKey = shareCardPresentationKey(selectedViewModel);
     saveBusyRef.current = true;
+    setSaveBusyState(true);
     setSaveErrorCode(undefined);
     setSaveState("preparing");
     const waitingTimer = window.setTimeout(() => {
@@ -222,6 +225,7 @@ export function BetaSharePreviewDialog({
     } finally {
       window.clearTimeout(waitingTimer);
       saveBusyRef.current = false;
+      setSaveBusyState(false);
     }
   }
 
