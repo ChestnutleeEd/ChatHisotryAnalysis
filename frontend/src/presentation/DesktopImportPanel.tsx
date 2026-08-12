@@ -1644,7 +1644,12 @@ export function DesktopImportPanel() {
   }
 
   return (
-    <main className="desktop-app beta-enabled" aria-busy={isBusy}>
+    <main
+      className="desktop-app beta-enabled"
+      data-visual-version="v3"
+      data-v3-surface={productMode === "annual-recap" ? "annual" : productMode === "home" ? "home" : "detailed"}
+      aria-busy={isBusy}
+    >
       <SkipLink />
       {onboardingOpen ? (
         <div className="desktop-dialog-layer">

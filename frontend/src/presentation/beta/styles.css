@@ -799,139 +799,6 @@
   transform: rotate(-24deg);
 }
 
-/* Annual report navigation. Native selects remain the actual interaction. */
-.desktop-app.beta-enabled .beta-report {
-  width: min(1120px, 100%);
-  margin-right: auto;
-  margin-left: auto;
-  background: var(--beta-color-report);
-  scroll-padding-top: 88px;
-}
-
-.desktop-app.beta-enabled .beta-report-navigation {
-  position: sticky;
-  z-index: 10;
-  top: 8px;
-  display: grid;
-  grid-template-columns: minmax(132px, 0.7fr) minmax(260px, 1.4fr) minmax(152px, 0.72fr) minmax(180px, 0.9fr) auto;
-  gap: var(--beta-space-2);
-  align-items: center;
-  min-height: 52px;
-  margin-bottom: var(--beta-space-5);
-  padding: 6px 8px;
-  border: 1px solid var(--beta-color-border);
-  border-radius: var(--beta-radius-panel);
-  background: rgb(247 243 234 / 94%);
-  box-shadow: var(--beta-depth-raised);
-  backdrop-filter: blur(12px);
-}
-
-.desktop-app.beta-enabled .beta-report-navigation-context {
-  display: flex;
-  gap: var(--beta-space-2);
-  align-items: baseline;
-  padding: 0 var(--beta-space-2);
-  color: var(--beta-color-text-secondary);
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-.desktop-app.beta-enabled .beta-report-navigation-context strong {
-  color: var(--beta-color-text);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.desktop-app.beta-enabled .beta-report-navigation-context small {
-  color: var(--beta-color-text-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.desktop-app.beta-enabled .beta-report-progress {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 2px;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.desktop-app.beta-enabled .beta-report-progress button {
-  display: grid;
-  min-height: 36px;
-  gap: 2px;
-  place-items: center;
-  width: 100%;
-  padding: 3px 2px;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  background: transparent;
-  color: var(--beta-color-text-muted);
-  font-size: 10px;
-  cursor: pointer;
-}
-
-.desktop-app.beta-enabled .beta-report-progress button span {
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
-}
-
-.desktop-app.beta-enabled .beta-report-progress button em {
-  overflow: hidden;
-  font-style: normal;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.desktop-app.beta-enabled .beta-report-progress li.is-current button {
-  border-bottom-color: var(--beta-color-primary);
-  color: var(--beta-color-primary-ink);
-  font-weight: 700;
-}
-
-.desktop-app.beta-enabled .beta-report-control-field {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-  color: var(--beta-color-text-muted);
-  font-size: 10px;
-  font-weight: 650;
-}
-
-.desktop-app.beta-enabled .beta-report-control-field select,
-.desktop-app.beta-enabled .dashboard-query-bar input,
-.desktop-app.beta-enabled .dashboard-query-bar select,
-.desktop-app.beta-enabled .dashboard-local-control select,
-.desktop-app.beta-enabled .dashboard-export-chart-select select {
-  min-height: 36px;
-  min-width: 0;
-  padding: 7px 28px 7px 9px;
-  border: 1px solid var(--beta-color-border);
-  border-radius: var(--beta-radius-control);
-  background: var(--beta-color-surface);
-  color: var(--beta-color-text);
-  font-size: 12px;
-}
-
-.desktop-app.beta-enabled .beta-report-control-field select:hover:not(:disabled),
-.desktop-app.beta-enabled .dashboard-query-bar input:hover:not(:disabled),
-.desktop-app.beta-enabled .dashboard-query-bar select:hover:not(:disabled) {
-  border-color: var(--beta-color-primary);
-}
-
-.desktop-app.beta-enabled .beta-report-navigation-actions {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.desktop-app.beta-enabled .beta-report-restore-action {
-  min-height: 36px;
-  padding: 7px 8px;
-  font-size: 11px;
-  white-space: nowrap;
-}
-
 .desktop-app.beta-enabled .beta-report-pending,
 .desktop-app.beta-enabled .beta-report-scope-banner,
 .desktop-app.beta-enabled .beta-recovery-note {
@@ -2246,35 +2113,6 @@
 }
 
 @media (max-width: 959px) {
-  .desktop-app.beta-enabled .beta-report-navigation {
-    grid-template-columns: minmax(132px, 0.8fr) minmax(240px, 1.2fr) minmax(150px, 0.8fr) auto;
-  }
-
-  .desktop-app.beta-enabled .beta-report-progress {
-    grid-column: 1 / -1;
-    grid-row: 1;
-  }
-
-  .desktop-app.beta-enabled .beta-report-navigation-context {
-    grid-column: 1;
-    grid-row: 2;
-  }
-
-  .desktop-app.beta-enabled .beta-report-control-year {
-    grid-column: 2;
-    grid-row: 2;
-  }
-
-  .desktop-app.beta-enabled .beta-report-control-section {
-    grid-column: 3;
-    grid-row: 2;
-  }
-
-  .desktop-app.beta-enabled .beta-report-navigation-actions {
-    grid-column: 4;
-    grid-row: 2;
-  }
-
   .desktop-app.beta-enabled .beta-home-hero,
   .desktop-app.beta-enabled .beta-report-hero,
   .desktop-app.beta-enabled .beta-core-opening,
@@ -2353,40 +2191,6 @@
 
   .desktop-app.beta-enabled .beta-ready-status {
     align-items: flex-start;
-  }
-
-  .desktop-app.beta-enabled .beta-report-navigation {
-    position: sticky;
-    top: 4px;
-    grid-template-columns: 1fr 1fr;
-    min-height: 0;
-    padding: var(--beta-space-2);
-  }
-
-  .desktop-app.beta-enabled .beta-report-progress {
-    grid-column: 1 / -1;
-    grid-row: 1;
-  }
-
-  .desktop-app.beta-enabled .beta-report-navigation-context,
-  .desktop-app.beta-enabled .beta-report-control-year,
-  .desktop-app.beta-enabled .beta-report-control-section,
-  .desktop-app.beta-enabled .beta-report-navigation-actions {
-    grid-column: auto;
-    grid-row: auto;
-    width: 100%;
-  }
-
-  .desktop-app.beta-enabled .beta-report-navigation-context {
-    justify-content: space-between;
-  }
-
-  .desktop-app.beta-enabled .beta-report-navigation-actions {
-    justify-content: stretch;
-  }
-
-  .desktop-app.beta-enabled .beta-report-restore-action {
-    width: 100%;
   }
 
   .desktop-app.beta-enabled .beta-report-hero,
@@ -2534,14 +2338,6 @@
 }
 
 @media (max-width: 599px) {
-  .desktop-app.beta-enabled .beta-report-progress button em {
-    max-width: 34px;
-  }
-
-  .desktop-app.beta-enabled .beta-report-progress button {
-    min-height: 32px;
-  }
-
   .desktop-app.beta-enabled .beta-type-display {
     max-width: 10ch;
     font-size: clamp(48px, 16vw, 68px);
@@ -4959,50 +4755,6 @@
   font-size: 10px;
 }
 
-.desktop-app.beta-enabled .beta-report-navigation {
-  grid-template-columns: minmax(150px, 1.1fr) minmax(220px, 1.3fr) minmax(130px, 0.75fr) minmax(130px, 0.8fr) auto;
-  gap: 6px;
-  min-height: 44px;
-  margin-bottom: var(--beta-space-4);
-  padding: 4px 6px;
-}
-
-.desktop-app.beta-enabled .beta-report-navigation-context {
-  gap: 4px;
-  padding: 0 4px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.desktop-app.beta-enabled .beta-report-navigation-context small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.desktop-app.beta-enabled .beta-report-progress button {
-  min-height: 28px;
-  padding: 2px;
-}
-
-.desktop-app.beta-enabled .beta-report-progress button em {
-  display: none;
-}
-
-.desktop-app.beta-enabled .beta-report-control-field select,
-.desktop-app.beta-enabled .beta-report-restore-action {
-  min-height: 32px;
-}
-
-.desktop-app.beta-enabled .beta-report-control-field select {
-  padding: 5px 24px 5px 7px;
-  font-size: 11px;
-}
-
-.desktop-app.beta-enabled .beta-report-restore-action {
-  padding: 5px 7px;
-  font-size: 10px;
-}
-
 .desktop-app.beta-enabled .beta-v2-scale-grid,
 .desktop-app.beta-enabled .beta-v2-balance-grid {
   grid-template-columns: repeat(12, minmax(0, 1fr));
@@ -5343,37 +5095,9 @@
 }
 
 @media (max-width: 959px) {
-  .desktop-app.beta-enabled .beta-report-navigation {
-    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.2fr) minmax(0, 1fr) auto;
-    grid-template-areas:
-      "progress progress progress progress"
-      "context year section actions";
-  }
-
-  .desktop-app.beta-enabled .beta-report-progress { grid-area: progress; }
-  .desktop-app.beta-enabled .beta-report-navigation-context { grid-area: context; }
-  .desktop-app.beta-enabled .beta-report-control-year { grid-area: year; }
-  .desktop-app.beta-enabled .beta-report-control-section { grid-area: section; }
-  .desktop-app.beta-enabled .beta-report-navigation-actions { grid-area: actions; }
 }
 
 @media (max-width: 760px) {
-  .desktop-app.beta-enabled .beta-report-navigation {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-areas:
-      "progress progress"
-      "context context"
-      "year section"
-      "actions actions";
-  }
-
-  .desktop-app.beta-enabled .beta-report-navigation-context,
-  .desktop-app.beta-enabled .beta-report-control-year,
-  .desktop-app.beta-enabled .beta-report-control-section,
-  .desktop-app.beta-enabled .beta-report-navigation-actions {
-    width: auto;
-  }
-
   .desktop-app.beta-enabled .beta-v2-scale-support,
   .desktop-app.beta-enabled .beta-v2-balance-support {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5409,10 +5133,6 @@
     grid-template-columns: 1fr;
   }
 
-  .desktop-app.beta-enabled .beta-report-navigation-context {
-    font-size: 10px;
-  }
-
   .desktop-app.beta-enabled .beta-v2-month-timeline-head,
   .desktop-app.beta-enabled .beta-v2-month-timeline-row {
     grid-template-columns: minmax(34px, 0.55fr) repeat(12, minmax(0, 1fr));
@@ -5425,19 +5145,6 @@
 
   .desktop-app.beta-enabled .beta-v2-month-timeline-row > strong {
     font-size: 9px;
-  }
-}
-
-@media (max-width: 420px) {
-  .desktop-app.beta-enabled .beta-report-navigation {
-    grid-template-areas:
-      "progress progress"
-      "year section"
-      "actions actions";
-  }
-
-  .desktop-app.beta-enabled .beta-report-navigation-context {
-    display: none;
   }
 }
 

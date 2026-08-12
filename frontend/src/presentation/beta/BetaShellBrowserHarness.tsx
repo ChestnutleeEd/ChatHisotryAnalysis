@@ -30,7 +30,7 @@ export function BetaShellBrowserHarness({
   }
 
   return (
-    <main className="desktop-app beta-enabled" data-testid={`beta-${initialMode}-harness`}>
+    <main className="desktop-app beta-enabled" data-visual-version="v3" data-v3-surface={mode === "home" ? "home" : "detailed"} data-testid={`beta-${initialMode}-harness`}>
       <SkipLink />
       <header className="desktop-app-header">
         <div className="beta-product-identity">

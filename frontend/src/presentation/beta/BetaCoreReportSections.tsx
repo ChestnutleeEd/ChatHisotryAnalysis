@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, HTMLAttributes, ReactNode } from "react";
 
 import type {
   BetaLocalizedMetricV1,
@@ -349,13 +349,15 @@ function LogicalSection({
   section,
   className = "",
   children,
+  ...props
 }: {
   readonly section: BetaLocalizedReportSectionV1;
   readonly className?: string;
   readonly children?: ReactNode;
-}) {
+} & Omit<HTMLAttributes<HTMLDivElement>, "id">) {
   return (
     <div
+      {...props}
       id={section.id}
       className={`beta-v2-logical-section beta-v2-logical-${section.id} ${className}`.trim()}
       data-section-status={section.status.toLowerCase()}
@@ -390,6 +392,8 @@ function CoreOpeningSection({
     <Scene
       id="opening"
       scene="opening"
+      layoutMode="asymmetric"
+      whitespaceIntent="opening-cinematic"
       className="beta-v2-opening"
       data-section-status={section.status.toLowerCase()}
       aria-labelledby="beta-report-heading"
@@ -430,13 +434,13 @@ function ScaleScene({ sections }: { readonly sections: readonly BetaLocalizedRep
   const activeDays = sectionFor(sections, "active-days");
   const streak = sectionFor(sections, "longest-streak");
   return (
-    <Scene id="scale-scene" scene="scale" className="beta-v2-scene beta-v2-scale" reveal motionIndex={0} aria-labelledby="beta-v2-scene-scale-heading">
+    <Scene id="scale-scene" scene="scale" layoutMode="asymmetric" className="beta-v2-scene beta-v2-scale" reveal motionIndex={0} aria-labelledby="beta-v2-scene-scale-heading">
       <SceneHeading number="02" scene="scale" title="把这一年放到尺度里" summary="一个主数字先回答消息量，再用聊天日与连续区间补充活动范围。" />
       <div className="beta-v2-scale-grid">
-        <LogicalSection section={messages} className="beta-v2-scale-hero">
+        <LogicalSection section={messages} className="beta-v2-scale-hero" data-v3-geometry-cell="scale-primary" data-v3-cell-mode="asymmetric">
           <p className="beta-v2-dominance-note">主视线：消息总量</p>
         </LogicalSection>
-        <div className="beta-v2-scale-support">
+        <div className="beta-v2-scale-support" data-v3-geometry-cell="scale-support" data-v3-cell-mode="asymmetric">
           <LogicalSection section={activeDays} className="beta-v2-support-block" />
           <LogicalSection section={streak} className="beta-v2-support-block beta-v2-streak-block" />
         </div>
@@ -450,10 +454,10 @@ function RhythmScene({ sections }: { readonly sections: readonly BetaLocalizedRe
   const weekday = sectionFor(sections, "peak-weekday");
   const hour = sectionFor(sections, "peak-hour");
   return (
-    <Scene id="rhythm-scene" scene="rhythm" className="beta-v2-scene beta-v2-rhythm" reveal motionIndex={1} aria-labelledby="beta-v2-scene-rhythm-heading">
+    <Scene id="rhythm-scene" scene="rhythm" layoutMode="full" className="beta-v2-scene beta-v2-rhythm" reveal motionIndex={1} aria-labelledby="beta-v2-scene-rhythm-heading">
       <SceneHeading number="03" scene="rhythm" title="节奏不是一条横条" summary="月份承担主叙事，星期与小时退到两个可读的分布带，峰值和完整数据都直接可查。" />
-      <LogicalSection section={month} className="beta-v2-rhythm-month" />
-      <div className="beta-v2-rhythm-strips">
+      <LogicalSection section={month} className="beta-v2-rhythm-month" data-v3-geometry-cell="rhythm-month" data-v3-cell-mode="full" />
+      <div className="beta-v2-rhythm-strips" data-v3-geometry-cell="rhythm-strips" data-v3-cell-mode="paired">
         <LogicalSection section={weekday} className="beta-v2-rhythm-strip" />
         <LogicalSection section={hour} className="beta-v2-rhythm-strip" />
       </div>
@@ -466,11 +470,11 @@ function BalanceScene({ sections }: { readonly sections: readonly BetaLocalizedR
   const length = sectionFor(sections, "message-length");
   const types = sectionFor(sections, "message-types");
   return (
-    <Scene id="balance-scene" scene="balance" className="beta-v2-scene beta-v2-balance" reveal motionIndex={2} aria-labelledby="beta-v2-scene-balance-heading">
+    <Scene id="balance-scene" scene="balance" layoutMode="asymmetric" className="beta-v2-scene beta-v2-balance" reveal motionIndex={2} aria-labelledby="beta-v2-scene-balance-heading">
       <SceneHeading number="04" scene="balance" title="看见交流的平衡与形状" summary="Owner 与 Other 先做匿名比较；长度与类型只作为消息构成的辅助剖面。" />
       <div className="beta-v2-balance-grid">
-        <LogicalSection section={sender} className="beta-v2-balance-primary" />
-        <div className="beta-v2-balance-support">
+        <LogicalSection section={sender} className="beta-v2-balance-primary" data-v3-geometry-cell="balance-primary" data-v3-cell-mode="asymmetric" />
+        <div className="beta-v2-balance-support" data-v3-geometry-cell="balance-support" data-v3-cell-mode="asymmetric">
           <LogicalSection section={length} className="beta-v2-support-block" />
           <LogicalSection
             section={types}
@@ -486,11 +490,11 @@ function ConversationScene({ sections }: { readonly sections: readonly BetaLocal
   const sessions = sectionFor(sections, "sessions");
   const replies = sectionFor(sections, "replies");
   return (
-    <Scene id="conversation-scene" scene="conversation" className="beta-v2-scene beta-v2-conversation" reveal motionIndex={3} aria-labelledby="beta-v2-scene-conversation-heading">
+    <Scene id="conversation-scene" scene="conversation" layoutMode="asymmetric" className="beta-v2-scene beta-v2-conversation" reveal motionIndex={3} aria-labelledby="beta-v2-scene-conversation-heading">
       <SceneHeading number="05" scene="conversation" title="交流从哪里开始，如何接上" summary="会话数量是主事实；发起分布与回复间隔提供可核验的节奏上下文，不作关系判断。" />
       <div className="beta-v2-conversation-grid">
-        <LogicalSection section={sessions} className="beta-v2-conversation-primary" />
-        <LogicalSection section={replies} className="beta-v2-conversation-secondary" />
+        <LogicalSection section={sessions} className="beta-v2-conversation-primary" data-v3-geometry-cell="conversation-primary" data-v3-cell-mode="asymmetric" />
+        <LogicalSection section={replies} className="beta-v2-conversation-secondary" data-v3-geometry-cell="conversation-secondary" data-v3-cell-mode="asymmetric" />
       </div>
     </Scene>
   );

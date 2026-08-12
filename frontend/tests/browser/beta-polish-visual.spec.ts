@@ -98,9 +98,13 @@ test("passes synthetic P1 Annual and Detailed presentation QA with fixed screens
   await page.goto("/?fixture=beta-annual-recap");
   await hideScreenshotOnlyOverlays(page);
   await expect(page.getByTestId("beta-annual-recap-harness")).toBeVisible();
-  await expect(page.locator(".beta-report-navigation")).toBeVisible();
+  const navigatorToggle = page.getByRole("button", { name: "范围与章节", exact: true });
+  await expect(page.locator(".v3-progress-navigator")).toBeVisible();
+  await navigatorToggle.click();
   await expect(page.getByLabel("回顾范围")).toHaveValue("year:2025");
-  await expect(page.locator(".beta-report-progress button em").first()).toBeHidden();
+  await expect(page.locator(".v3-progress-steps button")).toHaveCount(7);
+  await expect(page.locator(".v3-progress-steps button").first()).toHaveAttribute("aria-label", "第 1 场：开场");
+  await navigatorToggle.click();
   await expect.poll(() => page.locator(".beta-v2-scale-support").evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").length)).toBe(2);
   await expect(page.locator(".beta-v2-month-timeline")).toBeVisible();
   await expect(page.locator(".beta-v2-month-timeline-row ol")).toHaveCount(1);
@@ -121,17 +125,20 @@ test("passes synthetic P1 Annual and Detailed presentation QA with fixed screens
   ] as const) {
     const section = page.locator(selector);
     await section.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(700);
     await page.evaluate(() => { window.scrollBy(0, -104); });
     await page.evaluate(() => { (document.activeElement as HTMLElement | null)?.blur(); });
     await section.screenshot({ path: resolve(screenshotDir, `${name}.png`) });
   }
 
+  await navigatorToggle.click();
   await page.getByLabel("回顾范围").selectOption("all-years");
   await expect(page.locator("#distinctive-keywords")).toHaveAttribute("data-keyword-year", "all-years");
   await expect(page.locator(".beta-keyword-empty-notice")).toContainText("选择一个具体年份后");
   await expect(page.getByRole("button", { name: "选择具体年份", exact: true })).toBeVisible();
   const keywordNotice = page.locator("#distinctive-keywords");
   await keywordNotice.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(700);
   await page.evaluate(() => { window.scrollBy(0, -104); });
   await page.evaluate(() => { (document.activeElement as HTMLElement | null)?.blur(); });
   await keywordNotice.screenshot({ path: resolve(screenshotDir, "annual-keywords-all-years-1180.png") });
@@ -191,6 +198,7 @@ test("passes synthetic P1 Annual and Detailed presentation QA with fixed screens
 test("keeps Annual scenes content-driven with bounded vertical rhythm", async ({ page }) => {
   await page.goto("/?fixture=beta-annual-recap");
   await expect(page.getByTestId("beta-annual-recap-harness")).toBeVisible();
+  const navigatorToggle = page.getByRole("button", { name: "范围与章节", exact: true });
 
   const viewports = [
     { width: 1180, height: 760, expectedTransition: 80 },
@@ -224,6 +232,7 @@ test("keeps Annual scenes content-driven with bounded vertical rhythm", async ({
   }
 
   await page.setViewportSize({ width: 1180, height: 760 });
+  await navigatorToggle.click();
   await page.getByLabel("回顾范围").selectOption("all-years");
   const allYearsDiagnostics: AnnualSceneDiagnostics = await readAnnualSceneDiagnostics(page);
   expect(allYearsDiagnostics.keyword).not.toBeNull();

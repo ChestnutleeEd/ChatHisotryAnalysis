@@ -13,6 +13,7 @@ import {
   ArtworkFrame,
   MethodologyDisclosure,
   QueryChips,
+  ProgressNavigator,
   SkipLink,
 } from "../src/presentation/beta/primitives";
 import {
@@ -194,7 +195,10 @@ describe("Beta B1a annual report skeleton", () => {
     expect(html).toContain("beta-card-narrative");
     expect(html).toContain("beta-card-privacy");
     expect(html).toContain("下一节：消息");
-    expect(html).toContain("恢复全部数据范围");
+    expect(html).toContain('data-v3-annual-report="true"');
+    expect(html).toContain('data-v3-layout-mode="asymmetric"');
+    expect(html).toContain('aria-label="年度报告阅读导航"');
+    expect(html).toContain('class="v3-range-toggle"');
     expect(html.match(/data-delivery-slot=/gu)).toHaveLength(16);
     expect(html).toContain("<h1");
     expect(html.match(/<h2/gu)?.length).toBeGreaterThanOrEqual(3);
@@ -204,7 +208,13 @@ describe("Beta B1a annual report skeleton", () => {
   it("defines scoped responsive/focus/static reduced-motion CSS contracts", () => {
     const entryCss = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
     const css = readFileSync(new URL("../src/presentation/beta/styles.css", import.meta.url), "utf8");
+    const foundationCss = readFileSync(new URL("../src/presentation/beta/styles/foundation.css", import.meta.url), "utf8");
+    const annualCss = readFileSync(new URL("../src/presentation/beta/styles/annual.css", import.meta.url), "utf8");
+    const motionCss = readFileSync(new URL("../src/presentation/beta/styles/motion.css", import.meta.url), "utf8");
     expect(entryCss).toContain('@import "./presentation/beta/styles.css";');
+    expect(entryCss).toContain('@import "./presentation/beta/styles/foundation.css";');
+    expect(entryCss).toContain('@import "./presentation/beta/styles/annual.css";');
+    expect(entryCss).toContain('@import "./presentation/beta/styles/motion.css";');
     expect(css).toContain(".desktop-app.beta-enabled {");
     expect(css).toContain("--beta-color-canvas: #F3F4F2");
     expect(css).toContain("--beta-color-report: #F7F3EA");
@@ -222,6 +232,47 @@ describe("Beta B1a annual report skeleton", () => {
     expect(css).toContain("@media (max-width: 599px)");
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
     expect(css).toContain("scroll-behavior: auto !important");
+    expect(foundationCss).toContain("--v3-canvas: #E8DCC7");
+    expect(foundationCss).toContain("--v3-workspace-signal: #002FA7");
+    expect(foundationCss).toContain("grid-template-columns: repeat(12, minmax(0, 1fr))");
+    expect(foundationCss).toContain("align-items: start");
+    expect(annualCss).toContain("width: 100%");
+    expect(annualCss).toContain("max-width: 720px");
+    expect(annualCss).toContain("position: sticky");
+    expect(annualCss).toContain("scroll-margin-top");
+    expect(annualCss).toContain("@media (max-width: 599px)");
+    expect(motionCss).toContain("--motion-scene: 520ms");
+    expect(motionCss).toContain("transform: translateY(12px)");
+    expect(motionCss).toContain("animation: none !important");
+    expect(motionCss).not.toContain("transition: all");
+  });
+
+  it("renders the seven-step navigator with labeled native controls", () => {
+    const html = renderToStaticMarkup(createElement(ProgressNavigator, {
+      items: [
+        { key: "opening", label: "开场", section: "opening" },
+        { key: "scale", label: "规模", section: "messages" },
+        { key: "rhythm", label: "节奏", section: "peak-month" },
+        { key: "balance", label: "平衡", section: "sender-share" },
+        { key: "conversation", label: "交流", section: "sessions" },
+        { key: "vocabulary", label: "词汇", section: "frequent-words" },
+        { key: "closing", label: "收束", section: "summary-share" },
+      ],
+      selectedSection: "opening",
+      rangeValue: "all-years",
+      rangeOptions: [{ value: "all-years", label: "全部年份" }],
+      sectionOptions: [{ value: "opening", label: "01 · 开场" }],
+      pending: false,
+      onRangeChange: noop,
+      onSectionChange: noop,
+      onRestoreFullRange: noop,
+    }));
+    expect(html).toContain('data-v3-navigator="annual"');
+    expect(html).toContain('aria-label="第 1 场：开场"');
+    expect(html).toContain('aria-label="第 7 场：收束"');
+    expect(html).toContain(">范围与章节</button>");
+    expect(html).toContain('aria-controls="annual-range-controls"');
+    expect(html).not.toContain('id="annual-range-controls"');
   });
 
   it("keeps primary, privacy, success, focus, and disabled pairs above their frozen contrast floors", () => {

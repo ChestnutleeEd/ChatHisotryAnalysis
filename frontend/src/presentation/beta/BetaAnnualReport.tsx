@@ -18,7 +18,8 @@ import {
   HighlightSentence,
   Metric,
   MethodologyDisclosure,
-  Navigation,
+  PageShell,
+  ProgressNavigator,
   QueryChips,
   Scene,
   Surface,
@@ -105,73 +106,30 @@ function ReportNavigator({
   readonly onSectionChange: (section: BetaReportSectionId) => void;
   readonly onRestoreFullRange: () => void;
 }) {
-  const currentSection = BETA_REPORT_SECTIONS.find((section) => section.id === selectedSection) ?? BETA_REPORT_SECTIONS[0];
-  const currentScene = REPORT_SCENES.find((scene) => scene.key === currentSection?.scene) ?? REPORT_SCENES[0];
-  const currentSceneIndex = REPORT_SCENES.findIndex((scene) => scene.key === currentScene.key);
+  const rangeOptions = [
+    ...representedYears.map((option) => ({
+      value: `year:${option.year}`,
+      label: `${option.year} 年${option.scope === "partial-calendar-query" ? "（部分范围）" : ""}`,
+    })),
+    { value: "all-years", label: "全部年份" },
+    ...(representedYears.length > 1 ? [{ value: "multi-year-overview", label: "多年度总览" }] : []),
+  ];
+  const sectionOptions = BETA_REPORT_SECTIONS.map((section) => ({
+    value: section.id,
+    label: `${String(section.order).padStart(2, "0")} · ${section.title}`,
+  }));
   return (
-    <Navigation label="年度报告导航" className="beta-report-navigation" data-testid="beta-report-navigator">
-      <div className="beta-report-navigation-context" aria-live="polite">
-        <span>年度回顾</span>
-        <strong>{currentScene.label}</strong>
-        <small>场景 {currentSceneIndex + 1} / {REPORT_SCENES.length} · 章节 {currentSection?.order ?? 1} / {BETA_REPORT_SECTIONS.length}</small>
-      </div>
-      <ol className="beta-report-progress" aria-label="七个报告场景">
-        {REPORT_SCENES.map((scene, index) => {
-          const isCurrent = scene.key === currentScene.key;
-          return (
-            <li key={scene.key} className={isCurrent ? "is-current" : undefined}>
-              <button
-                type="button"
-                aria-current={isCurrent ? "step" : undefined}
-                aria-label={`第 ${index + 1} 个场景：${scene.label}`}
-                onClick={() => onSectionChange(scene.section)}
-              >
-                <span aria-hidden="true">{index + 1}</span>
-                <em>{scene.label}</em>
-              </button>
-            </li>
-          );
-        })}
-      </ol>
-      <label className="beta-report-control-field beta-report-control-year">
-        <span>回顾范围</span>
-        <select
-          name="reportRange"
-          autoComplete="off"
-          value={committedRangeValue(reportState, analyticsResult)}
-          disabled={pending}
-          onChange={(event) => onRangeChange(event.currentTarget.value)}
-        >
-          {representedYears.map((option) => (
-            <option key={option.year} value={`year:${option.year}`}>
-              {option.year} 年{option.scope === "partial-calendar-query" ? "（部分范围）" : ""}
-            </option>
-          ))}
-          <option value="all-years">全部年份</option>
-          {representedYears.length > 1 ? <option value="multi-year-overview">多年度总览</option> : null}
-        </select>
-      </label>
-      <label className="beta-report-control-field beta-report-control-section">
-        <span>跳转章节</span>
-        <select
-          name="reportSection"
-          autoComplete="off"
-          value={selectedSection}
-          onChange={(event) => onSectionChange(event.currentTarget.value as BetaReportSectionId)}
-        >
-          {BETA_REPORT_SECTIONS.map((section) => (
-            <option key={section.id} value={section.id}>
-              {String(section.order).padStart(2, "0")} · {section.title}
-            </option>
-          ))}
-        </select>
-      </label>
-      <div className="beta-report-navigation-actions">
-        <BetaButton className="beta-report-restore-action" variant="tertiary" disabled={pending} onClick={onRestoreFullRange}>
-          恢复全部数据范围
-        </BetaButton>
-      </div>
-    </Navigation>
+    <ProgressNavigator
+      items={REPORT_SCENES}
+      selectedSection={selectedSection}
+      rangeValue={committedRangeValue(reportState, analyticsResult)}
+      rangeOptions={rangeOptions}
+      sectionOptions={sectionOptions}
+      pending={pending}
+      onRangeChange={onRangeChange}
+      onSectionChange={(section) => onSectionChange(section as BetaReportSectionId)}
+      onRestoreFullRange={onRestoreFullRange}
+    />
   );
 }
 
@@ -228,14 +186,16 @@ export function BetaAnnualReport({
     if (latestYear !== undefined) onRangeChange(`year:${latestYear}`);
   };
   return (
-    <section
-      id="beta-main-content"
-      className="beta-report"
-      data-beta-mode="annual-recap"
-      data-fixture-kind={viewModel.fixtureKind}
-      aria-labelledby="beta-report-heading"
-      aria-busy={pending}
-    >
+    <PageShell mode="annual" className="v3-annual-page-shell">
+      <section
+        id="beta-main-content"
+        className="beta-report v3-annual-report"
+        data-v3-annual-report="true"
+        data-beta-mode="annual-recap"
+        data-fixture-kind={viewModel.fixtureKind}
+        aria-labelledby="beta-report-heading"
+        aria-busy={pending}
+      >
       <ReportNavigator
         reportState={reportState}
         analyticsResult={analyticsResult}
@@ -253,7 +213,7 @@ export function BetaAnnualReport({
         </p>
       ) : null}
 
-      <Scene id="opening" scene="opening" className="beta-report-hero beta-card beta-card-hero" data-surface-role="report">
+      <Scene id="opening" scene="opening" layoutMode="asymmetric" whitespaceIntent="opening-cinematic" className="beta-report-hero beta-card beta-card-hero" data-surface-role="report">
         <div className="beta-report-hero-copy">
           <div className="beta-home-kicker">
             <Badge tone="beta">年度聊天报告</Badge>
@@ -357,7 +317,8 @@ export function BetaAnnualReport({
           </div>
         </BaseCard>
       </div>
-    </section>
+      </section>
+    </PageShell>
   );
 }
 
@@ -378,7 +339,7 @@ function ClosingScene({
 }) {
   const shareCardUnavailable = shareCardViewModel?.exportAvailability.status === "unavailable";
   return (
-    <Scene id="summary-share" scene="closing" className="beta-closing-scene" reveal motionIndex={5} aria-labelledby="beta-closing-heading">
+    <Scene id="summary-share" scene="closing" layoutMode="asymmetric" whitespaceIntent="closing-cinematic" className="beta-closing-scene" reveal motionIndex={5} aria-labelledby="beta-closing-heading">
       <div className="beta-closing-copy">
         <p className="beta-type-eyebrow">总结与分享 · 16</p>
         <h2 id="beta-closing-heading" className="beta-type-heading">把这段本地记录留在手边</h2>
@@ -472,13 +433,15 @@ function BetaCoreAnnualReport({
     setSharePreviewOpen(true);
   }
   return (
-    <section
-      id="beta-main-content"
-      className="beta-report beta-report-core"
-      data-beta-mode="annual-recap"
-      aria-labelledby="beta-report-heading"
-      aria-busy={pending}
-    >
+    <PageShell mode="annual" className="v3-annual-page-shell">
+      <section
+        id="beta-main-content"
+        className="beta-report beta-report-core v3-annual-report"
+        data-v3-annual-report="true"
+        data-beta-mode="annual-recap"
+        aria-labelledby="beta-report-heading"
+        aria-busy={pending}
+      >
       <ReportNavigator
         reportState={reportState}
         analyticsResult={analyticsResult}
@@ -504,6 +467,7 @@ function BetaCoreAnnualReport({
       <Scene
         id="vocabulary-scene"
         scene="vocabulary"
+        layoutMode="full"
         className="beta-v2-scene beta-v2-vocabulary"
         reveal
         motionIndex={4}
@@ -551,6 +515,7 @@ function BetaCoreAnnualReport({
           onSavePng={onSaveShareCardPng}
         />
       ) : null}
-    </section>
+      </section>
+    </PageShell>
   );
 }

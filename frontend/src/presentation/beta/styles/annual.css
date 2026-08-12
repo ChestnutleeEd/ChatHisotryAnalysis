@@ -1,0 +1,330 @@
+/* V3 Annual shell and reading dock. Scene internals retain their current
+   composition until the bounded V3.2 scene migrations. */
+
+html:has(.desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-navigator) {
+  scroll-padding-top: 84px;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report {
+  width: min(100%, var(--v3-layout-standard));
+  margin-inline: auto;
+  color: var(--v3-ink);
+  background: var(--v3-canvas);
+  scroll-padding-top: calc(var(--v3-nav-occupied-block) + 16px);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report :where(
+  h1,
+  h2,
+  h3,
+  [id]
+) {
+  scroll-margin-top: calc(var(--v3-nav-occupied-block) + 16px);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report [data-v3-scene] {
+  min-block-size: 0;
+  align-items: start;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report [data-v3-scene]:not([data-whitespace-intent]) {
+  min-height: 0;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report [data-v3-layout-mode] {
+  align-items: start;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report :where(
+  .beta-v2-scale-grid,
+  .beta-v2-balance-grid,
+  .beta-v2-conversation-grid
+) {
+  align-items: start;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report [data-v3-geometry-cell] {
+  min-width: 0;
+  align-self: start;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report details:not([open]) > :not(summary) {
+  display: none;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-navigator {
+  position: sticky;
+  top: 8px;
+  z-index: 10;
+  width: 100%;
+  max-width: 720px;
+  min-width: 0;
+  margin: 0 auto var(--v3-space-5);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-reading-dock {
+  position: relative;
+  top: auto;
+  z-index: 10;
+  display: grid;
+  grid-template-columns: minmax(112px, auto) minmax(0, 1fr) auto;
+  gap: var(--v3-space-3);
+  align-items: center;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: var(--v3-nav-height);
+  padding: 0 8px 0 12px;
+  border: 1px solid var(--v3-hairline);
+  border-radius: 12px;
+  background: rgb(242 233 216 / 96%);
+  box-shadow: 0 4px 14px rgb(47 52 44 / 8%);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-dock-context {
+  display: flex;
+  min-width: 0;
+  gap: var(--v3-space-2);
+  align-items: baseline;
+  white-space: nowrap;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-dock-folio {
+  flex: 0 0 auto;
+  color: var(--v3-brand);
+  font-family: var(--v3-font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-dock-context strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--v3-ink);
+  font-family: var(--v3-font-display);
+  font-size: 15px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-steps {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 2px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-steps li {
+  min-width: 0;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-steps button {
+  position: relative;
+  display: grid;
+  width: 100%;
+  min-height: 42px;
+  place-items: center;
+  padding: 0 2px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--v3-ink-muted);
+  font-family: var(--v3-font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-steps button::after {
+  position: absolute;
+  right: 22%;
+  bottom: 5px;
+  left: 22%;
+  height: 2px;
+  background: var(--v3-divider);
+  content: "";
+  transform: scaleX(.4);
+  transform-origin: center;
+  transition: transform var(--motion-nav) var(--motion-ease-standard), background-color var(--motion-micro) var(--motion-ease-standard);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-steps li[data-progress-state="complete"] button::after {
+  background: var(--v3-brand);
+  transform: scaleX(1);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-steps li[data-progress-state="current"] button {
+  border-bottom-color: var(--v3-brand);
+  color: var(--v3-ink);
+  font-weight: 800;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-steps li[data-progress-state="current"] button::after {
+  background: var(--v3-accent);
+  transform: scaleX(1);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-range-toggle {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  padding: 0 4px 0 12px;
+  border: 0;
+  border-left: 1px solid var(--v3-divider);
+  background: transparent;
+  color: var(--v3-ink-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-range-toggle::after {
+  width: 7px;
+  height: 7px;
+  margin-left: 8px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  content: "";
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform var(--motion-nav) var(--motion-ease-standard);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-navigator[data-panel-open="true"] .v3-range-toggle::after {
+  transform: translateY(2px) rotate(225deg);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-range-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: var(--v3-space-3) var(--v3-space-4);
+  align-items: end;
+  margin-top: var(--v3-space-3);
+  padding: var(--v3-space-4);
+  border: 1px solid var(--v3-hairline);
+  border-radius: 12px;
+  background: rgb(248 241 228 / 98%);
+  box-shadow: 0 4px 12px rgb(47 52 44 / 5%);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-range-panel-heading {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 2px;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-range-panel-heading p:last-child {
+  margin: 0;
+  color: var(--v3-ink-secondary);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-range-field {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: var(--v3-ink-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-range-field select {
+  width: 100%;
+  min-height: 44px;
+  min-width: 0;
+  padding: 8px 32px 8px 10px;
+  border: 1px solid var(--v3-hairline);
+  border-radius: var(--v3-radius-control);
+  background: var(--v3-surface-elevated);
+  color: var(--v3-ink);
+  font-size: 13px;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-range-panel-action,
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-range-panel-action .beta-button {
+  min-height: 44px;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-range-panel-action .beta-button {
+  white-space: nowrap;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report .beta-report-pending,
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report .beta-report-scope-banner,
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report .beta-recovery-note {
+  margin-inline: 0;
+  border-left-color: var(--v3-brand);
+  background: var(--v3-wash);
+  color: var(--v3-ink-secondary);
+}
+
+@media (min-width: 1440px) {
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report {
+    width: min(100%, var(--v3-layout-wide));
+  }
+}
+
+@media (max-width: 959px) {
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-navigator {
+    width: 100%;
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-range-panel {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-range-panel-action {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 599px) {
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-reading-dock {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "context toggle"
+      "progress progress";
+    gap: 0 8px;
+    padding-inline: 10px;
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-dock-context {
+    grid-area: context;
+    min-height: 42px;
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-steps {
+    grid-area: progress;
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-steps button {
+    min-height: 40px;
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-range-toggle {
+    grid-area: toggle;
+    min-height: 42px;
+    padding-left: 8px;
+    font-size: 11px;
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-range-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-range-panel-heading,
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-range-panel-action {
+    grid-column: auto;
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-range-panel-action,
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-range-panel-action .beta-button {
+    width: 100%;
+  }
+}

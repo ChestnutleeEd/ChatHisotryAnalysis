@@ -1,4 +1,7 @@
 @import "./presentation/beta/styles.css";
+@import "./presentation/beta/styles/foundation.css";
+@import "./presentation/beta/styles/annual.css";
+@import "./presentation/beta/styles/motion.css";
 
 :root {
   --accent: #c66b3d;

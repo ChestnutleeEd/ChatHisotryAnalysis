@@ -227,6 +227,7 @@ test("keeps the same fixed renderer authority across synthetic single-year and a
   await page.setViewportSize({ width: 1180, height: 760 });
   await page.goto("/?fixture=beta-annual-recap");
   await expect(page.getByTestId("beta-annual-recap-harness")).toBeVisible();
+  await page.getByRole("button", { name: "范围与章节", exact: true }).click();
   const range = page.getByLabel("回顾范围");
 
   for (const option of ["year:2024", "all-years"]) {

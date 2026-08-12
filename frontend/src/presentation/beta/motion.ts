@@ -9,6 +9,21 @@ export const BETA_MOTION = {
   easing: "cubic-bezier(.2, .8, .2, 1)",
 } as const;
 
+/**
+ * V3 motion tiers are presentation-only. The existing BETA_MOTION export is
+ * kept for the protected B5 surface; new V3 consumers use these explicit
+ * classes instead of inheriting a single generic duration.
+ */
+export const V3_MOTION = {
+  microMs: 180,
+  navigationMs: 220,
+  sceneMs: 520,
+  dataMs: 560,
+  canvasMs: 600,
+  easeStandard: "cubic-bezier(.22, 1, .36, 1)",
+  easeEmphasis: "cubic-bezier(.16, 1, .3, 1)",
+} as const;
+
 export type OneShotRevealState = "idle" | "entering" | "complete";
 
 function prefersReducedMotion(): boolean {
@@ -69,7 +84,7 @@ export function useOneShotSceneReveal(enabled: boolean): {
         return;
       }
       setState("entering");
-      timeoutId = window.setTimeout(finish, BETA_MOTION.standardMs + BETA_MOTION.maxStaggerMs + 80);
+      timeoutId = window.setTimeout(finish, V3_MOTION.sceneMs + BETA_MOTION.maxStaggerMs + 80);
     };
 
     if (prefersReducedMotion() || typeof window.IntersectionObserver === "undefined") {
@@ -98,7 +113,7 @@ export function useOneShotSceneReveal(enabled: boolean): {
         observer.disconnect();
         enter();
       }
-    }, { threshold: 0.01 });
+    }, { threshold: 0.18, rootMargin: "0px 0px -12% 0px" });
     observer.observe(node);
 
     return () => {

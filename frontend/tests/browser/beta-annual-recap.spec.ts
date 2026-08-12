@@ -12,6 +12,9 @@ test("renders synthetic Annual Recap core cards and preserves responsive semanti
   await page.setViewportSize({ width: 1180, height: 760 });
   await page.goto("/?fixture=beta-annual-recap");
   await expect(page.getByTestId("beta-annual-recap-harness")).toBeVisible();
+  const navigatorToggle = page.getByRole("button", { name: "范围与章节", exact: true });
+  await navigatorToggle.click();
+  await expect(navigatorToggle).toHaveAttribute("aria-expanded", "true");
   await expect(page.locator("#messages")).toContainText("1,248");
   await expect(page.locator(".beta-report-scope-banner")).toContainText("部分日期范围");
   for (const id of [
@@ -43,6 +46,7 @@ test("renders synthetic Annual Recap core cards and preserves responsive semanti
   await expect(page.locator("#peak-hour .beta-core-visual-table")).toBeVisible();
   await page.locator("#word-cloud .beta-word-cloud-list-disclosure summary").click();
   await expect(page.locator("#word-cloud .beta-word-cloud-list")).toBeVisible();
+  await navigatorToggle.click();
 
   const compactRanking = page.locator("#frequent-words .beta-word-ranking:not(.beta-word-ranking-full)");
   const meaningfulCount = await compactRanking.locator("li", { hasText: "本地版本" }).textContent();

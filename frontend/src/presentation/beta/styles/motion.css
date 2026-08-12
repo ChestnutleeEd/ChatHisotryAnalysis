@@ -1,0 +1,93 @@
+/* V3 motion authority. Values are explicit so the dock and generic scene
+   reveal do not inherit the protected Share Preview animation timings. */
+
+.desktop-app.beta-enabled[data-visual-version="v3"] {
+  --motion-micro: 180ms;
+  --motion-nav: 220ms;
+  --motion-scene: 520ms;
+  --motion-data: 560ms;
+  --motion-canvas: 600ms;
+  --motion-ease-standard: cubic-bezier(.22, 1, .36, 1);
+  --motion-ease-emphasis: cubic-bezier(.16, 1, .3, 1);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report [data-v3-scene][data-motion="scene"] {
+  opacity: 1;
+  transform: none;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report [data-v3-scene][data-motion="scene"][data-motion-state="entering"] {
+  animation: v3-scene-reveal var(--motion-scene) var(--motion-ease-standard)
+    var(--beta-motion-delay, 0ms) both;
+  transform-origin: center top;
+  will-change: opacity, transform;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report [data-v3-scene][data-motion="scene"][data-motion-state="complete"] {
+  opacity: 1;
+  transform: none;
+}
+
+@keyframes v3-scene-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-steps button,
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-range-toggle,
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-range-field select,
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-range-panel {
+  transition:
+    background-color var(--motion-micro) var(--motion-ease-standard),
+    border-color var(--motion-micro) var(--motion-ease-standard),
+    color var(--motion-micro) var(--motion-ease-standard),
+    box-shadow var(--motion-nav) var(--motion-ease-standard);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-range-panel {
+  animation: v3-panel-enter var(--motion-nav) var(--motion-ease-standard) both;
+}
+
+@keyframes v3-panel-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .desktop-app.beta-enabled[data-visual-version="v3"]:is(
+    [data-v3-surface="annual"],
+    [data-v3-surface="home"]
+  ),
+  .desktop-app.beta-enabled[data-visual-version="v3"]:is(
+    [data-v3-surface="annual"],
+    [data-v3-surface="home"]
+  ) * {
+    scroll-behavior: auto !important;
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report [data-v3-scene][data-motion="scene"],
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-range-panel {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+    transition: none !important;
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-steps button,
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-range-toggle,
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-range-field select {
+    transition: none;
+  }
+}

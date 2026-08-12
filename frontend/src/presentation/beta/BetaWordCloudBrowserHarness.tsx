@@ -16,7 +16,7 @@ export function BetaWordCloudBrowserHarness() {
     [role, year],
   );
   return (
-    <main className="desktop-app beta-enabled" data-testid="beta-word-cloud-harness">
+    <main className="desktop-app beta-enabled" data-visual-version="v3" data-v3-surface="annual" data-testid="beta-word-cloud-harness">
       <SkipLink href="#word-cloud" />
       <header className="desktop-app-header">
         <div className="beta-product-identity">
