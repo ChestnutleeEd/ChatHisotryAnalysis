@@ -15,6 +15,7 @@ import {
 import {
   syntheticBetaAllYearsReportResult,
   syntheticBetaAnnualReportResult,
+  syntheticBetaSparseAnnualReportResult,
 } from "./synthetic-report-fixture";
 import { syntheticBetaWordCloudFrequency } from "./synthetic-word-cloud-fixture";
 import type { WordFrequencyRole } from "../../worker-analysis/word-frequency-contract";
@@ -43,6 +44,7 @@ function reportStateFor(
 
 export function BetaAnnualReportBrowserHarness() {
   const saveScenario = new URLSearchParams(window.location.search).get("save") ?? "saved";
+  const sparseFixture = new URLSearchParams(window.location.search).get("sparse") === "1";
   const [mode, setMode] = useState<HarnessMode>("annual");
   const [year, setYear] = useState(2025);
   const [wordRole, setWordRole] = useState<WordFrequencyRole>("both");
@@ -50,8 +52,10 @@ export function BetaAnnualReportBrowserHarness() {
   const saveAttemptsRef = useRef(0);
   const [saveAttempts, setSaveAttempts] = useState(0);
   const result = useMemo(
-    () => mode === "annual" ? syntheticBetaAnnualReportResult(year) : syntheticBetaAllYearsReportResult(),
-    [mode, year],
+    () => sparseFixture
+      ? syntheticBetaSparseAnnualReportResult()
+      : mode === "annual" ? syntheticBetaAnnualReportResult(year) : syntheticBetaAllYearsReportResult(),
+    [mode, sparseFixture, year],
   );
   const reportState = useMemo(() => reportStateFor(result, mode), [mode, result]);
   const viewModel = useMemo(() => presentBetaReportZhCN(buildBetaReportDto(result, {
@@ -68,6 +72,10 @@ export function BetaAnnualReportBrowserHarness() {
       year: mode === "annual" ? year : null,
     });
     const summary = createBetaSummaryDtoV1(reportDto);
+    if (sparseFixture) {
+      const unavailable = presentBetaSummaryZhCN(summary);
+      return { off: unavailable, on: unavailable };
+    }
     const wordPresentation = createWordFrequencyPresentation(frequency, [], "raw-count", undefined, true);
     return {
       off: presentBetaSummaryZhCN(summary),
@@ -78,7 +86,7 @@ export function BetaAnnualReportBrowserHarness() {
         expectedFrequencyDtoKey: wordPresentation.frequencyDtoKey,
       })),
     };
-  }, [frequency, mode, result, wordRole, year]);
+  }, [frequency, mode, result, sparseFixture, wordRole, year]);
   const representedYears = representedYearOptions([2024, 2025], { startDate: "2024-01-01", endDate: "2025-12-31" });
 
   function changeRange(value: string): void {

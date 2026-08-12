@@ -189,12 +189,11 @@ describe("Beta B1a annual report skeleton", () => {
       onOpenDetailed: noop,
     }));
     expect(html).toContain('data-fixture-kind="synthetic-automated-test"');
-    expect(html).toContain("自动化合成测试");
-    expect(html).toContain("beta-card-hero");
-    expect(html).toContain("beta-card-metric");
-    expect(html).toContain("beta-card-narrative");
+    expect(html).toContain("合成测试夹具");
+    expect(html).toContain("v3-opening-scene");
+    expect(html).toContain("v3-skeleton-primary");
     expect(html).toContain("beta-card-privacy");
-    expect(html).toContain("下一节：消息");
+    expect(html).toContain("下一节：规模");
     expect(html).toContain('data-v3-annual-report="true"');
     expect(html).toContain('data-v3-layout-mode="asymmetric"');
     expect(html).toContain('aria-label="年度报告阅读导航"');
@@ -221,7 +220,9 @@ describe("Beta B1a annual report skeleton", () => {
     expect(css).toContain("--beta-color-primary: #1F4D3F");
     expect(css).toContain("--beta-radius-art: 24px");
     expect(css).toContain("--beta-depth-raised:");
-    expect(css).toContain("grid-template-columns: minmax(0, 7fr) minmax(280px, 5fr)");
+    expect(css).not.toContain("beta-report-hero");
+    expect(css).not.toContain("beta-v2-scale-grid");
+    expect(css).not.toContain("beta-core-visual-details");
     expect(css).toContain(".beta-artwork-frame");
     expect(css).toContain("font-size: clamp(48px, 5.6vw, 72px)");
     expect(css).toContain("min-height: 44px");
@@ -240,6 +241,10 @@ describe("Beta B1a annual report skeleton", () => {
     expect(annualCss).toContain("max-width: 720px");
     expect(annualCss).toContain("position: sticky");
     expect(annualCss).toContain("scroll-margin-top");
+    expect(annualCss).toContain("grid-column: 1 / span 7");
+    expect(annualCss).toContain("grid-column: 8 / -1");
+    expect(annualCss).toContain("repeat(12, minmax(0, 1fr))");
+    expect(annualCss).toContain("v3-role-band-track");
     expect(annualCss).toContain("@media (max-width: 599px)");
     expect(motionCss).toContain("--motion-scene: 520ms");
     expect(motionCss).toContain("transform: translateY(12px)");
@@ -305,8 +310,10 @@ describe("Beta B2 core report composition", () => {
     expect(html).toContain("按星期一至星期日排列的消息数量");
     expect(html).toContain("尚未提供");
     expect(html).toContain("UTC+08:00");
-    expect(html).toContain("beta-core-scene-heading");
-    expect(html).toContain("beta-core-visual-details");
+    expect(html).toContain("v3-scene-intro");
+    expect(html).toContain("v3-visual-details");
+    expect(html).toContain("v3-month-matrix");
+    expect(html).toContain("v3-role-band");
     expect(html).not.toContain("beta-status-success");
     expect(html).not.toMatch(/<details[^>]+open(?:=|\s|>)/u);
     for (const id of BETA_REPORT_SECTION_IDS.slice(0, 12)) {

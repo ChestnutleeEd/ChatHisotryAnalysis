@@ -15,14 +15,14 @@ import {
   BaseCard,
   Badge,
   BetaButton,
-  HighlightSentence,
   Metric,
   MethodologyDisclosure,
   PageShell,
   ProgressNavigator,
-  QueryChips,
   Scene,
+  SceneIntro,
   Surface,
+  StoryGrid,
 } from "./primitives";
 import type { BetaRecapSkeletonViewModel } from "./view-model";
 import type { BetaReportViewModelV1 } from "./report-contract";
@@ -213,53 +213,55 @@ export function BetaAnnualReport({
         </p>
       ) : null}
 
-      <Scene id="opening" scene="opening" layoutMode="asymmetric" whitespaceIntent="opening-cinematic" className="beta-report-hero beta-card beta-card-hero" data-surface-role="report">
-        <div className="beta-report-hero-copy">
-          <div className="beta-home-kicker">
-            <Badge tone="beta">年度聊天报告</Badge>
-            <Badge tone="privacy">仅本地呈现</Badge>
+      <Scene id="opening" scene="opening" layoutMode="asymmetric" whitespaceIntent="opening-cinematic" className="v3-annual-scene v3-opening-scene" data-section-status="ready" reveal motionIndex={0} aria-labelledby="beta-report-heading">
+        <StoryGrid mode="asymmetric" className="v3-opening-grid">
+          <div className="v3-opening-copy" data-v3-geometry-cell="opening-copy" data-v3-cell-mode="asymmetric">
+            <p className="v3-opening-folio">年度回顾 · 01 / {viewModel.scopeLabel}</p>
+            <h1 id="beta-report-heading" className="v3-opening-title" tabIndex={-1}>{viewModel.displayYear}</h1>
+            <p className="v3-opening-lead">{viewModel.headline}</p>
             {viewModel.fixtureKind === "synthetic-automated-test" ? (
-              <Badge tone="partial">自动化合成测试</Badge>
+              <p className="v3-opening-partial" role="note">合成测试夹具：以下内容不连接真实用户数据。</p>
             ) : null}
+            <Metric
+              className="v3-opening-metric"
+              label={viewModel.metricLabel}
+              value={viewModel.metricValue}
+              unit={viewModel.metricUnit}
+              description={viewModel.metricDefinition}
+            />
+            <dl className="v3-opening-facts">
+              <div><dt>当前范围</dt><dd>{viewModel.scopeLabel}</dd></div>
+              <div><dt>呈现边界</dt><dd>仅本地聚合</dd></div>
+              <div><dt>报告状态</dt><dd>骨架数据</dd></div>
+            </dl>
+            <a className="v3-next-cue" href="#messages" onClick={() => onSectionChange("messages")}>下一节：规模</a>
           </div>
-          <p className="beta-type-eyebrow">{viewModel.scopeLabel}</p>
-          <h1 id="beta-report-heading" className="beta-type-display" tabIndex={-1}>{viewModel.displayYear}</h1>
-          <p className="beta-type-report-lead">{viewModel.headline}</p>
-          <QueryChips chips={viewModel.queryChips} />
-          <Metric
-            className="beta-report-hero-metric"
-            label={viewModel.metricLabel}
-            value={viewModel.metricValue}
-            unit={viewModel.metricUnit}
-            description={viewModel.metricDefinition}
-          />
-        </div>
-        <div className="beta-report-hero-art">
-          <ArtworkFrame src={annualOpeningHero} width={1536} height={1024} loading="eager" className="beta-opening-artwork" />
-          <p className="beta-artwork-caption">抽象的时间与节奏记录</p>
-        </div>
-        <a className="beta-next-cue" href="#messages" onClick={() => onSectionChange("messages")}>
-          下一节：消息
-        </a>
+          <div className="v3-opening-art" data-v3-geometry-cell="opening-art" data-v3-cell-mode="asymmetric">
+            <ArtworkFrame src={annualOpeningHero} width={1536} height={1024} loading="eager" className="v3-opening-artwork" />
+            <p className="v3-artwork-caption">抽象的时间与节奏记录</p>
+          </div>
+        </StoryGrid>
       </Scene>
 
-      <div className="beta-report-scenes">
-        <BaseCard id="messages" variant="metric" className="beta-report-metric-scene">
-          <p className="beta-type-eyebrow">消息 · 02</p>
-          <h2 className="beta-type-heading">这一范围聊了多少？</h2>
-          <div className="beta-metric-composition">
-            <strong className="beta-type-metric">{viewModel.metricValue}</strong>
-            <span className="beta-type-metric-unit">{viewModel.metricUnit}</span>
-          </div>
-          <p className="beta-type-secondary">{viewModel.metricDefinition}</p>
-        </BaseCard>
-
-        <BaseCard id="active-days" variant="narrative" className="beta-report-narrative-scene">
-          <p className="beta-type-eyebrow">阅读方式 · 03–16</p>
-          <h2 className="beta-type-heading">沿着固定章节继续阅读</h2>
-          <HighlightSentence>{viewModel.narrative}</HighlightSentence>
-          <p className="beta-type-body">当前章节会明确区分已就绪与尚未提供的指标；词频与词云在下方保持本地生成和可读列表。</p>
-        </BaseCard>
+      <div className="v3-core-scenes">
+        <Scene id="scale-scene" scene="scale" layoutMode="asymmetric" className="v3-annual-scene v3-scale-scene" reveal motionIndex={1} aria-labelledby="v3-skeleton-scale-heading">
+          <SceneIntro number="02" kicker="规模" title="把这一年放到尺度里" summary="消息总量先成为主尺度；其余章节会在完整安全聚合结果就绪后展开。" headingId="v3-skeleton-scale-heading" />
+          <StoryGrid mode="asymmetric" className="v3-scale-grid">
+            <article id="messages" className="v3-skeleton-primary" data-v3-geometry-cell="scale-primary" data-v3-cell-mode="asymmetric">
+              <p className="v3-logical-kicker">消息 · 02</p>
+              <h3 className="v3-logical-title">这一范围聊了多少？</h3>
+              <Metric label={viewModel.metricLabel} value={viewModel.metricValue} unit={viewModel.metricUnit} description={viewModel.metricDefinition} />
+              <p className="v3-logical-lead">{viewModel.metricDefinition}</p>
+            </article>
+            <article id="active-days" className="v3-skeleton-evidence" data-v3-geometry-cell="scale-evidence" data-v3-cell-mode="asymmetric">
+              <p className="v3-logical-kicker">阅读方式 · 03–16</p>
+              <h3 className="v3-logical-title">沿着固定章节继续阅读</h3>
+              <p className="v3-logical-lead">{viewModel.narrative}</p>
+              <p className="v3-skeleton-status">当前章节会明确区分已就绪与尚未提供的指标；完整年度核心故事会在结果提交后显示。</p>
+            </article>
+          </StoryGrid>
+        </Scene>
+      </div>
 
         {BETA_REPORT_SECTIONS.filter((section) => section.order >= 4 && section.order <= 12).map((section) => (
           <span key={section.id} id={section.id} className="beta-report-section-anchor" aria-hidden="true" />
@@ -284,7 +286,7 @@ export function BetaAnnualReport({
           <span key={section.id} id={section.id} className="beta-report-section-anchor" aria-hidden="true" />
         ))}
 
-        <ClosingScene onOpenDetailed={onOpenDetailed} />
+      <ClosingScene onOpenDetailed={onOpenDetailed} />
 
         <BaseCard variant="privacy" className="beta-report-map-card">
           <div className="beta-report-map-heading">
@@ -316,7 +318,6 @@ export function BetaAnnualReport({
             <BetaButton variant="secondary" onClick={onOpenDetailed}>进入详细分析</BetaButton>
           </div>
         </BaseCard>
-      </div>
       </section>
     </PageShell>
   );

@@ -1,5 +1,5 @@
-/* V3 motion authority. Values are explicit so the dock and generic scene
-   reveal do not inherit the protected Share Preview animation timings. */
+/* V3 motion authority. Scene reveal owns the only observer; data marks are
+   child animations keyed from that one-shot scene state. */
 
 .desktop-app.beta-enabled[data-visual-version="v3"] {
   --motion-micro: 180ms;
@@ -36,6 +36,123 @@
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+/* Organic motion is restrained: the canvas arrives first, the data follows
+   with transform/opacity/clip-path only. Every child finishes in one pass. */
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report [data-v3-scene][data-motion-state="entering"] .v3-opening-title {
+  animation: v3-opening-title var(--motion-scene) var(--motion-ease-emphasis) 80ms both;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report [data-v3-scene][data-motion-state="entering"] .v3-opening-artwork {
+  animation: v3-artwork-reveal var(--motion-canvas) var(--motion-ease-standard) 120ms both;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report [data-v3-scene][data-motion-state="entering"] :where(
+  .v3-month-cell-fill,
+  .v3-beat-mark,
+  .v3-hour-pulse-mark,
+  .v3-role-band-segment,
+  .v3-length-marker,
+  .v3-ranked-track span,
+  .v3-streak-axis span,
+  .v3-reply-direction
+) {
+  animation-duration: var(--motion-data);
+  animation-timing-function: var(--motion-ease-standard);
+  animation-delay: 120ms;
+  animation-fill-mode: both;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report [data-v3-scene][data-motion-state="entering"] :where(
+  .v3-month-cell-fill,
+  .v3-role-band-segment,
+  .v3-ranked-track span
+) {
+  animation-name: v3-data-width;
+  transform-origin: left center;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report [data-v3-scene][data-motion-state="entering"] :where(
+  .v3-beat-mark,
+  .v3-hour-pulse-mark
+) {
+  animation-name: v3-data-height;
+  transform-origin: center bottom;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report [data-v3-scene][data-motion-state="entering"] .v3-length-marker {
+  animation-name: v3-data-marker;
+  transform-origin: center;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report [data-v3-scene][data-motion-state="entering"] .v3-streak-axis span {
+  animation-name: v3-data-width;
+  transform-origin: left center;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report [data-v3-scene][data-motion-state="entering"] .v3-reply-direction {
+  animation-name: v3-data-width;
+  transform-origin: left center;
+}
+
+@keyframes v3-opening-title {
+  from {
+    opacity: 0;
+    clip-path: inset(0 100% 0 0);
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+    transform: translateY(0);
+  }
+}
+
+@keyframes v3-artwork-reveal {
+  from {
+    opacity: .3;
+    clip-path: inset(0 0 100% 0 round 24px);
+    transform: translateY(14px) scale(.985);
+  }
+  to {
+    opacity: 1;
+    clip-path: inset(0 0 0 0 round 24px);
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes v3-data-width {
+  from {
+    opacity: .2;
+    transform: scaleX(0);
+  }
+  to {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+@keyframes v3-data-height {
+  from {
+    opacity: .2;
+    transform: scaleY(0);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(var(--v3-beat-scale, var(--v3-pulse-scale, 1)));
+  }
+}
+
+@keyframes v3-data-marker {
+  from {
+    opacity: .2;
+    transform: translateX(-50%) scale(0);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
   }
 }
 
@@ -78,9 +195,22 @@
   }
 
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report [data-v3-scene][data-motion="scene"],
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report [data-v3-scene][data-motion="scene"] :where(
+    .v3-opening-title,
+    .v3-opening-artwork,
+    .v3-month-cell-fill,
+    .v3-beat-mark,
+    .v3-hour-pulse-mark,
+    .v3-role-band-segment,
+    .v3-length-marker,
+    .v3-ranked-track span,
+    .v3-streak-axis span,
+    .v3-reply-direction
+  ),
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-range-panel {
     animation: none !important;
     opacity: 1;
+    clip-path: none;
     transform: none;
     transition: none !important;
   }
@@ -89,5 +219,17 @@
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-range-toggle,
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-range-field select {
     transition: none;
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report .v3-beat-mark {
+    transform: scaleY(var(--v3-beat-scale)) !important;
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report .v3-hour-pulse-mark {
+    transform: scaleY(var(--v3-pulse-scale)) !important;
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report .v3-length-marker {
+    transform: translateX(-50%) !important;
   }
 }

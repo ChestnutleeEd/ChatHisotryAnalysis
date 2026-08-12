@@ -12,14 +12,14 @@
 
 ## 2. V3.2 — Core Annual Storytelling
 
-- [ ] 2.1 [Luna Max] Recompose Opening as the Organic “Archive Current” cover using the approved 7+5 grid, content-safe height bounds, existing opening artwork, correct source/range provenance, and reduced-motion-safe reveal.
-- [ ] 2.2 [Luna Max] Recompose Scale as a 7+5 editorial scene with message total as the dominant fact and active days/streak as subordinate evidence; remove the full-width hero/support-stack pattern and prove no empty counterpart cell.
-- [ ] 2.3 [Luna Max] Recompose Rhythm with month trend across 12 columns followed by weekday 5 + hour 7, preserving exact facts, legends, alternatives, axes, annotations, and density behavior across sparse and typical synthetic fixtures.
-- [ ] 2.4 [Luna Max] Recompose Balance with a 12-column sender comparison band followed by message length 4 + message type 8, keeping Owner/Other color semantics redundant with labels and enforcing the asymmetric-cell geometry limits.
-- [ ] 2.5 [Luna Max] Recompose Conversation as a 7+5 scene that pairs session shape with reply behavior, preserving exact definitions, evidence routes, empty/sparse states, and Detailed-mode drill-through targets.
-- [ ] 2.6 [Luna Max] Apply the approved chart entrance, annotation, hover/focus, and chapter-transition motion within the V3 motion budget; keep all data calculations and chart ordering outside the scroll/render loop.
-- [ ] 2.7 [Luna Max] If the optional Rhythm supporting illustration is still justified after layout review, prepare only the approved local asset brief and run the asset approval workflow before adding a generated file; otherwise record the explicit no-asset decision.
-- [ ] 2.8 [Luna Max] Run focused regression, geometry, screenshot, reduced-motion, keyboard, responsive, packaged-offline, and synthetic sparse/typical data tests for Opening through Conversation; conduct and record the V3.2 human visual gate.
+- [x] 2.1 [Luna Max] Recompose Opening as the Organic “Archive Current” cover using the approved 7+5 grid, content-safe height bounds, existing opening artwork, correct source/range provenance, and reduced-motion-safe reveal.
+- [x] 2.2 [Luna Max] Recompose Scale as a 7+5 editorial scene with message total as the dominant fact and active days/streak as subordinate evidence; remove the full-width hero/support-stack pattern and prove no empty counterpart cell.
+- [x] 2.3 [Luna Max] Recompose Rhythm with month trend across 12 columns followed by weekday 5 + hour 7, preserving exact facts, legends, alternatives, axes, annotations, and density behavior across sparse and typical synthetic fixtures.
+- [x] 2.4 [Luna Max] Recompose Balance with a 12-column sender comparison band followed by message length 4 + message type 8, keeping Owner/Other color semantics redundant with labels and enforcing the asymmetric-cell geometry limits.
+- [x] 2.5 [Luna Max] Recompose Conversation as a 7+5 scene that pairs session shape with reply behavior, preserving exact definitions, evidence routes, empty/sparse states, and Detailed-mode drill-through targets.
+- [x] 2.6 [Luna Max] Apply the approved chart entrance, annotation, hover/focus, and chapter-transition motion within the V3 motion budget; keep all data calculations and chart ordering outside the scroll/render loop.
+- [x] 2.7 [Luna Max] If the optional Rhythm supporting illustration is still justified after layout review, prepare only the approved local asset brief and run the asset approval workflow before adding a generated file; otherwise record the explicit no-asset decision.
+- [x] 2.8 [Luna Max] Run focused regression, geometry, screenshot, reduced-motion, keyboard, responsive, packaged-offline, and synthetic sparse/typical data tests for Opening through Conversation; conduct and record the V3.2 human visual gate.
 - [ ] 2.9 [Sol xHigh — STOP GATE] Review the complete V3.2 diff for editorial hierarchy, factual fidelity, responsive composition, and CSS-authority regression; resolve only accepted bounded findings, validate, stage exact paths, commit, push, and stop for approval before V3.3.
 
 ## 3. V3.3 — Vocabulary Climax

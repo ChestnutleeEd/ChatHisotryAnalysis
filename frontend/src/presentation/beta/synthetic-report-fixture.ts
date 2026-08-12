@@ -41,6 +41,10 @@ function categoryCounts(): Record<string, number> {
   return Object.fromEntries(CANONICAL_MESSAGE_CATEGORIES.map((category) => [category, category === "text" ? 930 : category === "image" ? 180 : category === "voice" ? 72 : 0]));
 }
 
+function zeroCategoryCounts(): Record<string, number> {
+  return Object.fromEntries(CANONICAL_MESSAGE_CATEGORIES.map((category) => [category, 0]));
+}
+
 export function syntheticBetaAnnualReportResult(year: number): CanonicalAnalysisResult {
   const partial = year === 2025;
   const scopedMessageCount = year === 2024 ? 824 : 1_248;
@@ -212,6 +216,7 @@ export function syntheticBetaAnnualReportResult(year: number): CanonicalAnalysis
 }
 
 export function syntheticBetaAllYearsReportResult(): CanonicalAnalysisResult {
+  const priorYear = syntheticBetaAnnualReportResult(2024);
   const annual = syntheticBetaAnnualReportResult(2025);
   const filters = {
     startDate: "2024-01-01",
@@ -229,9 +234,120 @@ export function syntheticBetaAllYearsReportResult(): CanonicalAnalysisResult {
       eventCount: 2_072,
       userMessageCount: 2_072,
     },
-    activity: { ...annual.activity, filters },
+    activity: {
+      ...annual.activity,
+      filters,
+      trends: {
+        ...annual.activity.trends,
+        monthly: [...priorYear.activity.trends.monthly, ...annual.activity.trends.monthly],
+      },
+    },
     stage7: { ...annual.stage7, filters },
     replySessions: { ...annual.replySessions, filters },
+  } as unknown as CanonicalAnalysisResult;
+}
+
+/** Empty synthetic edge fixture for presentation-only sparse-state browser QA. */
+export function syntheticBetaSparseAnnualReportResult(): CanonicalAnalysisResult {
+  const base = syntheticBetaAnnualReportResult(2025);
+  const emptyStats = () => ({ count: 0, mean: null, median: null, p90: null });
+  const filters = { ...base.filters, startDate: "2025-01-01", endDate: "2025-12-31" };
+  return {
+    ...base,
+    queryKey: canonicalQueryKey(SYNTHETIC_REPORT_DATASET_ID, SYNTHETIC_REPORT_GENERATION, filters),
+    filters,
+    dataset: {
+      ...base.dataset,
+      eventCount: 0,
+      userMessageCount: 0,
+      eligibleTextCount: 0,
+      messageCategoryCounts: zeroCategoryCounts(),
+    },
+    index: {
+      ...base.index,
+      indexedRecordCount: 0,
+      eligibleTextCodePointCount: 0,
+      tokenCount: 0,
+      distinctTokenCount: 0,
+    },
+    aggregate: {
+      ...base.aggregate,
+      eventCount: 0,
+      userMessageCount: 0,
+      eligibleTextCount: 0,
+      messageCategoryCounts: zeroCategoryCounts(),
+      senderCounts: { owner: 0, other: 0 },
+      eligibleTextCodePointCount: 0,
+      tokenCount: 0,
+    },
+    activity: {
+      ...base.activity,
+      filters,
+      trends: {
+        ...base.activity.trends,
+        monthly: base.activity.trends.monthly.map((bucket) => ({ ...bucket, count: 0, partial: false })),
+        yearly: base.activity.trends.yearly.map((bucket) => ({ ...bucket, count: 0, partial: false })),
+      },
+      weekdayActivity: {
+        ...base.activity.weekdayActivity,
+        total: 0,
+        buckets: base.activity.weekdayActivity.buckets.map((bucket) => ({ ...bucket, count: 0, share: null })),
+      },
+      hourActivity: {
+        ...base.activity.hourActivity,
+        total: 0,
+        buckets: base.activity.hourActivity.buckets.map((bucket) => ({ ...bucket, count: 0, share: null })),
+      },
+      chatActivity: {
+        ...base.activity.chatActivity,
+        totalChatDays: 0,
+        longestStreakLength: 0,
+        longestStreaks: [],
+      },
+      senderComparison: {
+        ...base.activity.senderComparison,
+        denominator: 0,
+        owner: { count: 0, share: null },
+        other: { count: 0, share: null },
+      },
+    },
+    stage7: {
+      ...base.stage7,
+      filters,
+      averageLength: {
+        ...base.stage7.averageLength,
+        overall: emptyStats(),
+        owner: emptyStats(),
+        other: emptyStats(),
+      },
+      messageTypes: {
+        ...base.stage7.messageTypes,
+        denominator: 0,
+        eligibleTextCount: 0,
+        systemDiagnosticCount: 0,
+        categories: base.stage7.messageTypes.categories.map((bucket) => ({ ...bucket, count: 0, share: null })),
+      },
+    },
+    replySessions: {
+      ...base.replySessions,
+      filters,
+      conversationSessions: {
+        ...base.replySessions.conversationSessions,
+        sessionCount: 0,
+        shareDenominator: 0,
+        owner: { count: 0, share: null },
+        other: { count: 0, share: null },
+        unknown: { count: 0, share: null },
+      },
+      replyIntervals: {
+        ...base.replySessions.replyIntervals,
+        overall: emptyStats(),
+        directions: base.replySessions.replyIntervals.directions.map((direction) => ({
+          ...direction,
+          stats: emptyStats(),
+        })),
+      },
+    },
   } as unknown as CanonicalAnalysisResult;
 }
 
