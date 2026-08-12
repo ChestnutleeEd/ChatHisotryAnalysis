@@ -105,8 +105,8 @@ test("passes synthetic P1 Annual and Detailed presentation QA with fixed screens
   await expect(page.locator(".v3-progress-steps button")).toHaveCount(7);
   await expect(page.locator(".v3-progress-steps button").first()).toHaveAttribute("aria-label", "第 1 场：开场");
   await navigatorToggle.click();
-  await expect(page.locator(".v3-scale-evidence-item")).toHaveCount(2);
-  await expect(page.locator(".v3-month-matrix")).toBeVisible();
+  await expect(page.locator('[data-v3-geometry-cell="scale-activity-band"] .v3-scale-activity-grid > article')).toHaveCount(2);
+  await expect(page.locator('[data-rhythm-visual="month-cadence"]')).toBeVisible();
   await expect(page.locator(".v3-month-matrix-row ol")).toHaveCount(1);
   await expect(page.locator("#message-types .v3-visual-details")).toContainText("查看");
   await expect(page.locator("#message-types")).toContainText("文字");

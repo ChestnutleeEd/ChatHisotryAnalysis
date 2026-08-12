@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { groupMonthRows } from "../src/presentation/beta/BetaCoreReportSections";
+import { groupMonthRows, visualMarkerScale } from "../src/presentation/beta/BetaCoreReportSections";
 import type { BetaLocalizedVisualRowV1 } from "../src/presentation/beta/report-contract";
 
 function row(key: string, value: number): BetaLocalizedVisualRowV1 {
@@ -39,5 +39,14 @@ describe("V3.2 Annual presentation helpers", () => {
     ]);
 
     expect(groups).toEqual([]);
+  });
+
+  it("keeps zero invisible while making a non-zero near-zero mark distinguishable", () => {
+    expect(visualMarkerScale(0, { minimum: 4, maximum: 18 })).toBe(0);
+    expect(visualMarkerScale(0.01, { minimum: 4, maximum: 18 })).toBeGreaterThanOrEqual(4);
+    expect(visualMarkerScale(0.01, { minimum: 4, maximum: 18 })).toBeLessThan(
+      visualMarkerScale(1, { minimum: 4, maximum: 18 }),
+    );
+    expect(visualMarkerScale(1, { minimum: 4, maximum: 18 })).toBe(18);
   });
 });

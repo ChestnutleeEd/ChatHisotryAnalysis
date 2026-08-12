@@ -16,7 +16,7 @@ test.describe("V3.2 Annual core story contracts", () => {
 
     const composition = await page.evaluate(() => {
       const primary = document.querySelector<HTMLElement>('[data-v3-geometry-cell="scale-primary"]');
-      const evidence = document.querySelector<HTMLElement>('[data-v3-geometry-cell="scale-evidence"]');
+      const evidence = document.querySelector<HTMLElement>('[data-v3-geometry-cell="scale-context"]');
       const roleBand = document.querySelector<HTMLElement>(".v3-role-band-track");
       return {
         scaleRatio: primary === null || evidence === null
@@ -34,16 +34,37 @@ test.describe("V3.2 Annual core story contracts", () => {
     expect(composition.evidenceColumns).toContain("8");
     expect(composition.roleBandHeight).toBeGreaterThan(0);
 
-    await expect(page.locator("#peak-month .v3-month-matrix-row ol li")).toHaveCount(12);
-    await expect(page.locator("#peak-weekday .v3-weekday-beats > ol > li")).toHaveCount(7);
-    await expect(page.locator("#peak-hour .v3-hour-pulse > ol > li")).toHaveCount(24);
+    const scaleMass = await page.evaluate(() => {
+      const left = document.querySelector<HTMLElement>('[data-v3-geometry-cell="scale-primary"]');
+      const right = document.querySelector<HTMLElement>('[data-v3-geometry-cell="scale-context"]');
+      const lowerBand = document.querySelector<HTMLElement>('[data-v3-geometry-cell="scale-activity-band"]');
+      return {
+        left: left?.getBoundingClientRect().height ?? 0,
+        right: right?.getBoundingClientRect().height ?? 0,
+        lowerBand: lowerBand?.getBoundingClientRect().height ?? 0,
+      };
+    });
+    expect(scaleMass.left).toBeGreaterThan(0);
+    expect(scaleMass.right).toBeGreaterThan(0);
+    expect(scaleMass.lowerBand).toBeGreaterThan(0);
+    expect(Math.abs(scaleMass.left - scaleMass.right)).toBeLessThanOrEqual(200);
+
+    await expect(page.locator('[data-rhythm-visual="month-cadence"] [data-cadence-cell]')).toHaveCount(12);
+    await expect(page.locator('[data-rhythm-visual="weekday-beat"] [data-beat-marker]')).toHaveCount(7);
+    await expect(page.locator('[data-rhythm-visual="hour-pulse"] [data-pulse-marker]')).toHaveCount(24);
+    await expect(page.locator('[data-rhythm-visual="hour-pulse"] [data-hour-anchor]')).toHaveCount(5);
+    await expect(page.locator('[data-rhythm-visual] svg:not([aria-hidden="true"])')).toHaveCount(0);
+    await expect(page.locator('[data-rhythm-visual] svg:not([role="presentation"])')).toHaveCount(0);
+    await expect(page.locator(".v3-month-cell-fill, .v3-beat-mark, .v3-hour-pulse-mark")).toHaveCount(0);
+    await expect(page.locator("#rhythm-scene .v3-rhythm-evidence-zone")).toHaveCount(1);
+    await expect(page.locator("#rhythm-scene .v3-rhythm-evidence-zone table")).toHaveCount(3);
     await expect(page.locator("#sender-share .v3-role-band-legend li")).toHaveCount(2);
     await expect(page.locator("#sender-share .v3-role-band-legend")).toContainText("Owner");
     await expect(page.locator("#sender-share .v3-role-band-legend")).toContainText("Other");
     await expect(page.locator("#sessions .v3-role-band-legend")).toContainText("Unknown");
     await expect(page.locator("#replies .v3-reply-evidence")).toContainText("Owner → Other");
     await expect(page.locator(".v3-conversation-connector")).toHaveAttribute("aria-hidden", "true");
-    await expect(page.locator(".v3-visual-details:not([open])")).toHaveCount(9);
+    await expect(page.locator(".v3-visual-details:not([open])")).toHaveCount(7);
     await expect(page.locator(".beta-report-core .beta-v2-scale-grid, .beta-report-core .beta-v2-rhythm, .beta-report-core .beta-v2-balance-grid, .beta-report-core .beta-v2-conversation-grid")).toHaveCount(0);
 
     const rangeToggle = page.getByRole("button", { name: "范围与章节", exact: true });
@@ -65,6 +86,34 @@ test.describe("V3.2 Annual core story contracts", () => {
     }
   });
 
+  test("keeps core scope facts synchronized through all → 2024 → 2025 → all", async ({ page }) => {
+    await page.setViewportSize({ width: 1180, height: 760 });
+    await page.goto("/?fixture=beta-annual-recap");
+    await expect(page.getByTestId("beta-annual-recap-harness")).toBeVisible();
+    await openRangePanel(page);
+    const range = page.getByLabel("回顾范围");
+
+    await range.selectOption("all-years");
+    await expect(page.locator("#messages")).toContainText("2,072");
+    await expect(page.locator("#peak-month .v3-month-matrix-row")).toHaveCount(2);
+
+    await range.selectOption("year:2024");
+    await expect(page.locator("#messages")).toContainText("824");
+    await expect(page.locator("#peak-month .v3-month-matrix-row")).toHaveCount(1);
+
+    await range.selectOption("year:2025");
+    await expect(page.locator("#messages")).toContainText("1,248");
+    await expect(page.locator("#active-days")).toContainText("112");
+    await expect(page.locator("#longest-streak")).toContainText("14");
+    await expect(page.locator("#sender-share")).toContainText("Owner");
+    await expect(page.locator("#sender-share")).toContainText("720 条");
+
+    await range.selectOption("all-years");
+    await expect(page.locator("#messages")).toContainText("2,072");
+    await expect(page.locator("#peak-month .v3-month-matrix-row")).toHaveCount(2);
+    await expect(page.locator("#sender-share")).toContainText("720 条");
+  });
+
   test("settles the same V3.2 scenes immediately under reduced motion", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.setViewportSize({ width: 760, height: 900 });
@@ -73,11 +122,57 @@ test.describe("V3.2 Annual core story contracts", () => {
     await expect(page.locator("[data-v3-scene][data-motion-state='complete']")).toHaveCount(7);
     const animationNames = await page.locator(".v3-annual-report [data-v3-scene]").evaluateAll((elements) => elements.map((element) => getComputedStyle(element).animationName));
     expect(new Set(animationNames)).toEqual(new Set(["none"]));
-    await expect(page.locator(".v3-weekday-beats .v3-beat-mark").first()).toHaveCSS("transform", /matrix/);
+    await expect(page.locator('[data-rhythm-visual="weekday-beat"] [data-beat-marker]').first()).toHaveCSS("transform", "none");
     await expect.poll(() => page.evaluate(() => Math.max(
       document.documentElement.scrollWidth - document.documentElement.clientWidth,
       document.body.scrollWidth - document.documentElement.clientWidth,
     ))).toBeLessThanOrEqual(0);
+  });
+
+  test("reveals the three rhythm grammars once without layout movement or replay", async ({ page }) => {
+    await page.setViewportSize({ width: 1180, height: 760 });
+    await page.goto("/?fixture=beta-annual-recap");
+    await expect(page.getByTestId("beta-annual-recap-harness")).toBeVisible();
+
+    const rhythm = page.locator("#rhythm-scene");
+    await expect(rhythm).toHaveAttribute("data-motion-state", "idle");
+    const before = await rhythm.evaluate((element) => ({
+      height: element.getBoundingClientRect().height,
+      scrollHeight: document.documentElement.scrollHeight,
+      markerOpacity: getComputedStyle(element.querySelector(".v3-cadence-mark")!).opacity,
+    }));
+    expect(before.markerOpacity).toBe("1");
+
+    await rhythm.scrollIntoViewIfNeeded();
+    await expect(rhythm).toHaveAttribute("data-motion-state", "entering");
+    const animations = await rhythm.evaluate((element) => element.getAnimations({ subtree: true }).map((animation) => {
+      const timing = animation.effect?.getComputedTiming();
+      return {
+        name: animation instanceof CSSAnimation ? animation.animationName : "",
+        endTime: typeof timing?.endTime === "number" ? timing.endTime : 0,
+      };
+    }));
+    expect(animations.map((animation) => animation.name)).toEqual(expect.arrayContaining([
+      "v3-cadence-reveal",
+      "v3-beat-activate",
+      "v3-pulse-point-reveal",
+    ]));
+    expect(Math.max(...animations.map((animation) => animation.endTime))).toBeLessThanOrEqual(700);
+
+    await expect(rhythm).toHaveAttribute("data-motion-state", "complete");
+    const after = await rhythm.evaluate((element) => ({
+      height: element.getBoundingClientRect().height,
+      scrollHeight: document.documentElement.scrollHeight,
+    }));
+    expect(Math.abs(after.height - before.height)).toBeLessThanOrEqual(1);
+    expect(after.scrollHeight).toBe(before.scrollHeight);
+
+    await page.locator("#opening").scrollIntoViewIfNeeded();
+    await rhythm.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(100);
+    await expect(rhythm).toHaveAttribute("data-motion-state", "complete");
+    expect(await rhythm.evaluate((element) => element.getAnimations({ subtree: true })
+      .filter((animation) => animation.playState === "running").length)).toBe(0);
   });
 
   test("keeps sparse synthetic facts legible without manufacturing counterpart data", async ({ page }) => {
@@ -90,6 +185,6 @@ test.describe("V3.2 Annual core story contracts", () => {
     await expect(page.locator("#message-types")).toContainText("没有可展示的用户消息类型分布");
     await expect(page.locator("#sender-share .v3-role-band-segment")).toHaveCount(2);
     await expect(page.locator("#sender-share .v3-role-band-track")).toBeVisible();
-    await expect(page.locator("#peak-month .v3-month-matrix-row ol li")).toHaveCount(12);
+    await expect(page.locator('#peak-month [data-cadence-cell]')).toHaveCount(12);
   });
 });

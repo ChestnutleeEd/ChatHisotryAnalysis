@@ -24,12 +24,13 @@ test("renders synthetic Annual Recap story scenes and preserves responsive seman
   ]) {
     await expect(page.locator(`#${id}`)).toBeAttached();
   }
-  await expect(page.locator("#peak-weekday table caption")).toHaveText("按星期一至星期日排列的消息数量");
+  await expect(page.locator('[data-rhythm-evidence="weekday"] table caption')).toHaveText("按星期一至星期日排列的消息数量");
   await expect(page.locator("#peak-weekday")).toContainText("星期一和星期二");
   await expect(page.locator("#peak-month .v3-month-matrix-head span")).toHaveCount(13);
-  await expect(page.locator("#peak-month .v3-month-matrix-row ol li")).toHaveCount(12);
-  await expect(page.locator("#peak-weekday .v3-weekday-beats > ol > li")).toHaveCount(7);
-  await expect(page.locator("#peak-hour .v3-hour-pulse > ol > li")).toHaveCount(24);
+  await expect(page.locator('[data-rhythm-visual="month-cadence"] [data-cadence-cell]')).toHaveCount(12);
+  await expect(page.locator('[data-rhythm-visual="weekday-beat"] [data-beat-marker]')).toHaveCount(7);
+  await expect(page.locator('[data-rhythm-visual="hour-pulse"] [data-pulse-marker]')).toHaveCount(24);
+  await expect(page.locator(".v3-month-cell-fill, .v3-beat-mark, .v3-hour-pulse-mark")).toHaveCount(0);
   await expect(page.locator("#sender-share .v3-role-band-segment")).toHaveCount(2);
   await expect(page.locator("#sessions .v3-role-band-legend")).toContainText("Owner");
   await expect(page.locator("#sessions .v3-role-band-legend")).toContainText("Other");
@@ -44,15 +45,15 @@ test("renders synthetic Annual Recap story scenes and preserves responsive seman
   await expect(page.locator("#distinctive-keywords")).toHaveAttribute("data-keyword-year", "2025");
   await expect(page.locator("#word-cloud")).toHaveAttribute("data-clean-mode", "on");
   await expect(page.locator("#word-cloud .beta-word-cloud-list")).toContainText("本地版本");
-  await expect(page.locator("#peak-hour .v3-visual-details")).not.toHaveAttribute("open");
+  await expect(page.locator("#rhythm-scene .v3-rhythm-evidence-zone")).not.toHaveAttribute("open");
   await expect(page.locator("#frequent-words .beta-word-ranking-disclosure")).not.toHaveAttribute("open");
   await expect(page.locator("#word-cloud .beta-word-cloud-list-disclosure")).not.toHaveAttribute("open");
   await expect(page.locator(".v3-logical-section[data-section-status='ready'] .beta-status-pill")).toHaveCount(0);
 
   await page.getByLabel("跳转章节").selectOption("peak-hour");
   await expect.poll(() => page.locator("#peak-hour").evaluate((element) => element.getBoundingClientRect().top)).toBeGreaterThan(70);
-  await page.locator("#peak-hour .v3-visual-details summary").click();
-  await expect(page.locator("#peak-hour .v3-visual-table")).toBeVisible();
+  await page.locator("#rhythm-scene .v3-rhythm-evidence-zone summary").click();
+  await expect(page.locator("#rhythm-scene .v3-rhythm-evidence-zone .v3-visual-table")).toHaveCount(3);
   await page.locator("#word-cloud .beta-word-cloud-list-disclosure summary").click();
   await expect(page.locator("#word-cloud .beta-word-cloud-list")).toBeVisible();
   await navigatorToggle.click();

@@ -135,6 +135,21 @@ async function collectGeometry(page: Page) {
     });
     const navBox = rectOf(nav);
     const rootBox = rectOf(root);
+    const scaleScene = scenes.find((scene) => scene.id === "scale-scene");
+    const scalePrimary = scaleScene?.cells.find((cell) => cell.id === "scale-primary");
+    const scaleContext = scaleScene?.cells.find((cell) => cell.id === "scale-context");
+    const scalePrimaryHeight = scalePrimary === undefined
+      ? 0
+      : Math.max(0, scalePrimary.meaningful.bottom - scalePrimary.meaningful.top);
+    const scaleContextHeight = scaleContext === undefined
+      ? 0
+      : Math.max(0, scaleContext.meaningful.bottom - scaleContext.meaningful.top);
+    const rhythmShape = {
+      monthCadenceCells: document.querySelectorAll('[data-rhythm-visual="month-cadence"] [data-cadence-cell]').length,
+      weekdayBeatMarkers: document.querySelectorAll('[data-rhythm-visual="weekday-beat"] [data-beat-marker]').length,
+      hourPulseMarkers: document.querySelectorAll('[data-rhythm-visual="hour-pulse"] [data-pulse-marker]').length,
+      legacyMarks: document.querySelectorAll(".v3-month-cell-fill, .v3-beat-mark, .v3-hour-pulse-mark").length,
+    };
     const transitions = scenes.slice(0, -1).map((scene, index) => ({
       from: scene.id,
       to: scenes[index + 1]!.id,
@@ -144,6 +159,12 @@ async function collectGeometry(page: Page) {
       viewport: { width: window.innerWidth, height: window.innerHeight, zoom: getComputedStyle(document.documentElement).zoom },
       root: rootBox,
       nav: navBox,
+      scaleMass: {
+        leftMeaningfulHeight: scalePrimaryHeight,
+        rightMeaningfulHeight: scaleContextHeight,
+        difference: Math.abs(scalePrimaryHeight - scaleContextHeight),
+      },
+      rhythmShape,
       pageOverflow: {
         document: document.documentElement.scrollWidth - document.documentElement.clientWidth,
         body: document.body.scrollWidth - document.documentElement.clientWidth,
@@ -169,6 +190,34 @@ async function openRangePanel(page: Page): Promise<void> {
   await expect(page.locator("#annual-range-controls")).toBeVisible();
 }
 
+async function captureElement(page: Page, selector: string, name: string): Promise<void> {
+  const target = page.locator(selector);
+  await target.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(700);
+  await target.screenshot({ path: resolve(screenshotDir, name) });
+}
+
+async function captureTransition(
+  page: Page,
+  fromSelector: string,
+  toSelector: string,
+  name: string,
+): Promise<void> {
+  await page.evaluate(([from, to]) => {
+    const previous = document.querySelector<HTMLElement>(from);
+    const next = document.querySelector<HTMLElement>(to);
+    if (previous === null || next === null) {
+      throw new Error(`V3_TRANSITION_TARGET_MISSING:${from}:${to}`);
+    }
+    const previousBox = previous.getBoundingClientRect();
+    const nextBox = next.getBoundingClientRect();
+    const boundary = window.scrollY + (previousBox.bottom + nextBox.top) / 2;
+    window.scrollTo({ top: Math.max(0, boundary - window.innerHeight / 2), behavior: "auto" });
+  }, [fromSelector, toSelector] as const);
+  await page.waitForTimeout(700);
+  await page.screenshot({ path: resolve(screenshotDir, name), fullPage: false });
+}
+
 test("emits V3 scene/cell geometry and exercises dock navigation at fixed synthetic viewports", async ({ page }) => {
   mkdirSync(evidenceDir, { recursive: true });
   mkdirSync(screenshotDir, { recursive: true });
@@ -192,6 +241,15 @@ test("emits V3 scene/cell geometry and exercises dock navigation at fixed synthe
     expect(diagnostic.scenes).toHaveLength(7);
     expect(diagnostic.nav.width).toBeLessThanOrEqual(720);
     expect(diagnostic.scenes.filter((scene) => scene.whitespaceIntent === null)).toHaveLength(5);
+    expect(diagnostic.rhythmShape.monthCadenceCells).toBe(12);
+    expect(diagnostic.rhythmShape.weekdayBeatMarkers).toBe(7);
+    expect(diagnostic.rhythmShape.hourPulseMarkers).toBe(24);
+    expect(diagnostic.rhythmShape.legacyMarks).toBe(0);
+    if (viewport.width >= 960) {
+      expect(diagnostic.scaleMass.leftMeaningfulHeight).toBeGreaterThan(0);
+      expect(diagnostic.scaleMass.rightMeaningfulHeight).toBeGreaterThan(0);
+      expect(diagnostic.scaleMass.difference).toBeLessThanOrEqual(200);
+    }
     for (const scene of diagnostic.scenes.filter((candidate) => candidate.whitespaceIntent === null)) {
       expect(scene.minHeight, `${scene.id} ordinary scene min-height`).not.toMatch(/vh|svh|dvh/);
       expect(scene.tail, `${scene.id} trailing whitespace`).toBeLessThanOrEqual(Math.min(120, viewport.height * 0.2));
@@ -232,27 +290,49 @@ test("emits V3 scene/cell geometry and exercises dock navigation at fixed synthe
   expect(chapterTop).toBeGreaterThanOrEqual(currentNavBottom + 12);
   expect(chapterTop).toBeLessThanOrEqual(currentNavBottom + 120);
 
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await captureElement(page, "#opening", "annual-opening-1440.png");
+  await captureElement(page, "#scale-scene", "annual-scale-1440.png");
+  await captureElement(page, "#rhythm-scene", "annual-rhythm-1440.png");
+  await captureElement(page, "#balance-scene", "annual-balance-1440.png");
+
+  await page.setViewportSize({ width: 1180, height: 760 });
+  await captureElement(page, "#scale-scene", "annual-scale-1180.png");
+  await captureElement(page, "#peak-month", "annual-rhythm-month-1180.png");
+  await captureElement(page, ".v3-rhythm-beats", "annual-rhythm-pair-1180.png");
+  await captureElement(page, "#balance-scene", "annual-balance-1180.png");
+  await captureTransition(page, "#scale-scene", "#rhythm-scene", "annual-scale-rhythm-transition-1180.png");
+  await captureTransition(page, "#rhythm-scene", "#balance-scene", "annual-rhythm-balance-transition-1180.png");
+
+  await page.setViewportSize({ width: 760, height: 900 });
+  await captureElement(page, "#scale-scene", "annual-scale-760.png");
+  await captureElement(page, "#rhythm-scene", "annual-rhythm-760.png");
+
+  await page.setViewportSize({ width: 380, height: 900 });
+  await captureElement(page, "#scale-scene", "annual-scale-380.png");
+  await captureElement(page, "#peak-month", "annual-rhythm-month-380.png");
+  await captureElement(page, ".v3-rhythm-beats", "annual-rhythm-pair-380.png");
+
   await page.setViewportSize({ width: 760, height: 900 });
   await page.evaluate(() => { document.documentElement.style.zoom = "2"; });
   await assertNoPageOverflow(page);
-  await page.screenshot({ path: resolve(screenshotDir, "annual-200-zoom.png"), fullPage: false });
+  await captureElement(page, "#scale-scene", "annual-scale-200-zoom.png");
+  await captureElement(page, "#rhythm-scene", "annual-rhythm-200-zoom.png");
   await page.evaluate(() => { document.documentElement.style.zoom = ""; });
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.locator("#opening").scrollIntoViewIfNeeded();
-  await page.waitForTimeout(700);
-  await page.screenshot({ path: resolve(screenshotDir, "annual-opening-1440.png"), fullPage: false });
-  await page.locator("#rhythm-scene").scrollIntoViewIfNeeded();
-  await page.waitForTimeout(700);
-  await page.screenshot({ path: resolve(screenshotDir, "annual-mid-scroll-1440.png"), fullPage: false });
+
+  await page.setViewportSize({ width: 1180, height: 760 });
   await openRangePanel(page);
-  await page.waitForTimeout(300);
-  await page.screenshot({ path: resolve(screenshotDir, "annual-range-panel-1440.png"), fullPage: false });
-  await page.getByRole("button", { name: "第 6 场：词汇", exact: true }).click();
-  await page.waitForTimeout(700);
-  await page.screenshot({ path: resolve(screenshotDir, "annual-scene-jump-1440.png"), fullPage: false });
-  await page.setViewportSize({ width: 380, height: 900 });
-  await page.waitForTimeout(300);
-  await page.screenshot({ path: resolve(screenshotDir, "annual-narrow-380.png"), fullPage: false });
+  await page.getByLabel("回顾范围").selectOption("all-years");
+  await expect(page.locator("#peak-month .v3-month-matrix-row")).toHaveCount(2);
+  await captureElement(page, "#peak-month", "annual-rhythm-all-years-1180.png");
+  await openRangePanel(page);
+  await page.getByLabel("回顾范围").selectOption("year:2025");
+  await expect(page.locator('#peak-month [data-partial="true"]')).toHaveCount(1);
+  await captureElement(page, "#peak-month", "annual-rhythm-partial-1180.png");
+
+  await page.goto("/?fixture=beta-annual-recap&sparse=1");
+  await expect(page.getByTestId("beta-annual-recap-harness")).toBeVisible();
+  await captureElement(page, "#rhythm-scene", "annual-rhythm-sparse-1180.png");
 
   writeFileSync(resolve(evidenceDir, "annual-geometry.json"), `${JSON.stringify(evidence, null, 2)}\n`, "utf8");
 });

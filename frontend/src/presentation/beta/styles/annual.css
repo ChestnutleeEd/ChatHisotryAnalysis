@@ -551,24 +551,100 @@ html:has(.desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-naviga
   line-height: 1.5;
 }
 
-/* Scale: 7 + 5. The hero is one number and one baseline; the right column
-   records activity evidence without competing with the message count. */
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-compact-evidence-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--v3-space-3) var(--v3-space-5);
+  align-items: start;
+  min-width: 0;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-compact-evidence-header > div {
+  display: grid;
+  gap: var(--v3-space-2);
+  min-width: 0;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-compact-evidence-header > .beta-status-pill,
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-section-header > .beta-status-pill {
+  justify-self: start;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-compact-evidence-metric {
+  min-width: max-content;
+  padding: 0;
+  border: 0;
+  text-align: right;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-compact-evidence-metric .beta-metric-value strong {
+  font-size: clamp(28px, 3.2vw, 42px);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-inline-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--v3-space-2) var(--v3-space-5);
+  margin: 0;
+  padding-top: var(--v3-space-3);
+  border-top: 1px solid var(--v3-divider);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-inline-facts div {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  font-size: 11px;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-inline-facts dt,
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-inline-facts dd {
+  margin: 0;
+  font-family: var(--v3-font-ui);
+  font-size: inherit;
+  line-height: 1.45;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-inline-facts dt {
+  color: var(--v3-ink-muted);
+  font-weight: 700;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-inline-facts dd {
+  color: var(--v3-ink-secondary);
+}
+
+/* Scale: a 7 + 5 hero/context registration followed by one full-width
+   activity evidence band. The lower band removes the former accidental blank
+   counterpart without manufacturing an equal-height card. */
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-scale-primary {
+  display: grid;
   grid-column: 1 / span 7;
+  gap: var(--v3-space-4);
+  align-content: start;
   padding-top: var(--v3-space-5);
   border-top: 2px solid var(--v3-brand);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-scale-hero-header {
+  display: grid;
+  gap: var(--v3-space-2);
 }
 
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-scale-primary .v3-logical-title {
   font-size: clamp(26px, 3.2vw, 42px);
 }
 
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-scale-primary .v3-logical-metric {
-  padding-block: var(--v3-space-4) var(--v3-space-5);
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-scale-hero-metric {
+  padding-block: var(--v3-space-3) var(--v3-space-4);
   border-bottom: 0;
 }
 
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-scale-primary .v3-logical-metric .beta-metric-value strong {
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-scale-primary .v3-annotation {
+  padding: var(--v3-space-2) var(--v3-space-3);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-scale-hero-metric .beta-metric-value strong {
   font-size: var(--v3-type-metric-hero);
   line-height: .86;
 }
@@ -587,32 +663,103 @@ html:has(.desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-naviga
   background: var(--v3-brand);
 }
 
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-scale-evidence {
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-scale-context {
   display: grid;
   grid-column: 8 / -1;
-  gap: var(--v3-space-6);
+  gap: var(--v3-space-4);
   align-content: start;
   min-width: 0;
+  padding-top: var(--v3-space-5);
+  padding-left: var(--v3-space-5);
+  border-top: 2px solid var(--v3-accent);
+  border-left: 1px solid var(--v3-divider);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-scale-context-title,
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-scale-activity-heading h3,
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-balance-composition-heading h3 {
+  margin: 0;
+  color: var(--v3-ink);
+  font-size: clamp(20px, 2.2vw, 28px);
+  line-height: 1.2;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-scale-context-copy,
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-scale-activity-heading p:last-child,
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-balance-composition-heading p:last-child {
+  margin: 0;
+  color: var(--v3-ink-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-scale-context .v3-detail-list {
+  grid-template-columns: 1fr;
+  gap: var(--v3-space-3);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-scale-activity-band {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: var(--v3-space-5);
+  min-width: 0;
+  padding-top: var(--v3-space-6);
+  border-top: 1px solid var(--v3-divider);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-scale-activity-heading,
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-balance-composition-heading {
+  display: grid;
+  gap: var(--v3-space-2);
+  max-width: 72ch;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-scale-activity-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: var(--v3-space-6);
+  align-items: start;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-scale-active-days,
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-scale-streak {
+  display: grid;
+  gap: var(--v3-space-4);
+  min-width: 0;
+  padding-top: var(--v3-space-4);
+  border-top: 1px solid var(--v3-divider);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-scale-streak {
   padding-left: var(--v3-space-5);
   border-left: 1px solid var(--v3-divider);
 }
 
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-scale-evidence-item {
-  padding-top: var(--v3-space-3);
-  border-top: 1px solid var(--v3-divider);
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-activity-register {
+  position: relative;
+  height: 32px;
+  border-bottom: 1px solid var(--v3-divider);
 }
 
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-activity-rail {
-  height: 8px;
-  padding: 2px 0;
-  border-block: 1px solid var(--v3-divider);
-}
-
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-activity-rail span {
-  display: block;
-  width: 54%;
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-activity-register-line {
+  position: absolute;
+  top: 15px;
+  right: 0;
+  left: 0;
   height: 2px;
+  background: var(--v3-brand);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-activity-register-mark {
+  position: absolute;
+  top: 9px;
+  left: 0;
+  width: 14px;
+  height: 14px;
+  border: 3px solid var(--v3-canvas);
+  border-radius: 50%;
   background: var(--v3-accent);
+  box-shadow: 0 0 0 1px var(--v3-accent);
 }
 
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-streak-timeline {
@@ -623,8 +770,6 @@ html:has(.desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-naviga
 }
 
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-streak-timeline ol,
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-weekday-beats ol,
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-hour-pulse ol,
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-length-evidence ol,
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-ranked-types ol,
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-reply-evidence ol {
@@ -678,12 +823,25 @@ html:has(.desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-naviga
   font-size: 11px;
 }
 
-/* Rhythm: 12 months across the full row, then a weekday beat and an hourly
-   pulse. Marks are bounded to the existing buckets; no interpolation. */
+/* Rhythm: three related but distinct registers. Month is an archive cadence
+   matrix, Weekday is one seven-beat rail, and Hour is a 24-point pulse field. */
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-month {
+  display: grid;
   grid-column: 1 / -1;
+  gap: var(--v3-space-5);
+  min-width: 0;
   padding-top: var(--v3-space-5);
   border-top: 2px solid var(--v3-accent);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-transition {
+  margin: 0;
+  padding: var(--v3-space-3) 0 var(--v3-space-3) var(--v3-space-5);
+  border-left: 2px solid var(--v3-brand);
+  color: var(--v3-ink-secondary);
+  font-family: var(--v3-font-display);
+  font-size: 17px;
+  line-height: 1.45;
 }
 
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-beats {
@@ -691,13 +849,55 @@ html:has(.desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-naviga
 }
 
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-weekday {
+  display: grid;
   grid-column: 1 / span 5;
+  gap: var(--v3-space-4);
+  min-width: 0;
 }
 
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-hour {
+  display: grid;
   grid-column: 6 / -1;
+  gap: var(--v3-space-4);
+  min-width: 0;
   padding-left: var(--v3-space-5);
   border-left: 1px solid var(--v3-divider);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-section-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--v3-space-3) var(--v3-space-5);
+  align-items: end;
+  min-width: 0;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-section-header > div {
+  display: grid;
+  gap: var(--v3-space-2);
+  min-width: 0;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-peak-annotation {
+  display: grid;
+  gap: 2px;
+  min-width: max-content;
+  margin: 0;
+  padding-left: var(--v3-space-4);
+  border-left: 2px solid var(--v3-accent);
+  color: var(--v3-ink-secondary);
+  text-align: right;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-peak-annotation span {
+  color: var(--v3-ink-muted);
+  font-size: 10px;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-peak-annotation strong {
+  color: var(--v3-ink);
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
 }
 
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-visual {
@@ -751,127 +951,197 @@ html:has(.desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-naviga
 }
 
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-month-matrix-row li {
+  position: relative;
+  display: grid;
   min-width: 0;
-  height: 44px;
+  height: 62px;
+  place-items: center;
   overflow: hidden;
   border: 1px solid var(--v3-divider);
-  border-radius: 5px 5px 2px 2px;
-  background: rgb(212 184 149 / 34%);
+  border-radius: 10px;
+  background: rgb(212 184 149 / 24%);
 }
 
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-month-cell-track {
-  display: flex;
-  height: 100%;
-  align-items: end;
-}
-
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-month-cell-fill {
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-month-matrix-row li svg {
   display: block;
-  width: var(--v3-data-scale);
-  height: 100%;
-  min-width: 0;
-  background: var(--v3-brand);
+  width: min(50px, 92%);
+  height: 50px;
+  overflow: visible;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-cadence-mark {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] :where(
+  .v3-cadence-orbit,
+  .v3-cadence-register,
+  .v3-cadence-peak-ring,
+  .v3-cadence-peak-notch
+) {
+  fill: none;
+  vector-effect: non-scaling-stroke;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-cadence-orbit {
+  stroke: var(--v3-divider);
+  stroke-width: 1;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-cadence-register {
+  stroke: var(--v3-hairline);
+  stroke-width: 1;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-cadence-value {
+  fill: var(--v3-brand);
+  opacity: .9;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-cadence-peak-ring,
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-cadence-peak-notch {
+  stroke: var(--v3-accent);
+  stroke-width: 2;
 }
 
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-month-matrix-row li[data-peak="true"] {
   border-color: var(--v3-accent);
+  box-shadow: inset 0 0 0 1px rgb(192 142 58 / 28%);
 }
 
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-month-matrix-row li[data-peak="true"] .v3-month-cell-fill {
-  background: var(--v3-accent);
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-month-matrix-row li[data-peak="true"] .v3-cadence-value {
+  fill: var(--v3-accent);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-cadence-peak-label {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  color: var(--v3-accent);
+  font-size: 8px;
+  font-weight: 800;
 }
 
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-month-matrix-row li[data-partial="true"] {
-  background-image: repeating-linear-gradient(135deg, transparent 0 4px, rgb(47 52 44 / 16%) 4px 5px);
+  background-image: repeating-linear-gradient(135deg, transparent 0 5px, rgb(47 52 44 / 13%) 5px 6px);
 }
 
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-weekday-beats ol {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: var(--v3-space-2);
-  min-width: 0;
-  min-height: 150px;
-  align-items: end;
-}
-
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-weekday-beats li {
-  display: grid;
-  grid-template-rows: minmax(72px, 1fr) auto auto;
-  gap: 5px;
-  min-width: 0;
-  align-items: end;
-  text-align: center;
-}
-
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-mark {
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-weekday-beat-svg,
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-hour-pulse-svg {
   display: block;
-  width: min(24px, 72%);
-  height: 96px;
-  justify-self: center;
-  border-radius: 12px 12px 2px 2px;
-  background: var(--v3-brand);
-  transform: scaleY(var(--v3-beat-scale));
-  transform-origin: center bottom;
+  width: 100%;
+  height: auto;
+  overflow: visible;
 }
 
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-weekday-beats li[data-peak="true"] .v3-beat-mark {
-  background: var(--v3-accent);
+.desktop-app.beta-enabled[data-visual-version="v3"] :where(
+  .v3-beat-rail,
+  .v3-beat-stem,
+  .v3-beat-peak-ring,
+  .v3-pulse-baseline,
+  .v3-pulse-stem,
+  .v3-pulse-peak-ring
+) {
+  fill: none;
+  vector-effect: non-scaling-stroke;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-rail,
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-pulse-baseline {
+  stroke: var(--v3-hairline);
+  stroke-width: 1.5;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-stem,
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-pulse-stem {
+  stroke: var(--v3-brand);
+  stroke-linecap: round;
+  stroke-width: 2;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-pulse-stem {
+  stroke-width: 1.4;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-dot,
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-pulse-dot {
+  fill: var(--v3-brand);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] :where(
+  .v3-beat-marker[data-peak="true"] .v3-beat-dot,
+  .v3-pulse-marker[data-peak="true"] .v3-pulse-dot
+) {
+  fill: var(--v3-accent);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-peak-ring,
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-pulse-peak-ring {
+  stroke: var(--v3-accent);
+  stroke-width: 1.5;
 }
 
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-label,
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-value,
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-peak-label,
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-hour-label {
-  color: var(--v3-ink-muted);
+  font-family: var(--v3-font-ui);
+  text-anchor: middle;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-label {
+  fill: var(--v3-ink-secondary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-value {
+  fill: var(--v3-ink-muted);
   font-size: 11px;
-  line-height: 1.2;
-}
-
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-weekday-beats strong {
-  color: var(--v3-ink);
-  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-weekday-beats small {
-  color: var(--v3-ink-muted);
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-peak-label {
+  fill: var(--v3-accent);
   font-size: 10px;
-  font-variant-numeric: tabular-nums;
-}
-
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-hour-pulse ol {
-  display: grid;
-  grid-template-columns: repeat(24, minmax(0, 1fr));
-  gap: 4px;
-  min-width: 0;
-  min-height: 150px;
-  align-items: end;
-}
-
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-hour-pulse li {
-  display: grid;
-  grid-template-rows: minmax(72px, 1fr) auto;
-  gap: 5px;
-  min-width: 0;
-  align-items: end;
-  justify-items: center;
-}
-
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-hour-pulse-mark {
-  display: block;
-  width: min(14px, 84%);
-  height: 94px;
-  border-radius: 7px 7px 1px 1px;
-  background: var(--v3-brand);
-  transform: scaleY(var(--v3-pulse-scale));
-  transform-origin: center bottom;
-}
-
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-hour-pulse li[data-peak="true"] .v3-hour-pulse-mark {
-  background: var(--v3-accent);
+  font-weight: 800;
 }
 
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-hour-label {
+  fill: var(--v3-ink-muted);
   font-family: var(--v3-font-mono);
-  font-size: 9px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-marker,
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-pulse-marker {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-evidence-zone {
+  width: 100%;
+  margin: 0;
+  border-color: var(--v3-hairline);
+  background: rgb(212 184 149 / 14%);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-evidence-tables {
+  display: grid;
+  gap: var(--v3-space-5);
+  padding: 0 var(--v3-space-4) var(--v3-space-4);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-evidence-tables section {
+  min-width: 0;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-evidence-tables h4 {
+  margin: 0 0 var(--v3-space-2);
+  color: var(--v3-ink);
+  font-size: 14px;
 }
 
 /* Balance: a full-width role band followed by 4 + 8 evidence. */
@@ -885,12 +1155,23 @@ html:has(.desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-naviga
   grid-column: 1 / -1;
 }
 
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-balance-composition-heading {
+  padding-top: var(--v3-space-5);
+  border-top: 1px solid var(--v3-divider);
+}
+
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-balance-length {
+  display: grid;
   grid-column: 1 / span 4;
+  gap: var(--v3-space-4);
+  min-width: 0;
 }
 
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-balance-types {
+  display: grid;
   grid-column: 5 / -1;
+  gap: var(--v3-space-4);
+  min-width: 0;
   padding-left: var(--v3-space-5);
   border-left: 1px solid var(--v3-divider);
 }
@@ -1236,7 +1517,8 @@ html:has(.desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-naviga
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-skeleton-primary,
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-skeleton-evidence,
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-scale-primary,
-  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-scale-evidence,
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-scale-context,
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-scale-activity-band,
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-skeleton-evidence,
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-month,
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-beats,
@@ -1251,10 +1533,19 @@ html:has(.desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-naviga
     grid-column: 1 / -1;
   }
 
-  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-scale-evidence,
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-scale-context,
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-hour,
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-balance-types,
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-conversation-replies {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-scale-activity-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-scale-streak {
     padding-left: 0;
     border-left: 0;
   }
@@ -1333,7 +1624,13 @@ html:has(.desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-naviga
   }
 
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-month-matrix-row li {
-    height: 34px;
+    height: 38px;
+    border-radius: 6px;
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-month-matrix-row li svg {
+    width: 32px;
+    height: 32px;
   }
 
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-month-matrix-head {
@@ -1344,28 +1641,31 @@ html:has(.desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-naviga
     font-size: 9px;
   }
 
-  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-weekday-beats ol,
-  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-hour-pulse ol {
-    min-height: 126px;
-    gap: 3px;
-  }
-
-  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-mark,
-  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-hour-pulse-mark {
-    height: 76px;
-  }
-
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-label {
-    font-size: 9px;
+    font-size: 11px;
   }
 
-  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-weekday-beats strong,
-  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-weekday-beats small {
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-value,
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-peak-label {
     font-size: 9px;
   }
 
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-hour-label {
     font-size: 8px;
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-section-header,
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-compact-evidence-header {
+    grid-template-columns: 1fr;
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-peak-annotation,
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-compact-evidence-metric {
+    justify-self: start;
+    min-width: 0;
+    padding-left: 0;
+    border-left: 0;
+    text-align: left;
   }
 
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-role-band-legend {

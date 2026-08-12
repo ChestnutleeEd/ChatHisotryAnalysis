@@ -57,6 +57,22 @@ export function groupMonthRows(rows: readonly VisualRow[]): readonly MonthMatrix
     }));
 }
 
+/**
+ * Presentation-only scaling for SVG marks. Exact values remain in text/table
+ * alternatives; this helper changes only the relative drawing size.
+ */
+export function visualMarkerScale(
+  normalizedValue: number,
+  bounds: { readonly minimum: number; readonly maximum: number },
+): number {
+  const ratio = Number.isFinite(normalizedValue)
+    ? Math.min(1, Math.max(0, normalizedValue))
+    : 0;
+  const minimum = Math.max(0, bounds.minimum);
+  const maximum = Math.max(minimum, bounds.maximum);
+  return ratio === 0 ? 0 : minimum + (maximum - minimum) * ratio;
+}
+
 function statusTone(status: BetaLocalizedReportSectionV1["status"]): "pending" | "warning" {
   return status === "PARTIAL" ? "pending" : "warning";
 }
@@ -116,9 +132,15 @@ function SectionHeader({ section }: { readonly section: BetaLocalizedReportSecti
   );
 }
 
-function DetailList({ section }: { readonly section: BetaLocalizedReportSectionV1 }) {
+function DetailList({
+  section,
+  includeScope = true,
+}: {
+  readonly section: BetaLocalizedReportSectionV1;
+  readonly includeScope?: boolean;
+}) {
   const rows = [
-    ...(section.scopeNote === null ? [] : [{ label: "当前范围", value: section.scopeNote }]),
+    ...(includeScope && section.scopeNote !== null ? [{ label: "当前范围", value: section.scopeNote }] : []),
     ...section.details,
   ];
   if (rows.length === 0) {
@@ -157,6 +179,31 @@ function MetricLine({
   );
 }
 
+function ExactVisualTableContent({ visual }: { readonly visual: BetaLocalizedVisualV1 }) {
+  const rows = visual.detailRows ?? visual.rows;
+  return (
+    <table className="v3-visual-table">
+      <caption>{visual.ariaLabel}</caption>
+      <thead>
+        <tr>
+          <th scope="col">项目</th>
+          <th scope="col">数值</th>
+          <th scope="col">补充</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row) => (
+          <tr key={row.key}>
+            <th scope="row">{row.label}</th>
+            <td>{row.displayValue}</td>
+            <td>{row.secondaryLabel ?? "—"}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 function ExactVisualTable({
   visual,
   summary = "查看完整数据",
@@ -164,29 +211,10 @@ function ExactVisualTable({
   readonly visual: BetaLocalizedVisualV1;
   readonly summary?: string;
 }) {
-  const rows = visual.detailRows ?? visual.rows;
   return (
     <details className="v3-visual-details" data-v3-visual-details="true">
       <summary>{summary}</summary>
-      <table className="v3-visual-table">
-        <caption>{visual.ariaLabel}</caption>
-        <thead>
-          <tr>
-            <th scope="col">项目</th>
-            <th scope="col">数值</th>
-            <th scope="col">补充</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.key}>
-              <th scope="row">{row.label}</th>
-              <td>{row.displayValue}</td>
-              <td>{row.secondaryLabel ?? "—"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <ExactVisualTableContent visual={visual} />
     </details>
   );
 }
@@ -218,10 +246,72 @@ function LogicalSection({
   );
 }
 
-function MonthMatrix({ visual }: { readonly visual: BetaLocalizedVisualV1 }) {
+function SectionStatus({
+  section,
+  hidePartial = false,
+}: {
+  readonly section: BetaLocalizedReportSectionV1;
+  readonly hidePartial?: boolean;
+}) {
+  return section.status === "READY" || (hidePartial && section.status === "PARTIAL")
+    ? null
+    : <StatusPill tone={statusTone(section.status)}>{section.statusLabel}</StatusPill>;
+}
+
+function CompactEvidenceHeader({ section }: { readonly section: BetaLocalizedReportSectionV1 }) {
+  return (
+    <header className="v3-compact-evidence-header">
+      <div>
+        <h3 className="v3-logical-title">{section.heading}</h3>
+        <p className="v3-logical-lead">{section.lead}</p>
+      </div>
+      <MetricLine metric={section.metric} className="v3-compact-evidence-metric" />
+      <SectionStatus section={section} hidePartial />
+    </header>
+  );
+}
+
+function RhythmSectionHeader({ section }: { readonly section: BetaLocalizedReportSectionV1 }) {
+  return (
+    <header className="v3-rhythm-section-header">
+      <div>
+        <p className="v3-logical-kicker">
+          {section.eyebrow} · {String(section.order).padStart(2, "0")}
+        </p>
+        <h3 className="v3-logical-title">{section.heading}</h3>
+        <p className="v3-logical-lead">{section.lead}</p>
+      </div>
+      {section.metric === null ? null : (
+        <p className="v3-rhythm-peak-annotation" aria-label={section.metric.accessibleLabel}>
+          <span>{section.metric.label}</span>
+          <strong>{section.metric.value}{section.metric.unit === "" ? "" : ` ${section.metric.unit}`}</strong>
+        </p>
+      )}
+      <SectionStatus section={section} hidePartial />
+    </header>
+  );
+}
+
+function InlineSectionFacts({ section }: { readonly section: BetaLocalizedReportSectionV1 }) {
+  const rows = [
+    ...section.details,
+  ];
+  return rows.length === 0 ? null : (
+    <dl className="v3-inline-facts">
+      {rows.map((detail) => (
+        <div key={`${detail.label}-${detail.value}`}>
+          <dt>{detail.label}</dt>
+          <dd>{detail.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function MonthCadence({ visual }: { readonly visual: BetaLocalizedVisualV1 }) {
   const groups = groupMonthRows(visual.rows);
   return (
-    <figure className="v3-visual v3-month-matrix" aria-label={visual.ariaLabel}>
+    <figure className="v3-visual v3-month-cadence" data-rhythm-visual="month-cadence" aria-label={visual.ariaLabel}>
       <div className="v3-month-matrix-grid">
         <div className="v3-month-matrix-head" aria-hidden="true">
           <span>年份</span>
@@ -235,19 +325,33 @@ function MonthMatrix({ visual }: { readonly visual: BetaLocalizedVisualV1 }) {
                 const label = row?.label ?? `${group.year} 年 ${index + 1} 月`;
                 const displayValue = row?.displayValue ?? "0 条";
                 const secondaryLabel = row?.secondaryLabel;
+                const normalizedValue = (row?.widthPercent ?? 0) / 100;
+                const radius = visualMarkerScale(normalizedValue, { minimum: 4, maximum: 15 });
+                const isPeak = row?.widthPercent === 100;
                 return (
                   <li
                     key={row?.key ?? `${group.year}-${index + 1}`}
-                    data-peak={row?.widthPercent === 100 ? "true" : undefined}
+                    data-cadence-cell="true"
+                    data-zero={normalizedValue === 0 ? "true" : undefined}
+                    data-peak={isPeak ? "true" : undefined}
                     data-partial={secondaryLabel !== null && secondaryLabel !== undefined ? "true" : undefined}
                     aria-label={`${label}：${displayValue}${secondaryLabel === null || secondaryLabel === undefined ? "" : `；${secondaryLabel}`}`}
+                    style={{ "--v3-cadence-delay": `${30 + index * 36}ms` } as CSSProperties}
                   >
-                    <span className="v3-month-cell-track" aria-hidden="true">
-                      <span
-                        className="v3-month-cell-fill"
-                        style={{ "--v3-data-scale": `${row?.widthPercent ?? 0}%` } as CSSProperties}
-                      />
-                    </span>
+                    <svg viewBox="0 0 44 44" role="presentation" aria-hidden="true" focusable="false">
+                      <g className="v3-cadence-mark">
+                        <circle className="v3-cadence-orbit" cx="22" cy="22" r="18" />
+                        <circle className="v3-cadence-value" cx="22" cy="22" r={radius} />
+                        <path className="v3-cadence-register" d="M8 35.5H36" />
+                        {isPeak ? (
+                          <>
+                            <circle className="v3-cadence-peak-ring" cx="22" cy="22" r="18" />
+                            <path className="v3-cadence-peak-notch" d="M22 2V8" />
+                          </>
+                        ) : null}
+                      </g>
+                    </svg>
+                    {isPeak ? <span className="v3-cadence-peak-label" aria-hidden="true">峰</span> : null}
                   </li>
                 );
               })}
@@ -256,58 +360,119 @@ function MonthMatrix({ visual }: { readonly visual: BetaLocalizedVisualV1 }) {
         ))}
       </div>
       <figcaption className="v3-visual-caption">
-        {visual.ariaLabel}；{peakLabels(visual.rows)}。部分月份直接标注，完整数值收在下方。
+        {visual.ariaLabel}；{peakLabels(visual.rows)}。圆形档案印记表达相对节奏，斜纹表示部分月份。
       </figcaption>
-      <ExactVisualTable visual={visual} summary="查看完整月份数据" />
     </figure>
   );
 }
 
 function WeekdayBeats({ visual }: { readonly visual: BetaLocalizedVisualV1 }) {
   return (
-    <figure className="v3-visual v3-weekday-beats" aria-label={visual.ariaLabel}>
-      <ol>
-        {visual.rows.map((row) => (
-          <li key={row.key} data-peak={row.widthPercent === 100 ? "true" : undefined}>
-            <span
-              className="v3-beat-mark"
-              aria-hidden="true"
-              style={{ "--v3-beat-scale": String(row.widthPercent / 100) } as CSSProperties}
-            />
-            <span className="v3-beat-label">{row.label}</span>
-            <strong>{row.displayValue}</strong>
-            <small>{row.secondaryLabel}</small>
-          </li>
-        ))}
-      </ol>
+    <figure className="v3-visual v3-weekday-beats" data-rhythm-visual="weekday-beat" aria-label={visual.ariaLabel}>
+      <svg className="v3-weekday-beat-svg" viewBox="0 0 700 178" role="presentation" aria-hidden="true" focusable="false">
+        <path className="v3-beat-rail" d="M28 92H672" />
+        {visual.rows.map((row, index) => {
+          const x = 50 + index * 100;
+          const normalizedValue = row.widthPercent / 100;
+          const stemLength = visualMarkerScale(normalizedValue, { minimum: 10, maximum: 44 });
+          const radius = visualMarkerScale(normalizedValue, { minimum: 4, maximum: 11 });
+          const markerY = 92 - stemLength;
+          const isPeak = row.widthPercent === 100;
+          return (
+            <g
+              key={row.key}
+              className="v3-beat-marker"
+              data-beat-marker="true"
+              data-zero={normalizedValue === 0 ? "true" : undefined}
+              data-peak={isPeak ? "true" : undefined}
+              style={{ "--v3-marker-delay": `${40 + index * 44}ms` } as CSSProperties}
+            >
+              <line className="v3-beat-stem" x1={x} y1="92" x2={x} y2={markerY} />
+              <circle className="v3-beat-dot" cx={x} cy={markerY} r={radius} />
+              {isPeak ? <circle className="v3-beat-peak-ring" cx={x} cy={markerY} r={radius + 5} /> : null}
+              {isPeak ? <text className="v3-beat-peak-label" x={x} y="24">峰值</text> : null}
+              <text className="v3-beat-label" x={x} y="126">{row.label}</text>
+              <text className="v3-beat-value" x={x} y="150">{row.displayValue}</text>
+            </g>
+          );
+        })}
+      </svg>
       <figcaption className="v3-visual-caption">
-        {visual.ariaLabel}；{peakLabels(visual.rows)}。七个节拍按星期一至星期日排列。
+        {visual.ariaLabel}；{peakLabels(visual.rows)}。七个固定位置沿同一节拍轨道排列。
       </figcaption>
-      <ExactVisualTable visual={visual} summary="查看完整星期数据" />
     </figure>
   );
 }
 
 function HourPulse({ visual }: { readonly visual: BetaLocalizedVisualV1 }) {
+  const anchorHours = new Set([0, 6, 12, 18, 23]);
   return (
-    <figure className="v3-visual v3-hour-pulse" aria-label={visual.ariaLabel}>
-      <ol>
-        {visual.rows.map((row) => (
-          <li key={row.key} data-peak={row.widthPercent === 100 ? "true" : undefined}>
-            <span
-              className="v3-hour-pulse-mark"
-              aria-hidden="true"
-              style={{ "--v3-pulse-scale": String(row.widthPercent / 100) } as CSSProperties}
-            />
-            <span className="v3-hour-label">{String(row.key).padStart(2, "0")}</span>
-          </li>
-        ))}
-      </ol>
+    <figure className="v3-visual v3-hour-pulse" data-rhythm-visual="hour-pulse" aria-label={visual.ariaLabel}>
+      <svg className="v3-hour-pulse-svg" viewBox="0 0 960 170" role="presentation" aria-hidden="true" focusable="false">
+        <path className="v3-pulse-baseline" d="M20 92H940" />
+        {visual.rows.map((row, index) => {
+          const hour = Number(row.key);
+          const x = 20 + index * 40;
+          const normalizedValue = row.widthPercent / 100;
+          const stemLength = visualMarkerScale(normalizedValue, { minimum: 8, maximum: 48 });
+          const radius = visualMarkerScale(normalizedValue, { minimum: 2.5, maximum: 6 });
+          const markerY = 92 - stemLength;
+          const isPeak = row.widthPercent === 100;
+          return (
+            <g
+              key={row.key}
+              className="v3-pulse-marker"
+              data-pulse-marker="true"
+              data-zero={normalizedValue === 0 ? "true" : undefined}
+              data-peak={isPeak ? "true" : undefined}
+              style={{ "--v3-marker-delay": `${30 + index * 14}ms` } as CSSProperties}
+            >
+              <line className="v3-pulse-stem" x1={x} y1="92" x2={x} y2={markerY} />
+              <circle className="v3-pulse-dot" cx={x} cy={markerY} r={radius} />
+              {isPeak ? <circle className="v3-pulse-peak-ring" cx={x} cy={markerY} r={radius + 4} /> : null}
+              {anchorHours.has(hour) ? (
+                <text data-hour-anchor="true" className="v3-hour-label" x={x} y="124">
+                  {String(hour).padStart(2, "0")}
+                </text>
+              ) : null}
+            </g>
+          );
+        })}
+      </svg>
       <figcaption className="v3-visual-caption">
-        {visual.ariaLabel}；{peakLabels(visual.rows)}。脉冲只连接已有的 24 个小时桶，不做插值。
+        {visual.ariaLabel}；{peakLabels(visual.rows)}。24 个点固定登记在同一基线上，不连接、不插值。
       </figcaption>
-      <ExactVisualTable visual={visual} summary="查看完整小时数据" />
     </figure>
+  );
+}
+
+function RhythmEvidenceZone({
+  month,
+  weekday,
+  hour,
+}: {
+  readonly month: BetaLocalizedVisualV1;
+  readonly weekday: BetaLocalizedVisualV1;
+  readonly hour: BetaLocalizedVisualV1;
+}) {
+  return (
+    <details className="v3-visual-details v3-rhythm-evidence-zone" data-v3-visual-details="true">
+      <summary>查看完整月份、星期与小时数据</summary>
+      <div className="v3-rhythm-evidence-tables">
+        <section data-rhythm-evidence="month" aria-labelledby="v3-rhythm-evidence-month-heading">
+          <h4 id="v3-rhythm-evidence-month-heading">月份</h4>
+          <ExactVisualTableContent visual={month} />
+        </section>
+        <section data-rhythm-evidence="weekday" aria-labelledby="v3-rhythm-evidence-weekday-heading">
+          <h4 id="v3-rhythm-evidence-weekday-heading">星期</h4>
+          <ExactVisualTableContent visual={weekday} />
+        </section>
+        <section data-rhythm-evidence="hour" aria-labelledby="v3-rhythm-evidence-hour-heading">
+          <h4 id="v3-rhythm-evidence-hour-heading">小时</h4>
+          <ExactVisualTableContent visual={hour} />
+        </section>
+      </div>
+    </details>
   );
 }
 
@@ -524,24 +689,52 @@ function ScaleScene({ sections }: { readonly sections: readonly BetaLocalizedRep
       motionIndex={1}
       aria-labelledby="v3-scene-scale-heading"
     >
-      <SceneHeading number="02" scene="scale" title="把这一年放到尺度里" summary="消息总量先成为主尺度；聊天日和连续区间作为活动证据落在右侧。" />
+      <SceneHeading number="02" scene="scale" title="把这一年放到尺度里" summary="消息总量先成为主尺度；聊天日和连续区间在下方形成一条完整活动证据带。" />
       <StoryGrid mode="asymmetric" className="v3-scale-grid">
-        <LogicalSection
-          section={messages}
+        <article
+          id={messages.id}
           className="v3-scale-primary"
           data-v3-geometry-cell="scale-primary"
           data-v3-cell-mode="asymmetric"
+          data-section-status={messages.status.toLowerCase()}
         >
+          <header className="v3-scale-hero-header">
+            <p className="v3-logical-kicker">{messages.eyebrow} · {String(messages.order).padStart(2, "0")}</p>
+            <h3 className="v3-logical-title">{messages.heading}</h3>
+            <p className="v3-logical-lead">{messages.lead}</p>
+            <SectionStatus section={messages} hidePartial />
+          </header>
+          <MetricLine metric={messages.metric} className="v3-scale-hero-metric" />
           <Annotation>主尺度：消息总量。下方基线只承担阅读登记，不增加统计含义。</Annotation>
           <div className="v3-scale-baseline" aria-hidden="true"><span /></div>
-        </LogicalSection>
-        <div className="v3-scale-evidence" data-v3-geometry-cell="scale-evidence" data-v3-cell-mode="asymmetric">
-          <LogicalSection section={activeDays} className="v3-scale-evidence-item v3-scale-active-days">
-            <div className="v3-activity-rail" aria-hidden="true"><span /></div>
-          </LogicalSection>
-          <LogicalSection section={streak} className="v3-scale-evidence-item v3-scale-streak">
+        </article>
+        <aside className="v3-scale-context" data-v3-geometry-cell="scale-context" data-v3-cell-mode="asymmetric" aria-label="消息尺度范围注记">
+          <p className="v3-logical-kicker">范围注记 · 02</p>
+          <h3 className="v3-scale-context-title">同一范围下的消息尺度</h3>
+          <p className="v3-scale-context-copy">Owner 与 Other 的现有计数保留为范围证据，不与总量争夺主层级。</p>
+          <DetailList section={messages} />
+        </aside>
+        <div className="v3-scale-activity-band" data-v3-geometry-cell="scale-activity-band" data-v3-cell-mode="full">
+          <header className="v3-scale-activity-heading">
+            <p className="v3-logical-kicker">活动证据 · 03–04</p>
+            <h3>聊天日与连续区间</h3>
+            <p>{activeDays.lead} {streak.lead}</p>
+          </header>
+          <div className="v3-scale-activity-grid">
+            <article id={activeDays.id} className="v3-scale-active-days" data-section-status={activeDays.status.toLowerCase()}>
+              <CompactEvidenceHeader section={activeDays} />
+              <div className="v3-activity-register" aria-hidden="true">
+                <span className="v3-activity-register-line" />
+                <span className="v3-activity-register-mark" />
+              </div>
+              <DetailList section={activeDays} includeScope={false} />
+            </article>
+            <article id={streak.id} className="v3-scale-streak" data-section-status={streak.status.toLowerCase()}>
+              <CompactEvidenceHeader section={streak} />
             {streak.visual === null ? null : <StreakTimeline visual={streak.visual} />}
-          </LogicalSection>
+              <DetailList section={streak} includeScope={false} />
+            </article>
+          </div>
         </div>
       </StoryGrid>
     </Scene>
@@ -562,18 +755,28 @@ function RhythmScene({ sections }: { readonly sections: readonly BetaLocalizedRe
       motionIndex={2}
       aria-labelledby="v3-scene-rhythm-heading"
     >
-      <SceneHeading number="03" scene="rhythm" title="把时间读成节拍" summary="月份是年度主线，星期与小时分别成为七拍和二十四拍；峰值与完整数值始终可查。" />
-      <LogicalSection section={month} className="v3-rhythm-month" data-v3-geometry-cell="rhythm-month" data-v3-cell-mode="full">
-        {month.visual === null ? null : <MonthMatrix visual={month.visual} />}
-      </LogicalSection>
+      <SceneHeading number="03" scene="rhythm" title="节奏不是一条横条" summary="月份是档案节律，星期是一组七拍，小时是 24 点日内脉冲；三种时间尺度共享标注语言，但不共享形态。" />
+      <article id={month.id} className="v3-rhythm-month" data-v3-geometry-cell="rhythm-month" data-v3-cell-mode="full" data-section-status={month.status.toLowerCase()}>
+        <RhythmSectionHeader section={month} />
+        {month.visual === null ? null : <MonthCadence visual={month.visual} />}
+        <InlineSectionFacts section={month} />
+      </article>
+      <p className="v3-rhythm-transition">同一范围，接着换成一周七拍与一天 24 点来读。</p>
       <StoryGrid mode="paired" className="v3-rhythm-beats">
-        <LogicalSection section={weekday} className="v3-rhythm-weekday" data-v3-geometry-cell="rhythm-weekday" data-v3-cell-mode="paired">
+        <article id={weekday.id} className="v3-rhythm-weekday" data-v3-geometry-cell="rhythm-weekday" data-v3-cell-mode="paired" data-section-status={weekday.status.toLowerCase()}>
+          <RhythmSectionHeader section={weekday} />
           {weekday.visual === null ? null : <WeekdayBeats visual={weekday.visual} />}
-        </LogicalSection>
-        <LogicalSection section={hour} className="v3-rhythm-hour" data-v3-geometry-cell="rhythm-hour" data-v3-cell-mode="paired">
+          <InlineSectionFacts section={weekday} />
+        </article>
+        <article id={hour.id} className="v3-rhythm-hour" data-v3-geometry-cell="rhythm-hour" data-v3-cell-mode="paired" data-section-status={hour.status.toLowerCase()}>
+          <RhythmSectionHeader section={hour} />
           {hour.visual === null ? null : <HourPulse visual={hour.visual} />}
-        </LogicalSection>
+          <InlineSectionFacts section={hour} />
+        </article>
       </StoryGrid>
+      {month.visual !== null && weekday.visual !== null && hour.visual !== null ? (
+        <RhythmEvidenceZone month={month.visual} weekday={weekday.visual} hour={hour.visual} />
+      ) : null}
     </Scene>
   );
 }
@@ -598,13 +801,22 @@ function BalanceScene({ sections }: { readonly sections: readonly BetaLocalizedR
       <LogicalSection section={sender} className="v3-balance-role" data-v3-geometry-cell="balance-role" data-v3-cell-mode="full">
         {sender.visual === null ? null : <RoleShareBand visual={sender.visual} label="发送方比例" />}
       </LogicalSection>
+      <header className="v3-balance-composition-heading">
+        <p className="v3-logical-kicker">构成证据 · 09–10</p>
+        <h3>长度与类型放在同一层阅读</h3>
+        <p>{length.lead} {types.lead}</p>
+      </header>
       <StoryGrid mode="asymmetric" className="v3-balance-evidence" data-density={density}>
-        <LogicalSection section={length} className="v3-balance-length" data-v3-geometry-cell="balance-length" data-v3-cell-mode="asymmetric">
+        <article id={length.id} className="v3-balance-length" data-v3-geometry-cell="balance-length" data-v3-cell-mode="asymmetric" data-section-status={length.status.toLowerCase()}>
+          <CompactEvidenceHeader section={length} />
           {length.visual === null ? null : <LengthEvidence visual={length.visual} />}
-        </LogicalSection>
-        <LogicalSection section={types} className="v3-balance-types" data-v3-geometry-cell="balance-types" data-v3-cell-mode="asymmetric">
+          <DetailList section={length} includeScope={false} />
+        </article>
+        <article id={types.id} className="v3-balance-types" data-v3-geometry-cell="balance-types" data-v3-cell-mode="asymmetric" data-section-status={types.status.toLowerCase()}>
+          <CompactEvidenceHeader section={types} />
           {types.visual === null ? null : <RankedMessageTypes visual={types.visual} />}
-        </LogicalSection>
+          <DetailList section={types} includeScope={false} />
+        </article>
       </StoryGrid>
     </Scene>
   );

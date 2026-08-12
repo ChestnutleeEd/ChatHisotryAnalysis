@@ -312,7 +312,10 @@ describe("Beta B2 core report composition", () => {
     expect(html).toContain("UTC+08:00");
     expect(html).toContain("v3-scene-intro");
     expect(html).toContain("v3-visual-details");
-    expect(html).toContain("v3-month-matrix");
+    expect(html).toContain('data-rhythm-visual="month-cadence"');
+    expect(html).toContain('data-rhythm-visual="weekday-beat"');
+    expect(html).toContain('data-rhythm-visual="hour-pulse"');
+    expect(html).not.toContain("v3-month-cell-fill");
     expect(html).toContain("v3-role-band");
     expect(html).not.toContain("beta-status-success");
     expect(html).not.toMatch(/<details[^>]+open(?:=|\s|>)/u);

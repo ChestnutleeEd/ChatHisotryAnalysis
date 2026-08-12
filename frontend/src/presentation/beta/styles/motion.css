@@ -50,9 +50,6 @@
 }
 
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report [data-v3-scene][data-motion-state="entering"] :where(
-  .v3-month-cell-fill,
-  .v3-beat-mark,
-  .v3-hour-pulse-mark,
   .v3-role-band-segment,
   .v3-length-marker,
   .v3-ranked-track span,
@@ -66,20 +63,11 @@
 }
 
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report [data-v3-scene][data-motion-state="entering"] :where(
-  .v3-month-cell-fill,
   .v3-role-band-segment,
   .v3-ranked-track span
 ) {
   animation-name: v3-data-width;
   transform-origin: left center;
-}
-
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report [data-v3-scene][data-motion-state="entering"] :where(
-  .v3-beat-mark,
-  .v3-hour-pulse-mark
-) {
-  animation-name: v3-data-height;
-  transform-origin: center bottom;
 }
 
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report [data-v3-scene][data-motion-state="entering"] .v3-length-marker {
@@ -134,15 +122,51 @@
   }
 }
 
-@keyframes v3-data-height {
+@keyframes v3-cadence-reveal {
   from {
-    opacity: .2;
-    transform: scaleY(0);
+    opacity: 0;
+    clip-path: inset(100% 0 0 0);
+    transform: translateY(5px) scale(.96);
   }
   to {
     opacity: 1;
-    transform: scaleY(var(--v3-beat-scale, var(--v3-pulse-scale, 1)));
+    clip-path: inset(0 0 0 0);
+    transform: translateY(0) scale(1);
   }
+}
+
+@keyframes v3-beat-activate {
+  from {
+    opacity: 0;
+    transform: scale(.88);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes v3-pulse-point-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(5px) scale(.92);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report [data-v3-scene][data-motion-state="entering"] .v3-cadence-mark {
+  animation: v3-cadence-reveal 210ms var(--motion-ease-emphasis) var(--v3-cadence-delay) both;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report [data-v3-scene][data-motion-state="entering"] .v3-beat-marker {
+  animation: v3-beat-activate 200ms var(--motion-ease-standard) var(--v3-marker-delay) both;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report [data-v3-scene][data-motion-state="entering"] .v3-pulse-marker {
+  animation: v3-pulse-point-reveal 190ms var(--motion-ease-standard) var(--v3-marker-delay) both;
 }
 
 @keyframes v3-data-marker {
@@ -198,9 +222,9 @@
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report [data-v3-scene][data-motion="scene"] :where(
     .v3-opening-title,
     .v3-opening-artwork,
-    .v3-month-cell-fill,
-    .v3-beat-mark,
-    .v3-hour-pulse-mark,
+    .v3-cadence-mark,
+    .v3-beat-marker,
+    .v3-pulse-marker,
     .v3-role-band-segment,
     .v3-length-marker,
     .v3-ranked-track span,
@@ -219,14 +243,6 @@
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-range-toggle,
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-range-field select {
     transition: none;
-  }
-
-  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report .v3-beat-mark {
-    transform: scaleY(var(--v3-beat-scale)) !important;
-  }
-
-  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report .v3-hour-pulse-mark {
-    transform: scaleY(var(--v3-pulse-scale)) !important;
   }
 
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report .v3-length-marker {
