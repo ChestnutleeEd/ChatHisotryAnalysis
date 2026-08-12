@@ -20,7 +20,7 @@
 - [x] 2.6 [Luna Max] Apply the approved chart entrance, annotation, hover/focus, and chapter-transition motion within the V3 motion budget; keep all data calculations and chart ordering outside the scroll/render loop.
 - [x] 2.7 [Luna Max] If the optional Rhythm supporting illustration is still justified after layout review, prepare only the approved local asset brief and run the asset approval workflow before adding a generated file; otherwise record the explicit no-asset decision.
 - [x] 2.8 [Luna Max] Run focused regression, geometry, screenshot, reduced-motion, keyboard, responsive, packaged-offline, and synthetic sparse/typical data tests for Opening through Conversation; conduct and record the V3.2 human visual gate.
-- [ ] 2.9 [Sol xHigh — STOP GATE] Review the complete V3.2 diff for editorial hierarchy, factual fidelity, responsive composition, and CSS-authority regression; resolve only accepted bounded findings, validate, stage exact paths, commit, push, and stop for approval before V3.3.
+- [x] 2.9 [Sol xHigh — STOP GATE] Review the complete V3.2 diff for editorial hierarchy, factual fidelity, responsive composition, and CSS-authority regression; resolve only accepted bounded findings, validate, stage exact paths, commit, push, and stop for approval before V3.3.
 
 ## 3. V3.3 — Vocabulary Climax
 
