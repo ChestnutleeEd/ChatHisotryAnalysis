@@ -148,7 +148,10 @@ async function collectGeometry(page: Page) {
       monthCadenceCells: document.querySelectorAll('[data-rhythm-visual="month-cadence"] [data-cadence-cell]').length,
       weekdayBeatMarkers: document.querySelectorAll('[data-rhythm-visual="weekday-beat"] [data-beat-marker]').length,
       hourPulseMarkers: document.querySelectorAll('[data-rhythm-visual="hour-pulse"] [data-pulse-marker]').length,
-      legacyMarks: document.querySelectorAll(".v3-month-cell-fill, .v3-beat-mark, .v3-hour-pulse-mark").length,
+      weekdaySeals: document.querySelectorAll('[data-rhythm-visual="weekday-beat"] [data-beat-seal]').length,
+      hourApertures: document.querySelectorAll('[data-rhythm-visual="hour-pulse"] [data-hour-aperture]').length,
+      magnitudeStems: document.querySelectorAll(".v3-beat-stem, .v3-pulse-stem").length,
+      legacyMarks: document.querySelectorAll(".v3-month-cell-fill, .v3-beat-mark, .v3-hour-pulse-mark, .v3-beat-stem, .v3-pulse-stem").length,
     };
     const transitions = scenes.slice(0, -1).map((scene, index) => ({
       from: scene.id,
@@ -244,6 +247,9 @@ test("emits V3 scene/cell geometry and exercises dock navigation at fixed synthe
     expect(diagnostic.rhythmShape.monthCadenceCells).toBe(12);
     expect(diagnostic.rhythmShape.weekdayBeatMarkers).toBe(7);
     expect(diagnostic.rhythmShape.hourPulseMarkers).toBe(24);
+    expect(diagnostic.rhythmShape.weekdaySeals).toBe(7);
+    expect(diagnostic.rhythmShape.hourApertures).toBe(24);
+    expect(diagnostic.rhythmShape.magnitudeStems).toBe(0);
     expect(diagnostic.rhythmShape.legacyMarks).toBe(0);
     if (viewport.width >= 960) {
       expect(diagnostic.scaleMass.leftMeaningfulHeight).toBeGreaterThan(0);
@@ -294,6 +300,8 @@ test("emits V3 scene/cell geometry and exercises dock navigation at fixed synthe
   await captureElement(page, "#opening", "annual-opening-1440.png");
   await captureElement(page, "#scale-scene", "annual-scale-1440.png");
   await captureElement(page, "#rhythm-scene", "annual-rhythm-1440.png");
+  await captureElement(page, "#peak-weekday", "annual-rhythm-weekday-1440.png");
+  await captureElement(page, "#peak-hour", "annual-rhythm-hour-1440.png");
   await captureElement(page, "#balance-scene", "annual-balance-1440.png");
 
   await page.setViewportSize({ width: 1180, height: 760 });
@@ -307,18 +315,23 @@ test("emits V3 scene/cell geometry and exercises dock navigation at fixed synthe
   await page.setViewportSize({ width: 760, height: 900 });
   await captureElement(page, "#scale-scene", "annual-scale-760.png");
   await captureElement(page, "#rhythm-scene", "annual-rhythm-760.png");
+  await captureElement(page, "#peak-weekday", "annual-rhythm-weekday-760.png");
+  await captureElement(page, "#peak-hour", "annual-rhythm-hour-760.png");
 
   await page.setViewportSize({ width: 380, height: 900 });
   await captureElement(page, "#scale-scene", "annual-scale-380.png");
   await captureElement(page, "#peak-month", "annual-rhythm-month-380.png");
   await captureElement(page, ".v3-rhythm-beats", "annual-rhythm-pair-380.png");
+  await captureElement(page, "#peak-weekday", "annual-rhythm-weekday-380.png");
+  await captureElement(page, "#peak-hour", "annual-rhythm-hour-380.png");
 
-  await page.setViewportSize({ width: 760, height: 900 });
-  await page.evaluate(() => { document.documentElement.style.zoom = "2"; });
+  // A 760px physical viewport at 200% browser zoom exposes 380 CSS px. Use
+  // that layout viewport directly; CSS `zoom: 2` does not update media queries
+  // and would incorrectly keep the Compact 3 + 5 composition active.
+  await page.setViewportSize({ width: 380, height: 900 });
   await assertNoPageOverflow(page);
   await captureElement(page, "#scale-scene", "annual-scale-200-zoom.png");
   await captureElement(page, "#rhythm-scene", "annual-rhythm-200-zoom.png");
-  await page.evaluate(() => { document.documentElement.style.zoom = ""; });
 
   await page.setViewportSize({ width: 1180, height: 760 });
   await openRangePanel(page);

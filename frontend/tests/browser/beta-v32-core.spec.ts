@@ -52,7 +52,13 @@ test.describe("V3.2 Annual core story contracts", () => {
     await expect(page.locator('[data-rhythm-visual="month-cadence"] [data-cadence-cell]')).toHaveCount(12);
     await expect(page.locator('[data-rhythm-visual="weekday-beat"] [data-beat-marker]')).toHaveCount(7);
     await expect(page.locator('[data-rhythm-visual="hour-pulse"] [data-pulse-marker]')).toHaveCount(24);
+    await expect(page.locator('[data-rhythm-visual="weekday-beat"] [data-beat-seal]')).toHaveCount(7);
+    await expect(page.locator('[data-rhythm-visual="hour-pulse"] [data-hour-aperture]')).toHaveCount(24);
+    await expect(page.locator('.v3-beat-stem, .v3-pulse-stem')).toHaveCount(0);
+    await expect(page.locator('[data-rhythm-visual="weekday-beat"] line, [data-rhythm-visual="hour-pulse"] line')).toHaveCount(0);
     await expect(page.locator('[data-rhythm-visual="hour-pulse"] [data-hour-anchor]')).toHaveCount(5);
+    await expect(page.locator('[data-rhythm-visual="weekday-beat"] [data-peak="true"]')).toHaveCount(2);
+    await expect(page.locator('[data-rhythm-visual="hour-pulse"] [data-peak="true"]')).toHaveCount(2);
     await expect(page.locator('[data-rhythm-visual] svg:not([aria-hidden="true"])')).toHaveCount(0);
     await expect(page.locator('[data-rhythm-visual] svg:not([role="presentation"])')).toHaveCount(0);
     await expect(page.locator(".v3-month-cell-fill, .v3-beat-mark, .v3-hour-pulse-mark")).toHaveCount(0);
@@ -67,9 +73,71 @@ test.describe("V3.2 Annual core story contracts", () => {
     await expect(page.locator(".v3-visual-details:not([open])")).toHaveCount(7);
     await expect(page.locator(".beta-report-core .beta-v2-scale-grid, .beta-report-core .beta-v2-rhythm, .beta-report-core .beta-v2-balance-grid, .beta-report-core .beta-v2-conversation-grid")).toHaveCount(0);
 
+    const registerGeometry = await page.evaluate(() => {
+      const boxes = (selector: string) => [...document.querySelectorAll<HTMLElement>(selector)]
+        .map((element) => element.getBoundingClientRect());
+      const sealBoxes = boxes("[data-beat-seal]");
+      const apertureBoxes = boxes("[data-hour-aperture]");
+      const apertureCenters = apertureBoxes.map((box) => box.top + box.height / 2);
+      return {
+        sealWidths: [...new Set(sealBoxes.map((box) => Math.round(box.width)))],
+        sealHeights: [...new Set(sealBoxes.map((box) => Math.round(box.height)))],
+        apertureWidths: [...new Set(apertureBoxes.map((box) => Math.round(box.width)))],
+        apertureHeights: [...new Set(apertureBoxes.map((box) => Math.round(box.height)))],
+        apertureCenterSpread: Math.max(...apertureCenters) - Math.min(...apertureCenters),
+      };
+    });
+    expect(registerGeometry.sealWidths).toEqual([58]);
+    expect(registerGeometry.sealHeights).toEqual([58]);
+    expect(registerGeometry.apertureWidths).toEqual([22]);
+    expect(registerGeometry.apertureHeights).toEqual([22]);
+    expect(registerGeometry.apertureCenterSpread).toBeLessThanOrEqual(1);
+
     const rangeToggle = page.getByRole("button", { name: "范围与章节", exact: true });
     await rangeToggle.focus();
     await expect.poll(() => rangeToggle.evaluate((element) => getComputedStyle(element).outlineStyle)).toBe("solid");
+  });
+
+  test("keeps the compact Rhythm field at the frozen 3 + 5 composition", async ({ page }) => {
+    await page.setViewportSize({ width: 760, height: 900 });
+    await page.goto("/?fixture=beta-annual-recap");
+    await expect(page.getByTestId("beta-annual-recap-harness")).toBeVisible();
+
+    const geometry = await page.evaluate(() => {
+      const weekday = document.querySelector<HTMLElement>('[data-v3-geometry-cell="rhythm-weekday"]');
+      const hour = document.querySelector<HTMLElement>('[data-v3-geometry-cell="rhythm-hour"]');
+      if (weekday === null || hour === null) {
+        throw new Error("RHYTHM_COMPACT_GEOMETRY_MISSING");
+      }
+      const weekdayBox = weekday.getBoundingClientRect();
+      const hourBox = hour.getBoundingClientRect();
+      const sealList = document.querySelector<HTMLElement>(".v3-weekday-seal-list");
+      const registerList = document.querySelector<HTMLElement>(".v3-hour-register-list");
+      const apertureRows = [...document.querySelectorAll<HTMLElement>("[data-hour-aperture]")]
+        .reduce<Record<string, number>>((rows, aperture) => {
+          const box = aperture.getBoundingClientRect();
+          const center = String(Math.round(box.top + box.height / 2));
+          rows[center] = (rows[center] ?? 0) + 1;
+          return rows;
+        }, {});
+      return {
+        weekdayColumn: getComputedStyle(weekday).gridColumn,
+        hourColumn: getComputedStyle(hour).gridColumn,
+        widthRatio: weekdayBox.width / hourBox.width,
+        topDelta: Math.abs(weekdayBox.top - hourBox.top),
+        sealColumns: sealList === null ? 0 : getComputedStyle(sealList).gridTemplateColumns.split(" ").length,
+        registerColumns: registerList === null ? 0 : getComputedStyle(registerList).gridTemplateColumns.split(" ").length,
+        apertureRowSizes: Object.values(apertureRows),
+      };
+    });
+    expect(geometry.weekdayColumn).toContain("span 3");
+    expect(geometry.hourColumn).toContain("4");
+    expect(geometry.widthRatio).toBeGreaterThan(.5);
+    expect(geometry.widthRatio).toBeLessThan(.75);
+    expect(geometry.topDelta).toBeLessThanOrEqual(2);
+    expect(geometry.sealColumns).toBe(4);
+    expect(geometry.registerColumns).toBe(12);
+    expect(geometry.apertureRowSizes).toEqual([12, 12]);
   });
 
   test("renders one 12-cell month row per represented year in all-years mode", async ({ page }) => {

@@ -369,17 +369,13 @@ function MonthCadence({ visual }: { readonly visual: BetaLocalizedVisualV1 }) {
 function WeekdayBeats({ visual }: { readonly visual: BetaLocalizedVisualV1 }) {
   return (
     <figure className="v3-visual v3-weekday-beats" data-rhythm-visual="weekday-beat" aria-label={visual.ariaLabel}>
-      <svg className="v3-weekday-beat-svg" viewBox="0 0 700 178" role="presentation" aria-hidden="true" focusable="false">
-        <path className="v3-beat-rail" d="M28 92H672" />
+      <ol className="v3-weekday-seal-list" aria-hidden="true">
         {visual.rows.map((row, index) => {
-          const x = 50 + index * 100;
           const normalizedValue = row.widthPercent / 100;
-          const stemLength = visualMarkerScale(normalizedValue, { minimum: 10, maximum: 44 });
-          const radius = visualMarkerScale(normalizedValue, { minimum: 4, maximum: 11 });
-          const markerY = 92 - stemLength;
+          const inkSize = visualMarkerScale(normalizedValue, { minimum: 8, maximum: 42 });
           const isPeak = row.widthPercent === 100;
           return (
-            <g
+            <li
               key={row.key}
               className="v3-beat-marker"
               data-beat-marker="true"
@@ -387,18 +383,21 @@ function WeekdayBeats({ visual }: { readonly visual: BetaLocalizedVisualV1 }) {
               data-peak={isPeak ? "true" : undefined}
               style={{ "--v3-marker-delay": `${40 + index * 44}ms` } as CSSProperties}
             >
-              <line className="v3-beat-stem" x1={x} y1="92" x2={x} y2={markerY} />
-              <circle className="v3-beat-dot" cx={x} cy={markerY} r={radius} />
-              {isPeak ? <circle className="v3-beat-peak-ring" cx={x} cy={markerY} r={radius + 5} /> : null}
-              {isPeak ? <text className="v3-beat-peak-label" x={x} y="24">峰值</text> : null}
-              <text className="v3-beat-label" x={x} y="126">{row.label}</text>
-              <text className="v3-beat-value" x={x} y="150">{row.displayValue}</text>
-            </g>
+              <span className="v3-beat-seal" data-beat-seal="true">
+                <span
+                  className="v3-beat-ink"
+                  style={{ "--v3-ink-size": `${inkSize}px` } as CSSProperties}
+                />
+              </span>
+              <strong className="v3-beat-label">{row.label}</strong>
+              <span className="v3-beat-value">{row.displayValue}</span>
+              {isPeak ? <span className="v3-beat-peak-label">峰值</span> : null}
+            </li>
           );
         })}
-      </svg>
+      </ol>
       <figcaption className="v3-visual-caption">
-        {visual.ariaLabel}；{peakLabels(visual.rows)}。七个固定位置沿同一节拍轨道排列。
+        {visual.ariaLabel}；{peakLabels(visual.rows)}。七枚固定节拍印章沿同一轨道排列，内部墨迹表达相对强弱。
       </figcaption>
     </figure>
   );
@@ -408,39 +407,40 @@ function HourPulse({ visual }: { readonly visual: BetaLocalizedVisualV1 }) {
   const anchorHours = new Set([0, 6, 12, 18, 23]);
   return (
     <figure className="v3-visual v3-hour-pulse" data-rhythm-visual="hour-pulse" aria-label={visual.ariaLabel}>
-      <svg className="v3-hour-pulse-svg" viewBox="0 0 960 170" role="presentation" aria-hidden="true" focusable="false">
-        <path className="v3-pulse-baseline" d="M20 92H940" />
+      <ol className="v3-hour-register-list" aria-hidden="true">
         {visual.rows.map((row, index) => {
           const hour = Number(row.key);
-          const x = 20 + index * 40;
           const normalizedValue = row.widthPercent / 100;
-          const stemLength = visualMarkerScale(normalizedValue, { minimum: 8, maximum: 48 });
-          const radius = visualMarkerScale(normalizedValue, { minimum: 2.5, maximum: 6 });
-          const markerY = 92 - stemLength;
+          const inkSize = visualMarkerScale(normalizedValue, { minimum: 3, maximum: 13 });
           const isPeak = row.widthPercent === 100;
           return (
-            <g
+            <li
               key={row.key}
               className="v3-pulse-marker"
               data-pulse-marker="true"
+              data-hour-index={index}
               data-zero={normalizedValue === 0 ? "true" : undefined}
               data-peak={isPeak ? "true" : undefined}
               style={{ "--v3-marker-delay": `${30 + index * 14}ms` } as CSSProperties}
             >
-              <line className="v3-pulse-stem" x1={x} y1="92" x2={x} y2={markerY} />
-              <circle className="v3-pulse-dot" cx={x} cy={markerY} r={radius} />
-              {isPeak ? <circle className="v3-pulse-peak-ring" cx={x} cy={markerY} r={radius + 4} /> : null}
+              <span className="v3-hour-aperture" data-hour-aperture="true">
+                <span
+                  className="v3-hour-ink"
+                  style={{ "--v3-ink-size": `${inkSize}px` } as CSSProperties}
+                />
+              </span>
               {anchorHours.has(hour) ? (
-                <text data-hour-anchor="true" className="v3-hour-label" x={x} y="124">
+                <span data-hour-anchor="true" className="v3-hour-label">
                   {String(hour).padStart(2, "0")}
-                </text>
+                </span>
               ) : null}
-            </g>
+              {isPeak ? <span className="v3-hour-peak-label">峰</span> : null}
+            </li>
           );
         })}
-      </svg>
+      </ol>
       <figcaption className="v3-visual-caption">
-        {visual.ariaLabel}；{peakLabels(visual.rows)}。24 个点固定登记在同一基线上，不连接、不插值。
+        {visual.ariaLabel}；{peakLabels(visual.rows)}。24 个固定时间孔位登记在计时轨道上，不移动、不连接、不插值。
       </figcaption>
     </figure>
   );

@@ -1027,98 +1027,165 @@ html:has(.desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-naviga
   background-image: repeating-linear-gradient(135deg, transparent 0 5px, rgb(47 52 44 / 13%) 5px 6px);
 }
 
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-weekday-beat-svg,
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-hour-pulse-svg {
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-weekday-seal-list,
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-hour-register-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-weekday-seal-list {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: var(--v3-space-2);
+  min-width: 0;
+  padding-top: 18px;
+  background: linear-gradient(var(--v3-hairline), var(--v3-hairline)) center 46px / calc(100% - 48px) 1px no-repeat;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-marker {
+  position: relative;
+  display: grid;
+  grid-template-rows: 58px auto auto;
+  gap: 4px;
+  min-width: 0;
+  justify-items: center;
+  text-align: center;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-seal {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 58px;
+  height: 58px;
+  place-items: center;
+  border: 1.5px solid var(--v3-brand);
+  border-radius: 50%;
+  background: var(--v3-canvas);
+  box-shadow: inset 0 0 0 5px rgb(212 184 149 / 32%);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-seal::before {
+  position: absolute;
+  top: -7px;
+  width: 1px;
+  height: 7px;
+  background: var(--v3-brand);
+  content: "";
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-ink,
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-hour-ink {
   display: block;
-  width: 100%;
-  height: auto;
-  overflow: visible;
+  width: var(--v3-ink-size);
+  height: var(--v3-ink-size);
+  border-radius: 50%;
+  background: var(--v3-brand);
+  transform-box: fill-box;
+  transform-origin: center;
 }
 
-.desktop-app.beta-enabled[data-visual-version="v3"] :where(
-  .v3-beat-rail,
-  .v3-beat-stem,
-  .v3-beat-peak-ring,
-  .v3-pulse-baseline,
-  .v3-pulse-stem,
-  .v3-pulse-peak-ring
-) {
-  fill: none;
-  vector-effect: non-scaling-stroke;
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-marker[data-zero="true"] .v3-beat-ink,
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-pulse-marker[data-zero="true"] .v3-hour-ink {
+  visibility: hidden;
 }
 
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-rail,
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-pulse-baseline {
-  stroke: var(--v3-hairline);
-  stroke-width: 1.5;
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-marker[data-peak="true"] .v3-beat-seal {
+  border-color: var(--v3-accent);
+  box-shadow: 0 0 0 3px var(--v3-canvas), 0 0 0 5px var(--v3-accent), inset 0 0 0 5px rgb(192 142 58 / 22%);
 }
 
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-stem,
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-pulse-stem {
-  stroke: var(--v3-brand);
-  stroke-linecap: round;
-  stroke-width: 2;
-}
-
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-pulse-stem {
-  stroke-width: 1.4;
-}
-
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-dot,
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-pulse-dot {
-  fill: var(--v3-brand);
-}
-
-.desktop-app.beta-enabled[data-visual-version="v3"] :where(
-  .v3-beat-marker[data-peak="true"] .v3-beat-dot,
-  .v3-pulse-marker[data-peak="true"] .v3-pulse-dot
-) {
-  fill: var(--v3-accent);
-}
-
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-peak-ring,
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-pulse-peak-ring {
-  stroke: var(--v3-accent);
-  stroke-width: 1.5;
-}
-
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-label,
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-value,
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-peak-label,
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-hour-label {
-  font-family: var(--v3-font-ui);
-  text-anchor: middle;
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-marker[data-peak="true"] .v3-beat-seal::before,
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-marker[data-peak="true"] .v3-beat-ink {
+  background: var(--v3-accent);
 }
 
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-label {
-  fill: var(--v3-ink-secondary);
-  font-size: 13px;
-  font-weight: 700;
+  color: var(--v3-ink-secondary);
+  font-family: var(--v3-font-ui);
+  font-size: 12px;
+  line-height: 1.2;
 }
 
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-value {
-  fill: var(--v3-ink-muted);
-  font-size: 11px;
+  color: var(--v3-ink-muted);
+  font-family: var(--v3-font-ui);
+  font-size: 10px;
   font-variant-numeric: tabular-nums;
+  line-height: 1.2;
 }
 
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-peak-label {
-  fill: var(--v3-accent);
-  font-size: 10px;
+  position: absolute;
+  top: -18px;
+  color: var(--v3-accent);
+  font-size: 9px;
   font-weight: 800;
 }
 
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-hour-label {
-  fill: var(--v3-ink-muted);
-  font-family: var(--v3-font-mono);
-  font-size: 11px;
-  font-weight: 700;
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-hour-register-list {
+  display: grid;
+  grid-template-columns: repeat(24, minmax(0, 1fr));
+  min-width: 0;
+  padding-top: 16px;
+  background: linear-gradient(var(--v3-hairline), var(--v3-hairline)) center 27px / calc(100% - 20px) 1px no-repeat;
 }
 
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-beat-marker,
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-pulse-marker {
-  transform-box: fill-box;
-  transform-origin: center;
+  position: relative;
+  display: grid;
+  grid-template-rows: 24px 16px;
+  min-width: 0;
+  justify-items: center;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-hour-aperture {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border: 1px solid var(--v3-brand);
+  border-radius: 50%;
+  background: var(--v3-canvas);
+  box-shadow: inset 0 0 0 3px rgb(212 184 149 / 30%);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-hour-aperture::before {
+  position: absolute;
+  top: -4px;
+  width: 1px;
+  height: 4px;
+  background: var(--v3-hairline);
+  content: "";
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-pulse-marker[data-peak="true"] .v3-hour-aperture {
+  border-color: var(--v3-accent);
+  box-shadow: 0 0 0 2px var(--v3-canvas), 0 0 0 3px var(--v3-accent), inset 0 0 0 3px rgb(192 142 58 / 22%);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-pulse-marker[data-peak="true"] .v3-hour-aperture::before,
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-pulse-marker[data-peak="true"] .v3-hour-ink {
+  background: var(--v3-accent);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-hour-label {
+  color: var(--v3-ink-muted);
+  font-family: var(--v3-font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 16px;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-hour-peak-label {
+  position: absolute;
+  top: -14px;
+  color: var(--v3-accent);
+  font-size: 8px;
+  font-weight: 800;
 }
 
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-evidence-zone {
@@ -1522,8 +1589,6 @@ html:has(.desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-naviga
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-skeleton-evidence,
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-month,
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-beats,
-  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-weekday,
-  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-hour,
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-balance-role,
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-balance-evidence,
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-balance-length,
@@ -1534,7 +1599,6 @@ html:has(.desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-naviga
   }
 
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-scale-context,
-  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-hour,
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-balance-types,
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-conversation-replies {
     padding-left: 0;
@@ -1552,6 +1616,31 @@ html:has(.desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-naviga
 
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-conversation-connector {
     display: none;
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-weekday {
+    grid-column: 1 / span 3;
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-hour {
+    grid-column: 4 / -1;
+    padding-left: var(--v3-space-4);
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-weekday-seal-list {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    row-gap: var(--v3-space-5);
+    background:
+      linear-gradient(var(--v3-hairline), var(--v3-hairline)) center 46px / calc(100% - 48px) 1px no-repeat,
+      linear-gradient(var(--v3-hairline), var(--v3-hairline)) center 150px / calc(75% - 36px) 1px no-repeat;
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-hour-register-list {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    row-gap: var(--v3-space-3);
+    background:
+      linear-gradient(var(--v3-hairline), var(--v3-hairline)) center 27px / calc(100% - 20px) 1px no-repeat,
+      linear-gradient(var(--v3-hairline), var(--v3-hairline)) center 79px / calc(100% - 20px) 1px no-repeat;
   }
 }
 
@@ -1601,6 +1690,16 @@ html:has(.desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-naviga
 
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-opening-scene {
     min-height: 0;
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-weekday,
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-hour {
+    grid-column: 1 / -1;
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-hour {
+    padding-left: 0;
+    border-left: 0;
   }
 
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-opening-facts,

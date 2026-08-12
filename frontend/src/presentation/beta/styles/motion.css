@@ -138,7 +138,7 @@
 @keyframes v3-beat-activate {
   from {
     opacity: 0;
-    transform: scale(.88);
+    transform: scale(.92);
   }
   to {
     opacity: 1;
@@ -149,11 +149,11 @@
 @keyframes v3-pulse-point-reveal {
   from {
     opacity: 0;
-    transform: translateY(5px) scale(.92);
+    transform: scale(.92);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: scale(1);
   }
 }
 
@@ -161,12 +161,12 @@
   animation: v3-cadence-reveal 210ms var(--motion-ease-emphasis) var(--v3-cadence-delay) both;
 }
 
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report [data-v3-scene][data-motion-state="entering"] .v3-beat-marker {
-  animation: v3-beat-activate 200ms var(--motion-ease-standard) var(--v3-marker-delay) both;
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report [data-v3-scene][data-motion-state="entering"] .v3-beat-ink {
+  animation: v3-beat-activate 180ms var(--motion-ease-standard) var(--v3-marker-delay) both;
 }
 
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report [data-v3-scene][data-motion-state="entering"] .v3-pulse-marker {
-  animation: v3-pulse-point-reveal 190ms var(--motion-ease-standard) var(--v3-marker-delay) both;
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report [data-v3-scene][data-motion-state="entering"] .v3-hour-ink {
+  animation: v3-pulse-point-reveal 160ms var(--motion-ease-standard) var(--v3-marker-delay) both;
 }
 
 @keyframes v3-data-marker {
@@ -223,8 +223,8 @@
     .v3-opening-title,
     .v3-opening-artwork,
     .v3-cadence-mark,
-    .v3-beat-marker,
-    .v3-pulse-marker,
+    .v3-beat-ink,
+    .v3-hour-ink,
     .v3-role-band-segment,
     .v3-length-marker,
     .v3-ranked-track span,
