@@ -191,6 +191,44 @@
     box-shadow var(--motion-nav) var(--motion-ease-standard);
 }
 
+/* The Canvas renderer and geometry remain untouched. A new committed digest
+   only reveals the final Canvas element once, after Worker layout is ready. */
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-word-cloud-stage[data-reveal-state="ready"] .beta-word-cloud-canvas {
+  animation: v3-cloud-field-reveal var(--motion-canvas) var(--motion-ease-emphasis) both;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report [data-v3-scene][data-motion-state="entering"] .v3-frequent-heroes li {
+  animation: v3-vocabulary-mark-reveal 360ms var(--motion-ease-emphasis)
+    calc(50ms + var(--v3-word-rank, 1) * 34ms) both;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report [data-v3-scene][data-motion-state="entering"] .v3-keyword-field .beta-keyword-ranking:not(.beta-keyword-ranking-full) li {
+  animation: v3-vocabulary-mark-reveal 380ms var(--motion-ease-standard)
+    calc(70ms + var(--v3-keyword-index, 1) * 18ms) both;
+}
+
+@keyframes v3-vocabulary-mark-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes v3-cloud-field-reveal {
+  from {
+    opacity: .08;
+    transform: scale(.94);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-range-panel {
   animation: v3-panel-enter var(--motion-nav) var(--motion-ease-standard) both;
 }
@@ -229,7 +267,10 @@
     .v3-length-marker,
     .v3-ranked-track span,
     .v3-streak-axis span,
-    .v3-reply-direction
+    .v3-reply-direction,
+    .v3-frequent-heroes li,
+    .v3-keyword-field .beta-keyword-ranking:not(.beta-keyword-ranking-full) li,
+    .beta-word-cloud-canvas
   ),
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-range-panel {
     animation: none !important;

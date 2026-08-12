@@ -20,6 +20,7 @@ import {
   MAX_CUSTOM_HIDDEN_WORDS,
   createKeywordPresentation,
   createWordFrequencyPresentation,
+  keywordFieldSlot,
   mergeCustomHiddenWords,
   parseCustomHiddenWords,
   readCustomHiddenWords,
@@ -120,6 +121,12 @@ const result = {
 } as unknown as CanonicalAnalysisResult;
 
 describe("Beta B3 word presentation boundary", () => {
+  it("maps keyword ranks to a fixed bounded presentation field", () => {
+    expect([1, 2, 3, 4, 5, 6, 7, 20].map(keywordFieldSlot)).toEqual([1, 2, 3, 4, 5, 6, 6, 6]);
+    expect(() => keywordFieldSlot(0)).toThrow("INVALID_KEYWORD_DISPLAY_RANK");
+    expect(() => keywordFieldSlot(1.5)).toThrow("INVALID_KEYWORD_DISPLAY_RANK");
+  });
+
   it("filters custom-hidden candidates synchronously without changing analytics", () => {
     const original = JSON.stringify(frequency);
     const presented = createWordFrequencyPresentation(

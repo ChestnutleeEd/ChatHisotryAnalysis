@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 
 import type { CanonicalAnalysisResult } from "../../worker-analysis/analytics-contract";
 import type {
@@ -15,6 +15,8 @@ import {
 import {
   createKeywordPresentation,
   createWordFrequencyPresentation,
+  KEYWORD_FIELD_SLOT_COUNT,
+  keywordFieldSlot,
   mergeCustomHiddenWords,
   parseCustomHiddenWords,
   readCustomHiddenWords,
@@ -73,13 +75,13 @@ function FrequencyPodium({
   readonly onHideWord: (token: string) => void;
 }) {
   return (
-    <ol className="beta-word-ranking beta-word-ranking-podium" aria-label="当前范围常用词前三名">
+    <ol className="v3-frequent-heroes" aria-label="当前范围常用词前三名">
       {items.map((item) => (
-        <li key={item.normalizedToken} data-rank={item.displayRank}>
-          <span className="beta-word-rank">{item.displayRank}</span>
+        <li key={item.normalizedToken} data-rank={item.displayRank} style={{ "--v3-word-rank": item.displayRank } as CSSProperties}>
+          <span className="v3-frequent-rank" aria-hidden="true">{String(item.displayRank).padStart(2, "0")}</span>
           <strong title={item.displayToken}>{item.displayToken}</strong>
-          <span className="beta-word-count">{formatWordMetric(item, metric)}</span>
-          <BetaButton variant="tertiary" onClick={() => onHideWord(item.normalizedToken)}>隐藏</BetaButton>
+          <span className="v3-frequent-evidence">第 {item.displayRank} 名 · {formatWordMetric(item, metric)}</span>
+          <BetaButton variant="tertiary" aria-label={`隐藏常用词 ${item.displayToken}`} onClick={() => onHideWord(item.normalizedToken)}>隐藏</BetaButton>
         </li>
       ))}
     </ol>
@@ -96,13 +98,18 @@ function KeywordRanking({
   readonly className?: string;
 }) {
   return (
-    <ol className={className} aria-label="年度关键词展示排名">
+    <ol className={className} aria-label="年度关键词固定位置展示">
       {items.map((item) => (
-        <li key={item.normalizedToken} data-rank={item.displayRank}>
+        <li
+          key={item.normalizedToken}
+          data-rank={item.displayRank}
+          data-keyword-slot={keywordFieldSlot(item.displayRank)}
+          style={{ "--v3-keyword-index": item.displayRank } as CSSProperties}
+        >
           <span className="beta-keyword-rank">{item.displayRank}</span>
           <strong>{item.displayToken}</strong>
           <small>{item.count.toLocaleString("zh-CN")} 次 · 年度区分候选</small>
-          <BetaButton variant="tertiary" onClick={() => onHideWord(item.normalizedToken)}>隐藏</BetaButton>
+          <BetaButton variant="tertiary" aria-label={`隐藏年度关键词 ${item.displayToken}`} onClick={() => onHideWord(item.normalizedToken)}>隐藏</BetaButton>
         </li>
       ))}
     </ol>
@@ -149,8 +156,19 @@ export function BetaWordEvidenceSections({
     [cleanMode, customHiddenWords, result],
   );
   const visibleFrequencyItems = frequencyPresentation.items.slice(0, DEFAULT_VISIBLE_WORDS);
-  const visibleKeywordItems = keywordPresentation.items.slice(0, DEFAULT_VISIBLE_WORDS);
+  const visibleKeywordItems = keywordPresentation.items.slice(0, KEYWORD_FIELD_SLOT_COUNT);
   const scopeIsRefreshing = pending && frequency !== undefined && scopedFrequency === undefined;
+  const vocabularyState = scopeIsRefreshing || (pending && scopedFrequency === undefined)
+    ? "loading"
+    : frequencyPresentation.status === "unavailable"
+      ? "unavailable"
+      : frequencyPresentation.status === "empty" || frequencyPresentation.items.length === 0
+        ? "zero"
+        : keywordPresentation.year === null || keywordPresentation.mode === "unavailable" || keywordPresentation.items.length === 0
+          ? "unavailable"
+          : frequencyPresentation.items.length < 4 || keywordPresentation.items.length < 3
+            ? "sparse"
+            : "ready";
 
   function commitHidden(words: readonly string[]): void {
     setCustomHiddenWords(writeCustomHiddenWords(words));
@@ -174,17 +192,19 @@ export function BetaWordEvidenceSections({
   }
 
   return (
-    <div className="beta-word-evidence-scenes beta-v2-word-evidence-scenes">
-      <section id="frequent-words" className="beta-v2-word-section beta-v2-frequent-words">
+    <div
+      className="v3-vocabulary-stage"
+      data-vocabulary-state={vocabularyState}
+      data-layout-mode={vocabularyState === "ready" ? "asymmetric" : vocabularyState === "sparse" || keywordPresentation.year === null ? "asymmetric" : "full"}
+    >
+      <div className="v3-vocabulary-control-strip" aria-label="词汇展示控制">
+        <div className="v3-vocabulary-control-context">
+          <span>展示范围</span>
+          <strong>{ROLE_LABELS[requestedRole]} · {requestedYear === null ? "全部年份" : requestedYear === undefined ? "当前范围" : `${requestedYear} 年`}</strong>
+        </div>
         <div className="beta-word-evidence-heading">
-          <div>
-            <p className="beta-type-eyebrow">常用词 · 13</p>
-            <h3 className="beta-type-title beta-word-section-heading">这一范围最常提到什么？</h3>
-            <p className="beta-type-secondary">同一份本地词频结果同时保留出现次数与每万词频率；切换展示口径不会重新统计。</p>
-          </div>
           <Badge tone={pending ? "partial" : "privacy"}>{pending ? "更新中" : "本地词频"}</Badge>
         </div>
-
         <div className="beta-vocabulary-control-bar" aria-label="词汇控制">
           <fieldset className="beta-word-control-group" disabled={pending}>
             <legend>发送方</legend>
@@ -202,7 +222,7 @@ export function BetaWordEvidenceSections({
             ))}
           </fieldset>
 
-          <fieldset className="beta-word-control-group beta-v2-word-role-control">
+          <fieldset className="beta-word-control-group">
             <legend>口径</legend>
             <label>
               <input
@@ -227,8 +247,8 @@ export function BetaWordEvidenceSections({
           <fieldset className="beta-word-control-group beta-clean-mode-control">
             <legend>展示</legend>
             <ToggleChip
-              className="beta-v2-clean-toggle"
-              label={cleanMode ? "✓ 净化常用词" : "净化常用词"}
+              className="v3-clean-toggle"
+              label="净化常用词"
               checked={cleanMode}
               onChange={changeCleanMode}
               description={cleanMode
@@ -237,6 +257,17 @@ export function BetaWordEvidenceSections({
             />
           </fieldset>
         </div>
+
+        <p className="v3-vocabulary-control-note">角色会更新当前词频范围；次数 / 每万词频率与净化开关只改变展示方式。</p>
+      </div>
+
+      <div className="v3-vocabulary-primary-grid" data-layout-mode={vocabularyState === "ready" ? "5+7" : vocabularyState === "sparse" || keywordPresentation.year === null ? "8+4" : "12"}>
+      <section id="frequent-words" className="v3-frequent-ledger" data-v3-geometry-cell="vocabulary-frequent" data-v3-cell-mode={vocabularyState === "ready" ? "asymmetric" : "full"}>
+        <header className="v3-vocabulary-beat-heading">
+          <p className="beta-type-eyebrow">常用词 · 13</p>
+          <h3 className="beta-type-title beta-word-section-heading">这一范围最常提到什么？</h3>
+          <p className="beta-type-secondary">词与排名优先；次数或每万词频率作为精确证据保留。</p>
+        </header>
 
         {scopeIsRefreshing && frequency !== undefined ? (
           <p className="beta-word-status" role="status">
@@ -271,35 +302,9 @@ export function BetaWordEvidenceSections({
           </>
         )}
 
-        <details className="beta-hidden-word-review">
-          <summary>管理自定义隐藏词（{customHiddenWords.length}）</summary>
-          <p>这里只过滤最多 400 个有界候选项，不会触发重新统计，也不会改变分析排名、次数、rate 或分母。</p>
-          <label>
-            <span>批量添加（逗号或换行分隔）</span>
-            <textarea value={bulkValue} onChange={(event) => setBulkValue(event.currentTarget.value)} />
-          </label>
-          <div className="beta-hidden-word-actions">
-            <BetaButton variant="secondary" disabled={parseCustomHiddenWords(bulkValue).length === 0} onClick={addBulkWords}>添加隐藏词</BetaButton>
-            <BetaButton variant="tertiary" disabled={customHiddenWords.length === 0} onClick={() => commitHidden([])}>清空自定义隐藏</BetaButton>
-          </div>
-          {customHiddenWords.length > 0 ? (
-            <ul className="beta-hidden-word-list" aria-label="当前自定义隐藏词">
-              {customHiddenWords.map((word) => (
-                <li key={word}><span>{word}</span><BetaButton variant="tertiary" onClick={() => restoreWord(word)}>恢复显示</BetaButton></li>
-              ))}
-            </ul>
-          ) : <p>当前没有自定义隐藏词。</p>}
-        </details>
-
-        <MethodologyDisclosure summary="查看常用词统计口径" chips={["NFKC", "每万词频率", "最多 400 候选", cleanMode ? "净化展示开启" : "完整展示"]}>
-          <p>原始次数是当前范围内的出现次数；每万词频率以当前角色、年份和内置词汇策略过滤后的 {frequencyPresentation.denominator?.eligibleTokenCount.toLocaleString("zh-CN") ?? "当前"} 个符合条件词元为分母。</p>
-          <p>内置中英文停用词、纯数字、URL、标点/符号/emoji、单字符、不可见/控制字符、超过 32 个字符、固定扩展名和无效混合片段会参与符合条件规则与分母。</p>
-          <p>词元化后不能可靠还原全部邮箱或路径来源，因此只采用保守的词元形状规则；不做词干化、词形还原、实体识别或姓名推断，缩写默认保留。</p>
-          <p>净化常用词使用 {BETA_VOCABULARY_CLEAN_PRESENTATION_VERSION} 本地启发式列表，只过滤展示候选；不会改变原始次数、每万词频率、分母、底层排名或词频结果标识。</p>
-        </MethodologyDisclosure>
       </section>
 
-      <section id="distinctive-keywords" className="beta-v2-word-section beta-v2-distinctive-keywords" data-keyword-year={keywordPresentation.year ?? "all-years"}>
+      <section id="distinctive-keywords" className="v3-keyword-field" data-v3-geometry-cell="vocabulary-keywords" data-v3-cell-mode="asymmetric" data-keyword-year={keywordPresentation.year ?? "all-years"}>
         {keywordPresentation.year === null ? (
           <div className="beta-keyword-empty-notice" role="status">
             <div>
@@ -314,8 +319,10 @@ export function BetaWordEvidenceSections({
           </div>
         ) : (
           <>
-            <p className="beta-type-eyebrow">年度关键词 · 14</p>
-            <h3 className="beta-type-title beta-word-section-heading">哪些词更能代表这一年？</h3>
+            <header className="v3-vocabulary-beat-heading">
+              <p className="beta-type-eyebrow">年度关键词 · 14</p>
+              <h3 className="beta-type-title beta-word-section-heading">哪些词更能代表这一年？</h3>
+            </header>
             <p className="beta-type-report-lead">{keywordPresentation.explanation}</p>
             <p className="beta-type-metadata">年度关键词展示范围：{keywordPresentation.year} 年</p>
             {keywordPresentation.items.length === 0 ? (
@@ -331,13 +338,10 @@ export function BetaWordEvidenceSections({
                 ) : null}
               </>
             )}
-            <MethodologyDisclosure summary="查看年度关键词统计口径" chips={[keywordPresentation.mode === "frequency-fallback" ? "频次回退" : keywordPresentation.mode === "log-odds" ? "年度对比统计" : "当前范围不适用"]}>
-              <p>年度关键词继续使用现有 Stage7 的候选阈值与平滑年度对比统计。常用词的出现次数/频率与关键词的区分度分数是两种独立语义。</p>
-              <p>净化常用词只隐藏展示行并从既有候选顺序补位，不重新计算或改写分数、次数、消息覆盖与底层排名。</p>
-            </MethodologyDisclosure>
           </>
         )}
       </section>
+      </div>
 
       <BetaWordCloud
         frequency={scopedFrequency}
@@ -347,6 +351,39 @@ export function BetaWordEvidenceSections({
         pending={pending}
         onHideWord={hideWord}
       />
+
+      <div className="v3-vocabulary-secondary" data-v3-geometry-cell="vocabulary-secondary">
+        <details className="beta-hidden-word-review">
+          <summary>管理自定义隐藏词（{customHiddenWords.length}）</summary>
+          <p>这里只过滤最多 200 个有界候选项，不会触发重新统计，也不会改变分析排名、次数、rate 或分母。</p>
+          <label htmlFor="v3-hidden-word-input">
+            <span>批量添加（逗号或换行分隔）</span>
+          </label>
+          <textarea id="v3-hidden-word-input" name="custom-hidden-words" autoComplete="off" value={bulkValue} onChange={(event) => setBulkValue(event.currentTarget.value)} onKeyDown={(event) => {
+            if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && parseCustomHiddenWords(bulkValue).length > 0) {
+              event.preventDefault();
+              addBulkWords();
+            }
+          }} />
+          <div className="beta-hidden-word-actions">
+            <BetaButton variant="secondary" disabled={parseCustomHiddenWords(bulkValue).length === 0} onClick={addBulkWords}>添加隐藏词</BetaButton>
+            <BetaButton variant="tertiary" disabled={customHiddenWords.length === 0} onClick={() => commitHidden([])}>清空自定义隐藏</BetaButton>
+          </div>
+          {customHiddenWords.length > 0 ? (
+            <ul className="beta-hidden-word-list" aria-label="当前自定义隐藏词">
+              {customHiddenWords.map((word) => (
+                <li key={word}><span>{word}</span><BetaButton variant="tertiary" aria-label={`恢复显示隐藏词 ${word}`} onClick={() => restoreWord(word)}>恢复显示</BetaButton></li>
+              ))}
+            </ul>
+          ) : <p>当前没有自定义隐藏词。</p>}
+        </details>
+
+        <MethodologyDisclosure summary="查看词汇统计口径" chips={["NFKC", "每万词频率", keywordPresentation.mode === "log-odds" ? "年度对比统计" : "频次回退 / 不适用", cleanMode ? "净化展示开启" : "完整展示"]}>
+          <p>原始次数是当前范围内的出现次数；每万词频率以当前角色、年份和内置词汇策略过滤后的 {frequencyPresentation.denominator?.eligibleTokenCount.toLocaleString("zh-CN") ?? "当前"} 个符合条件词元为分母。</p>
+          <p>年度关键词继续使用现有 Stage7 候选阈值与年度对比统计；常用词频率与关键词区分度保持独立语义。</p>
+          <p>净化常用词使用 {BETA_VOCABULARY_CLEAN_PRESENTATION_VERSION} 本地启发式列表，只过滤展示候选；不会改变次数、频率、分母、底层排名或词频结果标识。</p>
+        </MethodologyDisclosure>
+      </div>
     </div>
   );
 }

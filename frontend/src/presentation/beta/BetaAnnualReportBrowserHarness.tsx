@@ -22,7 +22,11 @@ import type { WordFrequencyRole } from "../../worker-analysis/word-frequency-con
 import type { BetaReportMode } from "./report-contract";
 import { BETA_REPORT_SECTIONS, type BetaReportSectionId } from "./report-sections";
 import { SkipLink } from "./primitives";
-import { createWordFrequencyPresentation } from "./word-presentation";
+import {
+  createWordFrequencyPresentation,
+  readCustomHiddenWords,
+} from "./word-presentation";
+import { readVocabularyCleanMode } from "./clean-vocabulary";
 import type { ShareCardPreviewModels } from "./share-preview-state";
 
 type HarnessMode = Exclude<BetaReportMode, "annual"> | "annual";
@@ -43,8 +47,10 @@ function reportStateFor(
 }
 
 export function BetaAnnualReportBrowserHarness() {
-  const saveScenario = new URLSearchParams(window.location.search).get("save") ?? "saved";
-  const sparseFixture = new URLSearchParams(window.location.search).get("sparse") === "1";
+  const searchParams = new URLSearchParams(window.location.search);
+  const saveScenario = searchParams.get("save") ?? "saved";
+  const sparseFixture = searchParams.get("sparse") === "1";
+  const vocabularyFixture = searchParams.get("vocabulary") ?? "ready";
   const [mode, setMode] = useState<HarnessMode>("annual");
   const [year, setYear] = useState(2025);
   const [wordRole, setWordRole] = useState<WordFrequencyRole>("both");
@@ -62,11 +68,24 @@ export function BetaAnnualReportBrowserHarness() {
     mode,
     year: mode === "annual" ? year : null,
   })), [mode, result, year]);
-  const frequency = useMemo(
-    () => syntheticBetaWordCloudFrequency(mode === "annual" ? year : null, wordRole),
-    [mode, wordRole, year],
-  );
-  const shareCardModels = useMemo<ShareCardPreviewModels>(() => {
+  const frequency = useMemo(() => {
+    const ready = syntheticBetaWordCloudFrequency(mode === "annual" ? year : null, wordRole);
+    if (vocabularyFixture === "loading" || vocabularyFixture === "error") {
+      return undefined;
+    }
+    if (vocabularyFixture === "zero") {
+      return {
+        ...ready,
+        denominator: { ...ready.denominator, eligibleTokenCount: 0, status: "empty" as const, emptyReason: "NO_ELIGIBLE_TOKENS" as const },
+        items: [],
+      };
+    }
+    if (vocabularyFixture === "sparse") {
+      return { ...ready, items: ready.items.filter((item) => item.rank >= 11).slice(0, 3).map((item, index) => ({ ...item, rank: index + 1 })) };
+    }
+    return ready;
+  }, [mode, vocabularyFixture, wordRole, year]);
+  function buildShareCardModels(): ShareCardPreviewModels {
     const reportDto = buildBetaReportDto(result, {
       mode,
       year: mode === "annual" ? year : null,
@@ -76,7 +95,13 @@ export function BetaAnnualReportBrowserHarness() {
       const unavailable = presentBetaSummaryZhCN(summary);
       return { off: unavailable, on: unavailable };
     }
-    const wordPresentation = createWordFrequencyPresentation(frequency, [], "raw-count", undefined, true);
+    const wordPresentation = createWordFrequencyPresentation(
+      frequency,
+      readCustomHiddenWords(),
+      "raw-count",
+      undefined,
+      readVocabularyCleanMode(),
+    );
     return {
       off: presentBetaSummaryZhCN(summary),
       on: presentBetaSummaryZhCN(createBetaSummaryDtoV1(reportDto, {
@@ -86,7 +111,7 @@ export function BetaAnnualReportBrowserHarness() {
         expectedFrequencyDtoKey: wordPresentation.frequencyDtoKey,
       })),
     };
-  }, [frequency, mode, result, sparseFixture, wordRole, year]);
+  }
   const representedYears = representedYearOptions([2024, 2025], { startDate: "2024-01-01", endDate: "2025-12-31" });
 
   function changeRange(value: string): void {
@@ -140,14 +165,15 @@ export function BetaAnnualReportBrowserHarness() {
         analyticsResult={result}
         wordFrequency={frequency}
         wordRole={wordRole}
-        wordFrequencyPending={false}
+        wordFrequencyPending={vocabularyFixture === "loading"}
+        wordFrequencyError={vocabularyFixture === "error" ? "合成词频暂时不可用，请重试当前范围。" : undefined}
         onRangeChange={changeRange}
         onSectionChange={changeSection}
         onRestoreFullRange={() => { setMode("all-years"); }}
         onOpenDetailed={() => undefined}
         onWordRoleChange={setWordRole}
-        shareCardViewModel={shareCardModels.off}
-        onBuildSharePreview={() => shareCardModels}
+        shareCardViewModel={buildShareCardModels().off}
+        onBuildSharePreview={buildShareCardModels}
         onSaveShareCardPng={saveSyntheticShareCardPng}
       />
       <p className="visually-hidden">{BETA_REPORT_SECTIONS.length} 个固定逻辑章节。</p>

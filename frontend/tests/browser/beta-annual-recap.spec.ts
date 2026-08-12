@@ -58,7 +58,7 @@ test("renders synthetic Annual Recap story scenes and preserves responsive seman
   await expect(page.locator("#word-cloud .beta-word-cloud-list")).toBeVisible();
   await navigatorToggle.click();
 
-  const compactRanking = page.locator("#frequent-words .beta-word-ranking:not(.beta-word-ranking-full)");
+  const compactRanking = page.locator("#frequent-words .v3-frequent-heroes");
   const meaningfulCount = await compactRanking.locator("li", { hasText: "本地版本" }).textContent();
   await cleanToggle.uncheck();
   await expect(page.locator("#frequent-words")).toContainText("但是");

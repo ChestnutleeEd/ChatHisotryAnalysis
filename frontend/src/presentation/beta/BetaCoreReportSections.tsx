@@ -869,21 +869,17 @@ export function BetaCoreReportSections({
 }
 
 export function BetaUnavailableReportSections() {
-  const unavailable: readonly { readonly id: BetaReportSectionId; readonly title: string; readonly lead: string }[] = [
-    { id: "frequent-words", title: "常用词", lead: "本地词频证据尚未就绪。" },
-    { id: "distinctive-keywords", title: "年度关键词", lead: "年度关键词证据尚未就绪。" },
-    { id: "word-cloud", title: "词云", lead: "词云会在对应的有界词频结果就绪后显示。" },
-  ];
   return (
-    <div className="beta-v2-vocabulary-unavailable">
-      {unavailable.map((item) => (
-        <section key={item.id} id={item.id} className="beta-v2-unavailable-item" data-section-status="unavailable">
-          <p className="beta-type-eyebrow">{item.title}</p>
-          <h3 className="beta-v2-logical-title">{item.title}</h3>
-          <p className="beta-v2-logical-lead">{item.lead}</p>
-          <StatusPill tone="warning">尚未提供</StatusPill>
-        </section>
-      ))}
-    </div>
+    <section id="frequent-words" className="v3-vocabulary-unavailable" data-section-status="unavailable" data-layout-mode="12">
+      <span className="v3-vocabulary-unavailable-mark" aria-hidden="true" />
+      <div>
+        <p className="beta-type-eyebrow">词汇档案</p>
+        <h3>当前词汇证据尚未就绪</h3>
+        <p>常用词、年度关键词与词云会在对应的本地有界词频结果就绪后一起显示。</p>
+      </div>
+      <StatusPill tone="warning">尚未提供</StatusPill>
+      <span id="distinctive-keywords" className="v3-visually-hidden">年度关键词尚未提供</span>
+      <span id="word-cloud" className="v3-visually-hidden">词云尚未提供</span>
+    </section>
   );
 }

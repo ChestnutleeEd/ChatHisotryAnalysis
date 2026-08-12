@@ -59,7 +59,7 @@ async function readAnnualSceneDiagnostics(page: Page) {
     });
     const transitions = scenes.slice(0, -2).map((scene, index) => {
       const nextScene = document.getElementById(scenes[index + 1].id);
-      const heading = nextScene?.querySelector(".v3-scene-intro, .beta-v2-scene-heading");
+      const heading = nextScene?.querySelector(".v3-scene-intro");
       if (nextScene === null || heading === null || heading === undefined) {
         throw new Error(`ANNUAL_SCENE_HEADING_MISSING:${scenes[index + 1].id}`);
       }
@@ -80,7 +80,7 @@ async function readAnnualSceneDiagnostics(page: Page) {
         : {
           sectionHeight: Math.round(keywordSection.getBoundingClientRect().height),
           noticeHeight: Math.round(keywordNotice.getBoundingClientRect().height),
-          marginTop: getComputedStyle(document.querySelector(".beta-v2-word-evidence-scenes")!).marginTop,
+          marginTop: getComputedStyle(document.querySelector(".v3-vocabulary-stage")!).marginTop,
         },
     };
   });
@@ -110,8 +110,8 @@ test("passes synthetic P1 Annual and Detailed presentation QA with fixed screens
   await expect(page.locator(".v3-month-matrix-row ol")).toHaveCount(1);
   await expect(page.locator("#message-types .v3-visual-details")).toContainText("查看");
   await expect(page.locator("#message-types")).toContainText("文字");
-  await expect(page.locator("#frequent-words .beta-word-ranking-podium")).toBeVisible();
-  await expect(page.locator("#frequent-words .beta-word-ranking-podium li")).toHaveCount(3);
+  await expect(page.locator("#frequent-words .v3-frequent-heroes")).toBeVisible();
+  await expect(page.locator("#frequent-words .v3-frequent-heroes li")).toHaveCount(3);
   await expect(page.locator("#distinctive-keywords")).toHaveAttribute("data-keyword-year", "2025");
 
   for (const [name, selector] of [

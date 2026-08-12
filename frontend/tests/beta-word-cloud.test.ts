@@ -57,7 +57,7 @@ describe("BetaWordCloud accessible Canvas contract", () => {
       customHiddenWords: frequency.items.map((item) => item.normalizedToken),
     }));
     expect(html).toContain("当前范围内没有足够的可展示词语");
-    expect(html).toContain('aria-hidden="true"');
+    expect(html).not.toContain('<canvas');
     expect(html).not.toContain('class="beta-word-cloud-list-rank"');
   });
 });

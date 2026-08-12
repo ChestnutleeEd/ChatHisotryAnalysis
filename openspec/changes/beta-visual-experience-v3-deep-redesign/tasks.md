@@ -24,12 +24,12 @@
 
 ## 3. V3.3 — Vocabulary Climax
 
-- [ ] 3.1 [Luna Max] Rebuild Vocabulary controls as a compact semantic control band with keyword/frequent-word method context, keyboard-visible state, explicit loading/ready/sparse/unavailable status, and no competing dashboard chrome.
-- [ ] 3.2 [Luna Max] Compose ready Vocabulary as frequent words 5 + keywords 7 followed by a 12-column Word Cloud stage; preserve exact ranks, counts, evidence routes, exclusion rules, accessible alternatives, and selection semantics.
-- [ ] 3.3 [Luna Max] Compose sparse Vocabulary as 8 + 4 with an honest explanatory annotation, and unavailable Vocabulary as a single 12-column frequent-word section with inline reason/recovery guidance and no blank reserved cloud cell.
-- [ ] 3.4 [Luna Max] Upgrade only the Word Cloud presentation/reveal layer: keep Worker layout authority and deterministic rank/order intact, limit Canvas resize work to bounded `requestAnimationFrame`, maintain `mainThreadLayoutCalls === 0`, and provide immediate final state under reduced motion.
-- [ ] 3.5 [Luna Max] If the optional Vocabulary paper-texture or botanical accent survives the climax review, prepare the approved local asset brief and use the asset approval workflow; otherwise retain CSS-native texture and record why generation was unnecessary.
-- [ ] 3.6 [Luna Max] Verify ready/sparse/unavailable/loading/error fixtures at every target viewport, including cloud legibility, controls, long Chinese/English terms, keyboard selection, alternatives, geometry, performance, and packaged-offline operation; record the V3.3 human visual gate.
+- [x] 3.1 [Luna Max] Rebuild Vocabulary controls as a compact semantic control band with keyword/frequent-word method context, keyboard-visible state, explicit loading/ready/sparse/unavailable status, and no competing dashboard chrome.
+- [x] 3.2 [Luna Max] Compose ready Vocabulary as frequent words 5 + keywords 7 followed by a 12-column Word Cloud stage; preserve exact ranks, counts, evidence routes, exclusion rules, accessible alternatives, and selection semantics.
+- [x] 3.3 [Luna Max] Compose sparse Vocabulary as 8 + 4 with an honest explanatory annotation, and unavailable Vocabulary as a single 12-column frequent-word section with inline reason/recovery guidance and no blank reserved cloud cell.
+- [x] 3.4 [Luna Max] Upgrade only the Word Cloud presentation/reveal layer: keep Worker layout authority and deterministic rank/order intact, limit Canvas resize work to bounded `requestAnimationFrame`, maintain `mainThreadLayoutCalls === 0`, and provide immediate final state under reduced motion.
+- [x] 3.5 [Luna Max] If the optional Vocabulary paper-texture or botanical accent survives the climax review, prepare the approved local asset brief and use the asset approval workflow; otherwise retain CSS-native texture and record why generation was unnecessary.
+- [x] 3.6 [Luna Max] Verify ready/sparse/unavailable/loading/error fixtures at every target viewport, including cloud legibility, controls, long Chinese/English terms, keyboard selection, alternatives, geometry, performance, and packaged-offline operation; record the V3.3 human visual gate.
 - [ ] 3.7 [Sol xHigh — MIDPOINT STOP GATE] Conduct a cross-scene review of V3.1–V3.3, reconcile only findings that preserve the frozen functional authority, run strict validation and the full Annual synthetic suite, stage exact paths, commit, push, and stop before any Detailed-mode work.
 
 ## 4. V3.4 — Detailed Instrument Ledger

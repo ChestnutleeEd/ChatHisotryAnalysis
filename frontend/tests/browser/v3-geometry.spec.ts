@@ -90,6 +90,44 @@ async function collectGeometry(page: Page) {
       };
     }
 
+    function canvasPaintBounds(canvas: HTMLCanvasElement | null) {
+      if (canvas === null || canvas.width === 0 || canvas.height === 0) {
+        return null;
+      }
+      const context = canvas.getContext("2d");
+      if (context === null) {
+        return null;
+      }
+      const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+      const step = Math.max(1, Math.floor(Math.max(canvas.width, canvas.height) / 600));
+      let minX = canvas.width;
+      let minY = canvas.height;
+      let maxX = -1;
+      let maxY = -1;
+      for (let y = 0; y < canvas.height; y += step) {
+        for (let x = 0; x < canvas.width; x += step) {
+          if ((pixels[(y * canvas.width + x) * 4 + 3] ?? 0) > 0) {
+            minX = Math.min(minX, x);
+            minY = Math.min(minY, y);
+            maxX = Math.max(maxX, x);
+            maxY = Math.max(maxY, y);
+          }
+        }
+      }
+      if (maxX < minX || maxY < minY) {
+        return null;
+      }
+      const width = maxX - minX + step;
+      const height = maxY - minY + step;
+      return {
+        x: minX,
+        y: minY,
+        width,
+        height,
+        occupancy: Number(((width * height) / (canvas.width * canvas.height)).toFixed(3)),
+      };
+    }
+
     const root = document.querySelector<HTMLElement>("[data-v3-annual-report]");
     const nav = document.querySelector<HTMLElement>(".v3-reading-dock");
     if (root === null || nav === null) {
@@ -153,6 +191,25 @@ async function collectGeometry(page: Page) {
       magnitudeStems: document.querySelectorAll(".v3-beat-stem, .v3-pulse-stem").length,
       legacyMarks: document.querySelectorAll(".v3-month-cell-fill, .v3-beat-mark, .v3-hour-pulse-mark, .v3-beat-stem, .v3-pulse-stem").length,
     };
+    const vocabularyStage = document.querySelector<HTMLElement>(".v3-vocabulary-stage");
+    const vocabularyPrimary = document.querySelector<HTMLElement>(".v3-vocabulary-primary-grid");
+    const vocabularyFrequent = document.querySelector<HTMLElement>(".v3-frequent-ledger");
+    const vocabularyKeywords = document.querySelector<HTMLElement>(".v3-keyword-field");
+    const vocabularyCloud = document.querySelector<HTMLElement>(".v3-word-cloud-stage");
+    const vocabularyCanvas = document.querySelector<HTMLCanvasElement>(".v3-word-cloud-stage canvas");
+    const vocabularyShape = vocabularyStage === null || vocabularyPrimary === null || vocabularyFrequent === null || vocabularyKeywords === null || vocabularyCloud === null
+      ? null
+      : {
+          state: vocabularyStage.dataset.vocabularyState,
+          layout: vocabularyPrimary.dataset.layoutMode,
+          primary: rectOf(vocabularyPrimary),
+          frequent: { rect: rectOf(vocabularyFrequent), meaningful: meaningfulBounds(vocabularyFrequent) },
+          keywords: { rect: rectOf(vocabularyKeywords), meaningful: meaningfulBounds(vocabularyKeywords) },
+          cloud: rectOf(vocabularyCloud),
+          canvas: vocabularyCanvas === null ? null : rectOf(vocabularyCanvas),
+          paintBounds: canvasPaintBounds(vocabularyCanvas),
+          hiddenManager: rectOf(document.querySelector<HTMLElement>(".beta-hidden-word-review")!),
+        };
     const transitions = scenes.slice(0, -1).map((scene, index) => ({
       from: scene.id,
       to: scenes[index + 1]!.id,
@@ -168,6 +225,7 @@ async function collectGeometry(page: Page) {
         difference: Math.abs(scalePrimaryHeight - scaleContextHeight),
       },
       rhythmShape,
+      vocabularyShape,
       pageOverflow: {
         document: document.documentElement.scrollWidth - document.documentElement.clientWidth,
         body: document.body.scrollWidth - document.documentElement.clientWidth,
@@ -235,6 +293,17 @@ test("emits V3 scene/cell geometry and exercises dock navigation at fixed synthe
     { width: 380, height: 900 },
   ]) {
     await page.setViewportSize(viewport);
+    await expect(page.getByTestId("beta-word-cloud-canvas")).toHaveAttribute("data-layout-state", "ready", { timeout: 15_000 });
+    await expect.poll(() => page.getByTestId("beta-word-cloud-canvas").evaluate((element) => {
+      const canvas = element as HTMLCanvasElement;
+      const context = canvas.getContext("2d");
+      if (context === null || canvas.width === 0 || canvas.height === 0) return false;
+      const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+      for (let index = 3; index < pixels.length; index += 16) {
+        if ((pixels[index] ?? 0) > 0) return true;
+      }
+      return false;
+    }), { timeout: 15_000 }).toBe(true);
     await assertNoPageOverflow(page);
     const diagnostic = await collectGeometry(page);
     evidence.push(diagnostic);
@@ -251,6 +320,16 @@ test("emits V3 scene/cell geometry and exercises dock navigation at fixed synthe
     expect(diagnostic.rhythmShape.hourApertures).toBe(24);
     expect(diagnostic.rhythmShape.magnitudeStems).toBe(0);
     expect(diagnostic.rhythmShape.legacyMarks).toBe(0);
+    expect(diagnostic.vocabularyShape?.state).toBe("ready");
+    expect(diagnostic.vocabularyShape?.paintBounds?.occupancy).toBeGreaterThan(0.08);
+    expect(diagnostic.vocabularyShape?.cloud.width).toBeGreaterThanOrEqual(diagnostic.root.width * 0.94);
+    expect(diagnostic.vocabularyShape?.frequent.meaningful.count).toBeGreaterThan(0);
+    expect(diagnostic.vocabularyShape?.keywords.meaningful.count).toBeGreaterThan(0);
+    if (viewport.width >= 960) {
+      expect(diagnostic.vocabularyShape?.layout).toBe("5+7");
+      expect(diagnostic.vocabularyShape?.frequent.rect.width).toBeGreaterThan(0);
+      expect(diagnostic.vocabularyShape?.keywords.rect.width).toBeGreaterThan(diagnostic.vocabularyShape?.frequent.rect.width ?? 0);
+    }
     if (viewport.width >= 960) {
       expect(diagnostic.scaleMass.leftMeaningfulHeight).toBeGreaterThan(0);
       expect(diagnostic.scaleMass.rightMeaningfulHeight).toBeGreaterThan(0);

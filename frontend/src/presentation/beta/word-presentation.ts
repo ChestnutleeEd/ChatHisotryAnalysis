@@ -74,6 +74,19 @@ export interface KeywordPresentation {
   readonly items: readonly KeywordPresentationItem[];
 }
 
+export const KEYWORD_FIELD_SLOT_COUNT = 6;
+
+/**
+ * Maps the presentation rank onto the fixed V3 keyword field. This is a
+ * visual slot only: it does not inspect or alter keyword evidence.
+ */
+export function keywordFieldSlot(displayRank: number): number {
+  if (!Number.isSafeInteger(displayRank) || displayRank < 1) {
+    throw new Error("INVALID_KEYWORD_DISPLAY_RANK");
+  }
+  return Math.min(displayRank, KEYWORD_FIELD_SLOT_COUNT);
+}
+
 interface StorageLike {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;

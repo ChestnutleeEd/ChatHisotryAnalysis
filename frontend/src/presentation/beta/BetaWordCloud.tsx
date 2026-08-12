@@ -310,8 +310,14 @@ export function BetaWordCloud({
   return (
     <section
       id="word-cloud"
-      className="beta-v2-word-cloud"
+      className="v3-word-cloud-stage"
+      data-v3-geometry-cell="vocabulary-cloud"
+      data-v3-cell-mode="full"
+      data-layout-mode="12"
       data-clean-mode={cleanMode ? "on" : "off"}
+      data-cloud-density={listItems.length > 0 && listItems.length <= 3 ? "sparse" : "normal"}
+      data-presentation-digest={presentation?.presentationDigest ?? "unavailable"}
+      data-reveal-state={currentResult === undefined ? "waiting" : "ready"}
       data-word-cloud-year={frequency === undefined ? "pending" : frequency.scope.year === null ? "all-years" : String(frequency.scope.year)}
       data-word-cloud-role={frequency?.scope.role ?? "pending"}
       aria-labelledby="beta-word-cloud-heading"
@@ -332,15 +338,24 @@ export function BetaWordCloud({
         {statusMessage}
       </p>
 
-      <div ref={canvasWrapRef} className="beta-word-cloud-canvas-wrap" data-layout-source="worker">
-        <canvas
-          ref={canvasRef}
-          className="beta-word-cloud-canvas"
-          aria-hidden="true"
-          data-testid="beta-word-cloud-canvas"
-          data-layout-state={layoutState.status}
-        />
-      </div>
+      {hasCandidates ? (
+        <div ref={canvasWrapRef} className="beta-word-cloud-canvas-wrap" data-layout-source="worker" data-whitespace-intent="deterministic word-cloud field">
+          <span className="v3-cloud-folio-mark v3-cloud-folio-mark-start" aria-hidden="true" />
+          <canvas
+            ref={canvasRef}
+            className="beta-word-cloud-canvas"
+            aria-hidden="true"
+            data-testid="beta-word-cloud-canvas"
+            data-layout-state={layoutState.status}
+          />
+          <span className="v3-cloud-folio-mark v3-cloud-folio-mark-end" aria-hidden="true" />
+        </div>
+      ) : (
+        <div ref={canvasWrapRef} className="v3-word-cloud-unavailable" role="note">
+          <span aria-hidden="true" />
+          <p>{frequency === undefined ? "词云会在当前范围的词频就绪后出现。" : "当前范围没有可组成词云的展示词语。"}</p>
+        </div>
+      )}
 
       {displayFallback && hasCandidates ? (
         <div className="beta-word-cloud-fallback-bars" aria-label="词频条形提示">

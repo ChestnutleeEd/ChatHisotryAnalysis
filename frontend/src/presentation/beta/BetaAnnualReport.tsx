@@ -469,17 +469,17 @@ function BetaCoreAnnualReport({
         id="vocabulary-scene"
         scene="vocabulary"
         layoutMode="full"
-        className="beta-v2-scene beta-v2-vocabulary"
+        className="v3-vocabulary-scene"
         reveal
         motionIndex={4}
         aria-labelledby="beta-v2-scene-vocabulary-heading"
       >
-        <header className="beta-v2-scene-heading">
-          <span className="beta-v2-scene-number" aria-hidden="true">06</span>
+        <header className="v3-scene-intro v3-vocabulary-intro">
+          <span className="v3-scene-folio" aria-hidden="true">06</span>
           <div>
-            <p className="beta-type-eyebrow">词汇</p>
-            <h2 id="beta-v2-scene-vocabulary-heading" className="beta-type-heading">从常用词到整体词云</h2>
-            <p className="beta-v2-scene-summary">三种词汇体验各自回答不同问题：出现最多、年度区分度，以及放在一起的整体形状。</p>
+            <p className="v3-scene-kicker">词汇</p>
+            <h2 id="beta-v2-scene-vocabulary-heading" className="v3-scene-title">这一年的语言印记</h2>
+            <p className="v3-scene-summary">从反复出现的词，到这一年的区分性表达，最后汇入一张完整的语言场。</p>
           </div>
         </header>
         {canRenderWordEvidence ? (
