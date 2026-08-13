@@ -568,7 +568,7 @@ export function syntheticBetaDetailedResult(
         thresholdHours: filters.sessionThresholdHours,
         filterBehavior: REPLY_INTERVAL_FILTER_BEHAVIOR,
         openingDateBoundary: SESSION_OPENING_DATE_BOUNDARY,
-        sensitivityChanged: false,
+        sensitivityChanged: filters.sessionThresholdHours !== 6,
         sessionCount: 4,
         shareDenominator: 4,
         initiatorCounts: {

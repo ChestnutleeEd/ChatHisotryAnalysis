@@ -15,6 +15,13 @@ import type {
 } from "../worker-analysis/analytics-contract";
 import type { TrendBucket } from "../worker-analysis/activity-metrics";
 import {
+  DetailedHourHistogram,
+  DetailedMonthMatrix,
+  DetailedProportionLedger,
+  DetailedTemporalSeries,
+  DetailedWeekdayStrip,
+} from "./detailed-visualizations";
+import {
   DASHBOARD_ROUTES,
   DASHBOARD_ROUTE_LABELS,
   ROUTE_DESCRIPTIONS,
@@ -43,6 +50,7 @@ interface DesktopDashboardProps {
   readonly onExport: (format: ReportFormat, chartKey: ApprovedChartKey) => void;
   readonly initialRoute?: DashboardRoute;
   readonly onRouteChange?: (route: DashboardRoute) => void;
+  readonly resultError?: string;
 }
 
 interface MetricCardProps {
@@ -266,16 +274,10 @@ function TrendChart({ title, definition, buckets }: {
   readonly definition: string;
   readonly buckets: readonly TrendBucket[];
 }) {
-  const rows = buckets.map((bucket) => ({
-    label: bucket.key,
-    value: bucket.count,
-    displayValue: formatCount(bucket.count),
-    secondary: bucket.partial ? "部分周期" : "完整周期",
-  }));
   return (
     <section className="dashboard-chart-card" aria-labelledby={`${title}-heading`}>
       <h3 id={`${title}-heading`}>{title}</h3>
-      <BarChart title={`${title}图`} description={definition} rows={rows} />
+      <DetailedTemporalSeries title={`${title}时间序列`} description={definition} buckets={buckets} />
       <Table
         caption={`${title}精确数据`}
         columns={["周期", "消息数", "周期状态"]}
@@ -423,15 +425,10 @@ function TrendsPage({ result }: { readonly result: CanonicalAnalysisResult }) {
         <aside className="dashboard-trends-support" aria-label="年度趋势摘要">
           <p className="dashboard-eyebrow">辅助视图</p>
           <h3>年度范围</h3>
-          <BarChart
+          <DetailedTemporalSeries
             title="年度用户消息数量"
             description="按年概览；精确数据在下方展开。"
-            rows={result.activity.trends.yearly.map((bucket) => ({
-              label: bucket.key,
-              value: bucket.count,
-              displayValue: formatCount(bucket.count),
-              secondary: bucket.partial ? "部分周期" : "完整周期",
-            }))}
+            buckets={result.activity.trends.yearly}
           />
         </aside>
       </div>
@@ -502,29 +499,26 @@ function ComparisonPage({ result }: { readonly result: CanonicalAnalysisResult }
 }
 
 function ActivityPage({ result }: { readonly result: CanonicalAnalysisResult }) {
-  const hourRows = result.activity.hourActivity.buckets.map((bucket) => ({
-    label: String(bucket.hour).padStart(2, "0"),
-    value: bucket.count,
-    displayValue: `${formatCount(bucket.count)} · ${formatShare(bucket.share)}`,
-  }));
-  const weekdayRows = result.activity.weekdayActivity.buckets.map((bucket) => ({
-    label: bucket.weekday,
-    value: bucket.count,
-    displayValue: `${formatCount(bucket.count)} · ${formatShare(bucket.share)}`,
-  }));
   return (
     <section className="dashboard-page" aria-labelledby="activity-page-heading">
       <PageHeading eyebrow="04 / 活跃时间" id="activity-page-heading" title="活动" description="小时和星期分布使用当前日期与发送方范围；所有固定桶保留零值。" schema={result.activity.schemaVersion} />
       <div className="dashboard-activity-layout">
-        <TrendChart title="每月活动" definition="月份趋势保留部分周期标记；计数只来自筛选日期。" buckets={result.activity.trends.monthly} />
+        <section className="dashboard-activity-month" aria-labelledby="month-activity-heading">
+          <DetailedMonthMatrix title="月份序列" description="按月顺序查看当前范围的活动量；保留部分周期标记。" buckets={result.activity.trends.monthly} />
+          <Table
+            caption="每月活动精确数据"
+            columns={["周期", "消息数", "周期状态"]}
+            rows={result.activity.trends.monthly.map((bucket) => [bucket.key, formatCount(bucket.count), bucket.partial ? "部分周期" : "完整周期"])}
+          />
+        </section>
         <div className="dashboard-activity-distributions">
           <section className="dashboard-chart-card dashboard-chart-micro" aria-labelledby="hour-activity-heading">
-            <div className="dashboard-card-heading-row"><div><p className="dashboard-eyebrow">分布带</p><h3 id="hour-activity-heading">小时分布</h3></div><span className="dashboard-card-kicker">UTC+08:00</span></div>
-            <BarChart title="UTC+08:00 小时" description={"分母：" + formatCount(result.activity.hourActivity.denominator) + " 条筛选后的用户消息。"} rows={hourRows} />
+            <div className="dashboard-card-heading-row"><div><p className="dashboard-eyebrow">24 个固定桶</p><h3 id="hour-activity-heading">小时分布</h3></div><span className="dashboard-card-kicker">UTC+08:00</span></div>
+            <DetailedHourHistogram title="UTC+08:00 小时" description={"分母：" + formatCount(result.activity.hourActivity.denominator) + " 条筛选后的用户消息。"} buckets={result.activity.hourActivity.buckets} />
           </section>
           <section className="dashboard-chart-card dashboard-chart-micro" aria-labelledby="weekday-activity-heading">
-            <div className="dashboard-card-heading-row"><div><p className="dashboard-eyebrow">分布带</p><h3 id="weekday-activity-heading">星期分布</h3></div><span className="dashboard-card-kicker">固定桶</span></div>
-            <BarChart title="周一至周日" description="按固定日历日期归类，不使用主机语言环境。" rows={weekdayRows} />
+            <div className="dashboard-card-heading-row"><div><p className="dashboard-eyebrow">7 个固定桶</p><h3 id="weekday-activity-heading">星期分布</h3></div><span className="dashboard-card-kicker">固定桶</span></div>
+            <DetailedWeekdayStrip title="周一至周日" description="按固定日历日期归类，不使用主机语言环境。" buckets={result.activity.weekdayActivity.buckets} />
           </section>
         </div>
       </div>
@@ -667,7 +661,7 @@ function MessageTypesPage({ result }: { readonly result: CanonicalAnalysisResult
       <section className="dashboard-chart-card" aria-labelledby="types-chart-heading">
         <div className="dashboard-card-heading-row"><div><p className="dashboard-eyebrow">类别条</p><h3 id="types-chart-heading">用户消息类别</h3></div><span className="dashboard-card-kicker">数量 · 占比</span></div>
         {result.stage7.messageTypes.denominator === 0 ? <p className="dashboard-empty" role="status">当前筛选没有用户消息类别。</p> : null}
-        <BarChart title="类别计数与占比" description={`分母：${formatCount(result.stage7.messageTypes.denominator)} 条筛选后的用户消息。`} rows={categoryRows} />
+        <DetailedProportionLedger title="类别比例登记" description={`分母：${formatCount(result.stage7.messageTypes.denominator)} 条筛选后的用户消息；规则仅作比例提示。`} rows={categoryRows} />
         <details className="dashboard-definition dashboard-progressive-disclosure">
           <summary>查看精确类别统计</summary>
           <Table caption="精确消息类别统计" columns={["类别", "消息数", "占比"]} rows={result.stage7.messageTypes.categories.map((bucket) => [categoryLabel(bucket.category), formatCount(bucket.count), formatShare(bucket.share)])} />
@@ -688,13 +682,16 @@ function RepliesSessionsPage({
   result,
   onLocalFilterChange,
   pending,
+  draftThreshold,
+  onDraftThresholdChange,
 }: {
   readonly result: CanonicalAnalysisResult;
   readonly onLocalFilterChange: (filters: CanonicalAnalysisFilters) => void;
   readonly pending: boolean;
+  readonly draftThreshold: CanonicalAnalysisFilters["sessionThresholdHours"];
+  readonly onDraftThresholdChange: (threshold: CanonicalAnalysisFilters["sessionThresholdHours"]) => void;
 }) {
-  const [threshold, setThreshold] = useState(result.filters.sessionThresholdHours);
-  useEffect(() => setThreshold(result.filters.sessionThresholdHours), [result.filters.sessionThresholdHours]);
+  const threshold = draftThreshold;
   const replies = result.replySessions.replyIntervals;
   const sessions = result.replySessions.conversationSessions;
   return (
@@ -702,11 +699,11 @@ function RepliesSessionsPage({
       <PageHeading eyebrow="07 / 回复与会话" id="replies-page-heading" title="回复与会话" description="回复间隔只描述时间差；会话开场次数是阈值敏感的比较统计。" schema={replies.schemaVersion} />
       <div className="dashboard-local-control">
         <label htmlFor="dashboard-threshold">不活跃阈值</label>
-        <select id="dashboard-threshold" value={threshold} onChange={(event) => setThreshold(Number(event.currentTarget.value) as typeof threshold)}>
+        <select id="dashboard-threshold" value={threshold} onChange={(event) => onDraftThresholdChange(Number(event.currentTarget.value) as typeof threshold)}>
           {[1, 3, 6, 12, 24].map((hours) => <option key={hours} value={hours}>{hours} 小时</option>)}
         </select>
         <button className="dashboard-button dashboard-button-primary" type="button" disabled={pending || threshold === result.filters.sessionThresholdHours} onClick={() => onLocalFilterChange({ ...result.filters, sessionThresholdHours: threshold })}>应用阈值</button>
-        <span className="dashboard-control-note">只重新计算回复、会话、开场次数和依赖它们的摘要。</span>
+        <span className="dashboard-control-note" data-threshold-dirty={threshold === result.filters.sessionThresholdHours ? "false" : "true"}>{threshold === result.filters.sessionThresholdHours ? "只重新计算回复、会话、开场次数和依赖它们的摘要。" : "阈值草稿未提交；应用后才更新回复与会话结果。"}</span>
       </div>
       <p className="dashboard-scope-note">当前阈值：{replies.thresholdHours} 小时 · 两端消息都必须在日期范围内 · 发送方筛选不适用于回复和开场统计。</p>
       <div className="dashboard-replies-summary">
@@ -829,6 +826,19 @@ function PageHeading({ eyebrow, id, title, description, schema }: { readonly eye
   );
 }
 
+function DashboardResultErrorState({ message }: { readonly message: string }) {
+  return (
+    <section className="dashboard-result-error" role="alert" aria-labelledby="dashboard-result-error-heading">
+      <div>
+        <p className="dashboard-eyebrow">结果状态 · 未提交</p>
+        <h2 id="dashboard-result-error-heading">当前详细结果暂不可用</h2>
+        <p>{message}</p>
+        <p className="dashboard-result-error-recovery">已保留上一次完整结果的范围与导航。调整草稿后可以再次应用。</p>
+      </div>
+    </section>
+  );
+}
+
 function MethodologyLedger({ result }: { readonly result: CanonicalAnalysisResult }) {
   const facts = methodologyFacts();
   const groups = [
@@ -926,10 +936,12 @@ export function DesktopDashboard({
   onExport,
   initialRoute = "Overview",
   onRouteChange,
+  resultError,
 }: DesktopDashboardProps) {
   const model = useMemo(() => createDashboardViewModel(result), [result]);
   const [route, setRoute] = useState<DashboardRoute>(initialRoute);
   const [draftFilters, setDraftFilters] = useState<CanonicalAnalysisFilters>(result.filters);
+  const [draftSessionThreshold, setDraftSessionThreshold] = useState<CanonicalAnalysisFilters["sessionThresholdHours"]>(result.filters.sessionThresholdHours);
   const [filterErrors, setFilterErrors] = useState<FilterErrors>({});
   const headingRef = useRef<HTMLDivElement>(null);
   const firstRouteRender = useRef(true);
@@ -937,6 +949,7 @@ export function DesktopDashboard({
 
   useEffect(() => {
     setDraftFilters(result.filters);
+    setDraftSessionThreshold(result.filters.sessionThresholdHours);
     setFilterErrors({});
   }, [result.filters]);
 
@@ -1001,6 +1014,7 @@ export function DesktopDashboard({
         <DashboardNavigation route={route} onRouteChange={handleRouteChange} />
         <div className="dashboard-canvas-stack">
           <div ref={headingRef} id={`dashboard-panel-${activePanelIndex}`} role="tabpanel" aria-labelledby={`dashboard-tab-${activePanelIndex}`} tabIndex={-1} aria-label={DASHBOARD_ROUTE_LABELS[route]} className="dashboard-panel-wrap dashboard-content-canvas" data-route={route}>
+            {resultError !== undefined ? <DashboardResultErrorState message={resultError} /> : null}
             <div className="dashboard-route-transition" key={route}>
               {route === "Overview" ? <OverviewPage model={model} onNavigate={handleRouteChange} /> : null}
               {route === "Trends" ? <TrendsPage result={result} /> : null}
@@ -1008,7 +1022,7 @@ export function DesktopDashboard({
               {route === "Activity" ? <ActivityPage result={result} /> : null}
               {route === "Words & Years" ? <WordsYearsPage model={model} onLocalFilterChange={onFilterChange} pending={pending} /> : null}
               {route === "Message Types" ? <MessageTypesPage result={result} /> : null}
-              {route === "Replies & Sessions" ? <RepliesSessionsPage result={result} onLocalFilterChange={onFilterChange} pending={pending} /> : null}
+              {route === "Replies & Sessions" ? <RepliesSessionsPage result={result} onLocalFilterChange={onFilterChange} pending={pending} draftThreshold={draftSessionThreshold} onDraftThresholdChange={setDraftSessionThreshold} /> : null}
               {route === "Export" ? <ExportPage result={result} pending={pending} draftFilters={draftFilters} onExport={onExport} /> : null}
             </div>
           </div>

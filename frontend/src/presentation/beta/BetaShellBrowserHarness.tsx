@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 
 import type { ApprovedChartKey, ReportFormat } from "../../desktop/ipc-contract";
-import type {
-  CanonicalAnalysisFilters,
-  CanonicalAnalysisResult,
+import {
+  validateCanonicalAnalyticsResult,
+  type CanonicalAnalysisFilters,
+  type CanonicalAnalysisResult,
 } from "../../worker-analysis/analytics-contract";
 import { DesktopDashboard } from "../DesktopDashboard";
 import { BetaHome } from "./BetaHome";
@@ -30,13 +31,29 @@ export function BetaShellBrowserHarness({
         ? syntheticBetaLongLabelDetailedResult()
         : syntheticBetaDetailedResult()
   ));
+  const [resultError, setResultError] = useState<string | undefined>(() => (
+    fixtureState === "error"
+      ? "合成结果未通过当前分析契约；上一份已提交结果仍保留。调整条件后可再次应用。"
+      : undefined
+  ));
   const homeViewModel = useMemo(
     () => createBetaHomeViewModel(result, { startDate: "2024-01-01", endDate: "2025-12-31" }, [2024, 2025]),
     [result],
   );
 
   function applyFilters(filters: CanonicalAnalysisFilters): void {
-    setResult(syntheticBetaDetailedResult(filters));
+    const nextResult = syntheticBetaDetailedResult(filters);
+    try {
+      validateCanonicalAnalyticsResult(nextResult);
+    } catch (error) {
+      if (error instanceof Error && /^(?:INVALID_RESULT|INVALID_REPLY_SESSION_RESULT)$/u.test(error.message)) {
+        setResultError("合成结果未通过当前分析契约；上一份已提交结果仍保留。调整条件后可再次应用。");
+        return;
+      }
+      throw error;
+    }
+    setResult(nextResult);
+    setResultError(undefined);
   }
   function noopExport(_format: ReportFormat, _chartKey: ApprovedChartKey): void {
     void _format;
@@ -83,6 +100,7 @@ export function BetaShellBrowserHarness({
             onExport={noopExport}
             initialRoute="Overview"
             onRouteChange={() => undefined}
+            resultError={resultError}
           />
         </div>
       )}

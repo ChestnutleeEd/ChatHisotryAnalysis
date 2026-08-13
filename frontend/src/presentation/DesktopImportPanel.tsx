@@ -1764,7 +1764,7 @@ export function DesktopImportPanel() {
         </section>
       ) : null}
 
-      {analyticsError !== undefined ? (
+      {analyticsError !== undefined && (productMode !== "detailed-analysis" || analyticsResult === undefined) ? (
         <section className="desktop-alert" role="alert" aria-labelledby="analytics-error-heading">
           <h2 id="analytics-error-heading">本地统计未提交</h2>
           <p>{analyticsError}</p>
@@ -1815,6 +1815,7 @@ export function DesktopImportPanel() {
             onExport={(format, chartKey) => void exportAggregate(format, chartKey)}
             initialRoute={dashboardRoute}
             onRouteChange={setDashboardRoute}
+            resultError={analyticsError}
           />
         </div>
       ) : null}
