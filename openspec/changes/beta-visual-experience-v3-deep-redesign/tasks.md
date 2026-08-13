@@ -40,7 +40,7 @@
 - [x] 4.4 [Luna Max] Rebuild methodology/provenance as structured ledger content rather than undifferentiated prose, with correct headings, anchors, copyable definitions, scroll margins, and keyboard reachability.
 - [x] 4.5 [Luna Max] Consolidate Detailed CSS into its declared authority layer and remove only proven-obsolete selector blocks from explicit files; do not modify protected B5 Share Preview selectors or export renderer behavior.
 - [x] 4.6 [Luna Max] Run route-level unit/browser/a11y/regression tests plus 1440/1180/760/380/200 synthetic screenshots, long-label and unavailable-state fixtures, packaged-offline checks, and the V3.4 human visual gate.
-- [ ] 4.7 [Sol xHigh — STOP GATE] Review Detailed for Swiss hierarchy, density, terminology, route fidelity, responsive collapse, and Annual/Detailed differentiation; resolve bounded findings, validate, stage exact paths, commit, push, and stop before V3.5.
+- [x] 4.7 [Sol xHigh — STOP GATE] Review Detailed for Swiss hierarchy, density, terminology, route fidelity, responsive collapse, and Annual/Detailed differentiation; resolve bounded findings, validate, stage exact paths, commit, push, and stop before V3.5.
 
 ## 5. V3.5 — Cross-Product Polish and Acceptance Candidate
 
