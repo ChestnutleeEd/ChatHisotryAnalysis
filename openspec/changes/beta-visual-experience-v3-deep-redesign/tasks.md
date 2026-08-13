@@ -30,7 +30,7 @@
 - [x] 3.4 [Luna Max] Upgrade only the Word Cloud presentation/reveal layer: keep Worker layout authority and deterministic rank/order intact, limit Canvas resize work to bounded `requestAnimationFrame`, maintain `mainThreadLayoutCalls === 0`, and provide immediate final state under reduced motion.
 - [x] 3.5 [Luna Max] If the optional Vocabulary paper-texture or botanical accent survives the climax review, prepare the approved local asset brief and use the asset approval workflow; otherwise retain CSS-native texture and record why generation was unnecessary.
 - [x] 3.6 [Luna Max] Verify ready/sparse/unavailable/loading/error fixtures at every target viewport, including cloud legibility, controls, long Chinese/English terms, keyboard selection, alternatives, geometry, performance, and packaged-offline operation; record the V3.3 human visual gate.
-- [ ] 3.7 [Sol xHigh — MIDPOINT STOP GATE] Conduct a cross-scene review of V3.1–V3.3, reconcile only findings that preserve the frozen functional authority, run strict validation and the full Annual synthetic suite, stage exact paths, commit, push, and stop before any Detailed-mode work.
+- [x] 3.7 [Sol xHigh — MIDPOINT STOP GATE] Conduct a cross-scene review of V3.1–V3.3, reconcile only findings that preserve the frozen functional authority, run strict validation and the full Annual synthetic suite, stage exact paths, commit, push, and stop before any Detailed-mode work.
 
 ## 4. V3.4 — Detailed Instrument Ledger
 
