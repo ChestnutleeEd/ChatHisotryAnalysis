@@ -64,6 +64,7 @@ export function BetaWordCloudBrowserHarness() {
         frequency={frequency}
         metric={metric}
         customHiddenWords={hiddenWords}
+        shellState="ready"
         onHideWord={(token) => setHiddenWords((current) => [...current, token])}
       />
     </main>

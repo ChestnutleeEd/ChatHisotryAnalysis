@@ -18,6 +18,7 @@ import {
 import {
   CUSTOM_HIDDEN_WORDS_STORAGE_KEY,
   MAX_CUSTOM_HIDDEN_WORDS,
+  classifyVocabularyComposition,
   createKeywordPresentation,
   createWordFrequencyPresentation,
   keywordFieldSlot,
@@ -121,6 +122,56 @@ const result = {
 } as unknown as CanonicalAnalysisResult;
 
 describe("Beta B3 word presentation boundary", () => {
+  it.each([
+    {
+      name: "ready evidence",
+      input: { pending: false, hasError: false, frequencyStatus: "ready" as const, frequentCount: 8, keywordAvailable: true, keywordCount: 6 },
+      expected: { state: "ready", mode: "ready-balanced", primaryLayout: "5+7" },
+    },
+    {
+      name: "sparse frequent evidence with rich keywords",
+      input: { pending: false, hasError: false, frequencyStatus: "ready" as const, frequentCount: 3, keywordAvailable: true, keywordCount: 6 },
+      expected: { state: "sparse", mode: "frequent-sparse-keywords-rich", primaryLayout: "4+8" },
+    },
+    {
+      name: "sparse keywords with rich frequent evidence",
+      input: { pending: false, hasError: false, frequencyStatus: "ready" as const, frequentCount: 8, keywordAvailable: true, keywordCount: 2 },
+      expected: { state: "sparse", mode: "keywords-sparse", primaryLayout: "8+4" },
+    },
+    {
+      name: "unavailable keywords",
+      input: { pending: false, hasError: false, frequencyStatus: "ready" as const, frequentCount: 8, keywordAvailable: false, keywordCount: 0 },
+      expected: { state: "unavailable", mode: "keywords-unavailable", primaryLayout: "8+4" },
+    },
+    {
+      name: "both evidence groups sparse",
+      input: { pending: false, hasError: false, frequencyStatus: "ready" as const, frequentCount: 2, keywordAvailable: true, keywordCount: 2 },
+      expected: { state: "sparse", mode: "both-sparse-or-empty", primaryLayout: "12" },
+    },
+    {
+      name: "known frequency error",
+      input: { pending: false, hasError: true, frequencyStatus: "unavailable" as const, frequentCount: 0, keywordAvailable: true, keywordCount: 6 },
+      expected: { state: "error", mode: "frequency-error", primaryLayout: "12" },
+    },
+    {
+      name: "actual loading",
+      input: { pending: true, hasError: false, frequencyStatus: "unavailable" as const, frequentCount: 0, keywordAvailable: true, keywordCount: 6 },
+      expected: { state: "loading", mode: "loading", primaryLayout: "12" },
+    },
+    {
+      name: "empty frequency evidence",
+      input: { pending: false, hasError: false, frequencyStatus: "empty" as const, frequentCount: 0, keywordAvailable: true, keywordCount: 6 },
+      expected: { state: "zero", mode: "both-sparse-or-empty", primaryLayout: "12" },
+    },
+    {
+      name: "unavailable frequency evidence",
+      input: { pending: false, hasError: false, frequencyStatus: "unavailable" as const, frequentCount: 0, keywordAvailable: true, keywordCount: 6 },
+      expected: { state: "unavailable", mode: "both-sparse-or-empty", primaryLayout: "12" },
+    },
+  ])("classifies $name using presentation facts only", ({ input, expected }) => {
+    expect(classifyVocabularyComposition(input)).toEqual(expected);
+  });
+
   it("maps keyword ranks to a fixed bounded presentation field", () => {
     expect([1, 2, 3, 4, 5, 6, 7, 20].map(keywordFieldSlot)).toEqual([1, 2, 3, 4, 5, 6, 6, 6]);
     expect(() => keywordFieldSlot(0)).toThrow("INVALID_KEYWORD_DISPLAY_RANK");

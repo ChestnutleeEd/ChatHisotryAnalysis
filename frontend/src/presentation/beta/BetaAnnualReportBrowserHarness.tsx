@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   buildBetaReportDto,
@@ -54,15 +54,45 @@ export function BetaAnnualReportBrowserHarness() {
   const [mode, setMode] = useState<HarnessMode>("annual");
   const [year, setYear] = useState(2025);
   const [wordRole, setWordRole] = useState<WordFrequencyRole>("both");
+  const [vocabularyRecovered, setVocabularyRecovered] = useState(false);
+  const [loadingErrored, setLoadingErrored] = useState(false);
+  const [scopeTransitionPending, setScopeTransitionPending] = useState(false);
   const [selectedSection, setSelectedSection] = useState<BetaReportSectionId>("opening");
   const saveAttemptsRef = useRef(0);
   const [saveAttempts, setSaveAttempts] = useState(0);
-  const result = useMemo(
-    () => sparseFixture
+  useEffect(() => {
+    if (vocabularyFixture !== "loading-error" && vocabularyFixture !== "loading-recover") {
+      return;
+    }
+    const timeout = window.setTimeout(() => {
+      if (vocabularyFixture === "loading-error") {
+        setLoadingErrored(true);
+      } else {
+        setVocabularyRecovered(true);
+      }
+    }, 1_200);
+    return () => window.clearTimeout(timeout);
+  }, [vocabularyFixture]);
+  const result = useMemo(() => {
+    const base = sparseFixture
       ? syntheticBetaSparseAnnualReportResult()
-      : mode === "annual" ? syntheticBetaAnnualReportResult(year) : syntheticBetaAllYearsReportResult(),
-    [mode, sparseFixture, year],
-  );
+      : mode === "annual" ? syntheticBetaAnnualReportResult(year) : syntheticBetaAllYearsReportResult();
+    if (vocabularyFixture !== "keywords-sparse" && vocabularyFixture !== "both-sparse") {
+      return base;
+    }
+    return {
+      ...base,
+      stage7: {
+        ...base.stage7,
+        yearlyKeywords: {
+          ...base.stage7.yearlyKeywords,
+          years: base.stage7.yearlyKeywords.years.map((candidate) => candidate.year === base.filters.selectedYear
+            ? { ...candidate, keywords: candidate.keywords.slice(-2) }
+            : candidate),
+        },
+      },
+    };
+  }, [mode, sparseFixture, vocabularyFixture, year]);
   const reportState = useMemo(() => reportStateFor(result, mode), [mode, result]);
   const viewModel = useMemo(() => presentBetaReportZhCN(buildBetaReportDto(result, {
     mode,
@@ -70,7 +100,14 @@ export function BetaAnnualReportBrowserHarness() {
   })), [mode, result, year]);
   const frequency = useMemo(() => {
     const ready = syntheticBetaWordCloudFrequency(mode === "annual" ? year : null, wordRole);
-    if (vocabularyFixture === "loading" || vocabularyFixture === "error") {
+    if (
+      vocabularyFixture === "loading" ||
+      vocabularyFixture === "error" ||
+      vocabularyFixture === "loading-error" ||
+      (vocabularyFixture === "error-recover" && !vocabularyRecovered) ||
+      (vocabularyFixture === "loading-recover" && !vocabularyRecovered) ||
+      scopeTransitionPending
+    ) {
       return undefined;
     }
     if (vocabularyFixture === "zero") {
@@ -80,11 +117,21 @@ export function BetaAnnualReportBrowserHarness() {
         items: [],
       };
     }
-    if (vocabularyFixture === "sparse") {
+    if (vocabularyFixture === "clean-shift") {
+      return { ...ready, items: ready.items.slice(0, 13) };
+    }
+    if (vocabularyFixture === "hidden-shift" || vocabularyFixture === "role-shift") {
+      const limit = vocabularyFixture === "role-shift" && wordRole === "owner" ? 3 : 5;
+      return {
+        ...ready,
+        items: ready.items.slice(10, 10 + limit).map((item, index) => ({ ...item, rank: index + 1 })),
+      };
+    }
+    if (vocabularyFixture === "sparse" || vocabularyFixture === "both-sparse") {
       return { ...ready, items: ready.items.filter((item) => item.rank >= 11).slice(0, 3).map((item, index) => ({ ...item, rank: index + 1 })) };
     }
     return ready;
-  }, [mode, vocabularyFixture, wordRole, year]);
+  }, [mode, scopeTransitionPending, vocabularyFixture, vocabularyRecovered, wordRole, year]);
   function buildShareCardModels(): ShareCardPreviewModels {
     const reportDto = buildBetaReportDto(result, {
       mode,
@@ -131,6 +178,20 @@ export function BetaAnnualReportBrowserHarness() {
     document.getElementById(section)?.scrollIntoView({ block: "start", behavior: "auto" });
   }
 
+  function changeWordRole(role: WordFrequencyRole): void {
+    setWordRole(role);
+    if (vocabularyFixture === "error-recover" || vocabularyFixture === "loading-recover") {
+      setVocabularyRecovered(true);
+    }
+    if (vocabularyFixture === "loading-error") {
+      setLoadingErrored(true);
+    }
+    if (vocabularyFixture === "scope-transition") {
+      setScopeTransitionPending(true);
+      window.setTimeout(() => setScopeTransitionPending(false), 450);
+    }
+  }
+
   async function saveSyntheticShareCardPng(): Promise<"saved" | "cancelled"> {
     saveAttemptsRef.current += 1;
     setSaveAttempts(saveAttemptsRef.current);
@@ -165,13 +226,13 @@ export function BetaAnnualReportBrowserHarness() {
         analyticsResult={result}
         wordFrequency={frequency}
         wordRole={wordRole}
-        wordFrequencyPending={vocabularyFixture === "loading"}
-        wordFrequencyError={vocabularyFixture === "error" ? "合成词频暂时不可用，请重试当前范围。" : undefined}
+        wordFrequencyPending={vocabularyFixture === "loading" || (vocabularyFixture === "loading-recover" && !vocabularyRecovered) || (vocabularyFixture === "loading-error" && !loadingErrored) || scopeTransitionPending}
+        wordFrequencyError={vocabularyFixture === "error" || loadingErrored || (vocabularyFixture === "error-recover" && !vocabularyRecovered) ? "合成词频暂时不可用，请调整范围后重试。" : undefined}
         onRangeChange={changeRange}
         onSectionChange={changeSection}
         onRestoreFullRange={() => { setMode("all-years"); }}
         onOpenDetailed={() => undefined}
-        onWordRoleChange={setWordRole}
+        onWordRoleChange={changeWordRole}
         shareCardViewModel={buildShareCardModels().off}
         onBuildSharePreview={buildShareCardModels}
         onSaveShareCardPng={saveSyntheticShareCardPng}

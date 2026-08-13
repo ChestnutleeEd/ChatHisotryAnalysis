@@ -1767,31 +1767,56 @@ html:has(.desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-naviga
   pointer-events: none;
 }
 
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-vocabulary-stage[data-vocabulary-state="sparse"] .v3-frequent-ledger,
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-vocabulary-stage[data-vocabulary-state="unavailable"] .v3-frequent-ledger {
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-vocabulary-stage[data-vocabulary-composition="frequent-sparse-keywords-rich"] .v3-frequent-ledger {
+  grid-column: 1 / span 4;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-vocabulary-stage[data-vocabulary-composition="frequent-sparse-keywords-rich"] .v3-keyword-field {
+  grid-column: 5 / -1;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-vocabulary-stage:is(
+  [data-vocabulary-composition="keywords-sparse"],
+  [data-vocabulary-composition="keywords-unavailable"]
+) .v3-frequent-ledger {
   grid-column: 1 / span 8;
 }
 
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-vocabulary-stage[data-vocabulary-state="sparse"] .v3-keyword-field,
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-vocabulary-stage[data-vocabulary-state="unavailable"] .v3-keyword-field {
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-vocabulary-stage:is(
+  [data-vocabulary-composition="keywords-sparse"],
+  [data-vocabulary-composition="keywords-unavailable"]
+) .v3-keyword-field {
   grid-column: 9 / -1;
   min-height: 0;
   padding-bottom: var(--v3-space-5);
   background: none;
 }
 
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-vocabulary-stage[data-vocabulary-state="sparse"] .v3-keyword-field::after,
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-vocabulary-stage[data-vocabulary-state="unavailable"] .v3-keyword-field::after {
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-vocabulary-stage:is(
+  [data-vocabulary-composition="keywords-sparse"],
+  [data-vocabulary-composition="keywords-unavailable"]
+) .v3-keyword-field::after {
   display: none;
 }
 
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-vocabulary-stage:is([data-vocabulary-state="zero"], [data-vocabulary-state="loading"]) .v3-frequent-ledger,
-.desktop-app.beta-enabled[data-visual-version="v3"] .v3-vocabulary-stage:is([data-vocabulary-state="zero"], [data-vocabulary-state="loading"]) .v3-keyword-field {
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-vocabulary-stage:is(
+  [data-vocabulary-composition="frequency-error"],
+  [data-vocabulary-composition="both-sparse-or-empty"],
+  [data-vocabulary-composition="loading"]
+) :is(.v3-frequent-ledger, .v3-keyword-field) {
   grid-column: 1 / -1;
   min-height: 0;
   padding-left: 0;
   border-left: 0;
   background: none;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-vocabulary-stage:is(
+  [data-vocabulary-composition="frequency-error"],
+  [data-vocabulary-composition="both-sparse-or-empty"],
+  [data-vocabulary-composition="loading"]
+) .v3-keyword-field::after {
+  display: none;
 }
 
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-vocabulary-beat-heading {
@@ -2109,6 +2134,35 @@ html:has(.desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-naviga
   color: var(--v3-ink-secondary);
   font-size: 12px;
   line-height: 1.55;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-vocabulary-sparse-note {
+  max-width: 56ch;
+  margin: 0;
+  padding-left: var(--v3-space-3);
+  border-left: 1px solid var(--v3-accent);
+  color: var(--v3-ink-muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-vocabulary-stage[data-vocabulary-composition="frequent-sparse-keywords-rich"] .v3-vocabulary-sparse-note {
+  max-width: 28ch;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-word-cloud-stage[data-shell-state="error"] {
+  gap: var(--v3-space-3);
+  padding-top: var(--v3-space-5);
+  border-top-width: 1px;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-word-cloud-stage[data-shell-state="error"]::before {
+  display: none;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-word-cloud-stage[data-shell-state="error"] .v3-word-cloud-unavailable {
+  min-height: 88px;
+  padding-block: var(--v3-space-4);
 }
 
 .desktop-app.beta-enabled[data-visual-version="v3"] :where(

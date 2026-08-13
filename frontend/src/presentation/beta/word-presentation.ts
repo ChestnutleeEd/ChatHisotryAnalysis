@@ -74,6 +74,66 @@ export interface KeywordPresentation {
   readonly items: readonly KeywordPresentationItem[];
 }
 
+export type VocabularyCompositionMode =
+  | "ready-balanced"
+  | "frequent-sparse-keywords-rich"
+  | "keywords-sparse"
+  | "keywords-unavailable"
+  | "frequency-error"
+  | "both-sparse-or-empty"
+  | "loading";
+
+export interface VocabularyComposition {
+  readonly state: "loading" | "ready" | "sparse" | "unavailable" | "error" | "zero";
+  readonly mode: VocabularyCompositionMode;
+  readonly primaryLayout: "5+7" | "4+8" | "8+4" | "12";
+}
+
+export function classifyVocabularyComposition({
+  pending,
+  hasError,
+  frequencyStatus,
+  frequentCount,
+  keywordAvailable,
+  keywordCount,
+}: {
+  readonly pending: boolean;
+  readonly hasError: boolean;
+  readonly frequencyStatus: WordFrequencyPresentation["status"];
+  readonly frequentCount: number;
+  readonly keywordAvailable: boolean;
+  readonly keywordCount: number;
+}): VocabularyComposition {
+  if (hasError) {
+    return { state: "error", mode: "frequency-error", primaryLayout: "12" };
+  }
+  if (pending && frequencyStatus === "unavailable") {
+    return { state: "loading", mode: "loading", primaryLayout: "12" };
+  }
+  if (frequencyStatus === "empty") {
+    return { state: "zero", mode: "both-sparse-or-empty", primaryLayout: "12" };
+  }
+  if (frequencyStatus === "unavailable") {
+    return { state: "unavailable", mode: "both-sparse-or-empty", primaryLayout: "12" };
+  }
+  if (frequentCount === 0) {
+    return { state: "zero", mode: "both-sparse-or-empty", primaryLayout: "12" };
+  }
+  if (!keywordAvailable) {
+    return { state: "unavailable", mode: "keywords-unavailable", primaryLayout: "8+4" };
+  }
+  if (frequentCount <= 3 && keywordCount >= 4) {
+    return { state: "sparse", mode: "frequent-sparse-keywords-rich", primaryLayout: "4+8" };
+  }
+  if (frequentCount <= 3 && keywordCount <= 3) {
+    return { state: "sparse", mode: "both-sparse-or-empty", primaryLayout: "12" };
+  }
+  if (keywordCount <= 2) {
+    return { state: "sparse", mode: "keywords-sparse", primaryLayout: "8+4" };
+  }
+  return { state: "ready", mode: "ready-balanced", primaryLayout: "5+7" };
+}
+
 export const KEYWORD_FIELD_SLOT_COUNT = 6;
 
 /**

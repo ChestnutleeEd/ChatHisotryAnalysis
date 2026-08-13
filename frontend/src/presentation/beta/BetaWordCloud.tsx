@@ -42,6 +42,8 @@ interface LayoutViewState {
   readonly outcome?: CoordinatedWordCloudLayoutResult;
 }
 
+export type WordCloudShellState = "loading" | "ready" | "unavailable" | "error";
+
 function defaultCanvasWidth(bucket: WordCloudViewportBucket): number {
   return WORD_CLOUD_VIEWPORT_SPECS[bucket].width;
 }
@@ -88,14 +90,14 @@ export function BetaWordCloud({
   metric,
   customHiddenWords,
   cleanMode = true,
-  pending = false,
+  shellState,
   onHideWord,
 }: {
   readonly frequency?: WorkerWordFrequencyDtoV1;
   readonly metric: WordFrequencyMetric;
   readonly customHiddenWords: readonly string[];
   readonly cleanMode?: boolean;
-  readonly pending?: boolean;
+  readonly shellState: WordCloudShellState;
   readonly onHideWord?: (token: string) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -242,12 +244,16 @@ export function BetaWordCloud({
     !canvasAvailable ||
     layoutState.status === "error" ||
     (currentResult !== undefined && currentResult.placed.length === 0);
-  const primaryStatus = !hasCandidates
-    ? frequency === undefined
-      ? "正在准备当前范围的词频与词云。"
-      : "当前范围内没有足够的可展示词语。"
+  const primaryStatus = shellState === "error"
+    ? "当前词云暂不可用，可调整范围后重试。"
+    : shellState === "loading"
+      ? "正在准备当前范围的词频与词云…"
+      : !hasCandidates
+        ? frequency === undefined
+          ? "当前范围的词云暂不可用。"
+          : "当前范围内没有足够的可展示词语。"
     : layoutState.status === "loading"
-      ? "正在由本地词云布局 Worker 排列词语。"
+      ? "正在由本地词云布局 Worker 排列词语…"
       : layoutState.status === "error"
         ? "词云暂时无法绘制，以下保留同一份词频列表。"
         : !canvasAvailable
@@ -261,9 +267,9 @@ export function BetaWordCloud({
                 : currentResult.omitted.length > 0 || rendererOmissionCount > 0
                 ? `词云已展示 ${currentResult.placed.length - rendererOmissionCount} 个词语，其余词语保留在下方列表。`
                 : `词云已展示 ${currentResult.placed.length} 个词语。`;
-  const statusTone = layoutState.status === "error" || !canvasAvailable
+  const statusTone = shellState === "error" || shellState === "unavailable" || layoutState.status === "error" || !canvasAvailable
     ? "partial"
-    : pending || layoutState.status === "loading"
+    : shellState === "loading" || layoutState.status === "loading"
       ? "partial"
       : "privacy";
 
@@ -315,6 +321,7 @@ export function BetaWordCloud({
       data-v3-cell-mode="full"
       data-layout-mode="12"
       data-clean-mode={cleanMode ? "on" : "off"}
+      data-shell-state={shellState}
       data-cloud-density={listItems.length > 0 && listItems.length <= 3 ? "sparse" : "normal"}
       data-presentation-digest={presentation?.presentationDigest ?? "unavailable"}
       data-reveal-state={currentResult === undefined ? "waiting" : "ready"}
@@ -331,7 +338,13 @@ export function BetaWordCloud({
           </p>
           <p className="beta-type-metadata">{cleanMode ? "已净化常用词" : "显示全部基础合格词"}</p>
         </div>
-        <Badge tone={statusTone}>{pending || layoutState.status === "loading" ? "更新中" : "本地词云"}</Badge>
+        <Badge tone={statusTone}>
+          {shellState === "error" || shellState === "unavailable"
+            ? "暂不可用"
+            : shellState === "loading" || layoutState.status === "loading"
+              ? "更新中"
+              : "本地词云"}
+        </Badge>
       </div>
 
       <p className="beta-word-cloud-status" role="status" aria-live="polite">
@@ -353,7 +366,15 @@ export function BetaWordCloud({
       ) : (
         <div ref={canvasWrapRef} className="v3-word-cloud-unavailable" role="note">
           <span aria-hidden="true" />
-          <p>{frequency === undefined ? "词云会在当前范围的词频就绪后出现。" : "当前范围没有可组成词云的展示词语。"}</p>
+          <p>
+            {shellState === "error"
+              ? "当前语言场无法生成词云；可调整年份或发送方范围后重试。"
+              : shellState === "loading"
+                ? "词云会在当前范围的词频就绪后出现。"
+                : frequency === undefined
+                  ? "当前范围的词云暂不可用。"
+                  : "当前范围没有可组成词云的展示词语。"}
+          </p>
         </div>
       )}
 
@@ -432,9 +453,9 @@ export function BetaWordCloud({
             </ol>
           </div>
         </details>
-      ) : (
+      ) : shellState === "ready" || shellState === "unavailable" ? (
         <p className="beta-word-cloud-empty" role="status">当前范围内没有足够的可展示词语。</p>
-      )}
+      ) : null}
 
       {presentation?.boundedPoolExhausted ? (
         <p className="beta-word-cloud-status">展示过滤已耗尽部分有界候选池；当前词云和列表不会请求更多分析数据。</p>

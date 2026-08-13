@@ -21,6 +21,7 @@ describe("BetaWordCloud accessible Canvas contract", () => {
       frequency,
       metric: "raw-count",
       customHiddenWords: [],
+      shellState: "ready",
     }));
     expect(html).toContain('id="word-cloud"');
     expect(html).toContain('<canvas');
@@ -39,6 +40,7 @@ describe("BetaWordCloud accessible Canvas contract", () => {
       frequency,
       metric: "per-10000-eligible-tokens",
       customHiddenWords: [hidden],
+      shellState: "ready",
       onHideWord: () => undefined,
     }));
     expect(html).not.toContain(`>${hidden}<`);
@@ -55,9 +57,23 @@ describe("BetaWordCloud accessible Canvas contract", () => {
       frequency,
       metric: "raw-count",
       customHiddenWords: frequency.items.map((item) => item.normalizedToken),
+      shellState: "unavailable",
     }));
     expect(html).toContain("当前范围内没有足够的可展示词语");
     expect(html).not.toContain('<canvas');
     expect(html).not.toContain('class="beta-word-cloud-list-rank"');
+  });
+
+  it("does not announce loading or render a Canvas for a known frequency error", () => {
+    const html = renderToStaticMarkup(createElement(BetaWordCloud, {
+      frequency: undefined,
+      metric: "raw-count",
+      customHiddenWords: [],
+      shellState: "error",
+    }));
+    expect(html).toContain('data-shell-state="error"');
+    expect(html).toContain("当前词云暂不可用，可调整范围后重试");
+    expect(html).not.toContain("正在准备");
+    expect(html).not.toContain('<canvas');
   });
 });

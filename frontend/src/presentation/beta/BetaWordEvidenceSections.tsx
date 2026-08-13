@@ -13,6 +13,7 @@ import {
   writeVocabularyCleanMode,
 } from "./clean-vocabulary";
 import {
+  classifyVocabularyComposition,
   createKeywordPresentation,
   createWordFrequencyPresentation,
   KEYWORD_FIELD_SLOT_COUNT,
@@ -147,9 +148,10 @@ export function BetaWordEvidenceSections({
     frequency.scope.role === requestedRole
     ? frequency
     : undefined;
+  const currentFrequency = error === undefined ? scopedFrequency : undefined;
   const frequencyPresentation = useMemo(
-    () => createWordFrequencyPresentation(scopedFrequency, customHiddenWords, metric, undefined, cleanMode),
-    [cleanMode, customHiddenWords, metric, scopedFrequency],
+    () => createWordFrequencyPresentation(currentFrequency, customHiddenWords, metric, undefined, cleanMode),
+    [cleanMode, currentFrequency, customHiddenWords, metric],
   );
   const keywordPresentation = useMemo(
     () => createKeywordPresentation(result, customHiddenWords, undefined, cleanMode),
@@ -158,17 +160,22 @@ export function BetaWordEvidenceSections({
   const visibleFrequencyItems = frequencyPresentation.items.slice(0, DEFAULT_VISIBLE_WORDS);
   const visibleKeywordItems = keywordPresentation.items.slice(0, KEYWORD_FIELD_SLOT_COUNT);
   const scopeIsRefreshing = pending && frequency !== undefined && scopedFrequency === undefined;
-  const vocabularyState = scopeIsRefreshing || (pending && scopedFrequency === undefined)
-    ? "loading"
-    : frequencyPresentation.status === "unavailable"
-      ? "unavailable"
-      : frequencyPresentation.status === "empty" || frequencyPresentation.items.length === 0
-        ? "zero"
-        : keywordPresentation.year === null || keywordPresentation.mode === "unavailable" || keywordPresentation.items.length === 0
-          ? "unavailable"
-          : frequencyPresentation.items.length < 4 || keywordPresentation.items.length < 3
-            ? "sparse"
-            : "ready";
+  const keywordAvailable = keywordPresentation.year !== null && keywordPresentation.mode !== "unavailable";
+  const composition = classifyVocabularyComposition({
+    pending: scopeIsRefreshing || pending,
+    hasError: error !== undefined,
+    frequencyStatus: frequencyPresentation.status,
+    frequentCount: visibleFrequencyItems.length,
+    keywordAvailable,
+    keywordCount: visibleKeywordItems.length,
+  });
+  const wordCloudShellState = composition.state === "error"
+    ? "error"
+    : composition.state === "loading"
+      ? "loading"
+      : currentFrequency === undefined || frequencyPresentation.status !== "ready"
+        ? "unavailable"
+        : "ready";
 
   function commitHidden(words: readonly string[]): void {
     setCustomHiddenWords(writeCustomHiddenWords(words));
@@ -194,8 +201,9 @@ export function BetaWordEvidenceSections({
   return (
     <div
       className="v3-vocabulary-stage"
-      data-vocabulary-state={vocabularyState}
-      data-layout-mode={vocabularyState === "ready" ? "asymmetric" : vocabularyState === "sparse" || keywordPresentation.year === null ? "asymmetric" : "full"}
+      data-vocabulary-state={composition.state}
+      data-vocabulary-composition={composition.mode}
+      data-layout-mode={composition.primaryLayout === "12" ? "full" : "asymmetric"}
     >
       <div className="v3-vocabulary-control-strip" aria-label="词汇展示控制">
         <div className="v3-vocabulary-control-context">
@@ -261,8 +269,8 @@ export function BetaWordEvidenceSections({
         <p className="v3-vocabulary-control-note">角色会更新当前词频范围；次数 / 每万词频率与净化开关只改变展示方式。</p>
       </div>
 
-      <div className="v3-vocabulary-primary-grid" data-layout-mode={vocabularyState === "ready" ? "5+7" : vocabularyState === "sparse" || keywordPresentation.year === null ? "8+4" : "12"}>
-      <section id="frequent-words" className="v3-frequent-ledger" data-v3-geometry-cell="vocabulary-frequent" data-v3-cell-mode={vocabularyState === "ready" ? "asymmetric" : "full"}>
+      <div className="v3-vocabulary-primary-grid" data-layout-mode={composition.primaryLayout}>
+      <section id="frequent-words" className="v3-frequent-ledger" data-v3-geometry-cell="vocabulary-frequent" data-v3-cell-mode={composition.primaryLayout === "12" ? "full" : "asymmetric"}>
         <header className="v3-vocabulary-beat-heading">
           <p className="beta-type-eyebrow">常用词 · 13</p>
           <h3 className="beta-type-title beta-word-section-heading">这一范围最常提到什么？</h3>
@@ -274,9 +282,8 @@ export function BetaWordEvidenceSections({
             正在更新为{ROLE_LABELS[requestedRole]}{requestedYear === null ? "全部年份" : requestedYear === undefined ? "" : `${requestedYear} 年`}范围；旧范围词频与词云不会显示。
           </p>
         ) : null}
-        {error !== undefined ? <p className="beta-word-status" role="alert">{error}</p> : null}
-        {frequencyPresentation.status === "unavailable" ? (
-          <p className="beta-word-status" role="status">{pending ? "正在计算当前范围的有界词频列表。" : "当前词频证据尚未就绪。"}</p>
+        {error !== undefined ? <p className="beta-word-status" role="alert">{error}</p> : frequencyPresentation.status === "unavailable" ? (
+          <p className="beta-word-status" role="status">{pending ? "正在计算当前范围的有界词频列表…" : "当前词频证据尚未就绪。"}</p>
         ) : frequencyPresentation.status === "empty" ? (
           <p className="beta-word-status" role="status">当前年份、角色与已提交范围内没有符合内置质量策略的词元。</p>
         ) : (
@@ -297,6 +304,11 @@ export function BetaWordEvidenceSections({
             {frequencyPresentation.hiddenCandidateCount > 0 ? (
               <p className="beta-word-status">
                 当前展示隐藏 {frequencyPresentation.hiddenCandidateCount} 个候选（净化 {frequencyPresentation.cleanHiddenCandidateCount} 个，自定义 {frequencyPresentation.customHiddenCandidateCount} 个），并已按底层顺序补位。
+              </p>
+            ) : null}
+            {composition.mode === "frequent-sparse-keywords-rich" || composition.mode === "both-sparse-or-empty" ? (
+              <p className="v3-vocabulary-sparse-note" role="note">
+                当前范围可展示的常用词较少；这里仅保留实际结果，不以空位补足版面。年度关键词仍按已有证据呈现。
               </p>
             ) : null}
           </>
@@ -325,6 +337,11 @@ export function BetaWordEvidenceSections({
             </header>
             <p className="beta-type-report-lead">{keywordPresentation.explanation}</p>
             <p className="beta-type-metadata">年度关键词展示范围：{keywordPresentation.year} 年</p>
+            {composition.mode === "keywords-sparse" ? (
+              <p className="v3-vocabulary-sparse-note" role="note">
+                当前范围可展示的年度关键词较少；以下仅呈现已有证据。
+              </p>
+            ) : null}
             {keywordPresentation.items.length === 0 ? (
               <p className="beta-word-status">当前没有可展示的年度关键词证据。</p>
             ) : (
@@ -344,11 +361,11 @@ export function BetaWordEvidenceSections({
       </div>
 
       <BetaWordCloud
-        frequency={scopedFrequency}
+        frequency={composition.state === "error" || composition.state === "loading" ? undefined : currentFrequency}
         metric={metric}
         customHiddenWords={customHiddenWords}
         cleanMode={cleanMode}
-        pending={pending}
+        shellState={wordCloudShellState}
         onHideWord={hideWord}
       />
 
