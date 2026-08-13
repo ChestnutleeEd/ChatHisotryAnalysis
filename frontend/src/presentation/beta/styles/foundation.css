@@ -75,6 +75,72 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The product shell is shared, but its authority follows the active surface.
+   This keeps Annual/Home warm and editorial while Detailed remains a cool
+   instrument without allowing the legacy Beta variables to decide the shell. */
+.desktop-app.beta-enabled[data-visual-version="v3"] {
+  --v3-shell-divider: var(--v3-divider);
+  --v3-shell-ink: var(--v3-ink);
+  --v3-shell-secondary: var(--v3-ink-secondary);
+  --v3-shell-active: var(--v3-brand);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"][data-v3-surface="detailed"] {
+  --v3-shell-divider: var(--v3-workspace-divider);
+  --v3-shell-ink: var(--v3-workspace-ink);
+  --v3-shell-secondary: var(--v3-workspace-secondary);
+  --v3-shell-active: var(--v3-workspace-signal);
+  color: var(--v3-workspace-ink);
+  background: var(--v3-workspace-canvas);
+  font-family: var(--v3-font-ui);
+  font-synthesis: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] > .desktop-app-header,
+.desktop-app.beta-enabled[data-visual-version="v3"] > .beta-mode-navigation {
+  width: min(100%, var(--v3-layout-standard));
+  margin-inline: auto;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .desktop-app-header {
+  border-bottom-color: var(--v3-shell-divider);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .beta-product-name {
+  color: var(--v3-shell-ink);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .beta-product-context {
+  color: var(--v3-shell-secondary);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .beta-mode-navigation {
+  border-bottom-color: var(--v3-shell-divider);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .beta-mode-home,
+.desktop-app.beta-enabled[data-visual-version="v3"] .beta-mode-segments button {
+  min-width: 44px;
+  min-height: var(--v3-nav-height);
+  color: var(--v3-shell-secondary);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .beta-mode-home[aria-current="page"],
+.desktop-app.beta-enabled[data-visual-version="v3"] .beta-mode-segments button[aria-current="page"],
+.desktop-app.beta-enabled[data-visual-version="v3"] .beta-mode-segments button.is-current {
+  border-bottom-color: var(--v3-shell-active);
+  color: var(--v3-shell-active);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] :where(
+  .desktop-app-header button:focus-visible,
+  .beta-mode-navigation button:focus-visible
+) {
+  outline: 3px solid var(--v3-focus);
+  outline-offset: 3px;
+}
+
 .desktop-app.beta-enabled[data-visual-version="v3"]:is(
   [data-v3-surface="annual"],
   [data-v3-surface="home"]
@@ -130,6 +196,10 @@
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-page-shell-annual,
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-page-shell-home {
   color: var(--v3-ink);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .beta-mode-navigation {
+  margin-bottom: var(--v3-space-6);
 }
 
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-page-shell-detailed {
@@ -272,5 +342,271 @@
 
   .desktop-app.beta-enabled[data-visual-version="v3"] .v3-scene-title {
     font-size: clamp(32px, 10vw, 42px);
+  }
+}
+
+/* Home is the neutral Organic threshold between the warm Annual story and the
+   cool Detailed ledger. It is intentionally one portal, not a card wall. */
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-page-shell-home {
+  width: min(100%, var(--v3-layout-standard));
+  margin-inline: auto;
+  padding-inline: max(0px, env(safe-area-inset-left)) max(0px, env(safe-area-inset-right));
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-portal {
+  min-width: 0;
+  color: var(--v3-ink);
+  background: var(--v3-canvas);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-hero {
+  min-width: 0;
+  min-block-size: 0;
+  margin: 0;
+  padding: clamp(32px, 5vw, 64px) clamp(16px, 4vw, 56px) clamp(48px, 7vw, 88px);
+  background: transparent;
+  scroll-margin-top: var(--v3-nav-occupied-block);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-portal-grid {
+  display: grid;
+  min-width: 0;
+  align-items: start;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: clamp(32px, 6vw, 72px) var(--v3-layout-gutter);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-copy {
+  display: grid;
+  grid-column: span 7;
+  align-content: start;
+  gap: var(--v3-space-5);
+  min-width: 0;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-folio {
+  margin: 0;
+  color: var(--v3-brand);
+  font-size: var(--v3-type-label);
+  font-weight: 700;
+  letter-spacing: .08em;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-eyebrow,
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-scope-kicker {
+  margin: 0;
+  color: var(--v3-ink-muted);
+  font-size: var(--v3-type-label);
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-title {
+  max-width: 16ch;
+  margin: 0;
+  color: var(--v3-ink);
+  font-family: var(--v3-font-display);
+  font-size: clamp(44px, 5.4vw, 68px);
+  font-weight: 600;
+  line-height: .98;
+  letter-spacing: -.045em;
+  overflow-wrap: anywhere;
+  scroll-margin-top: var(--v3-nav-occupied-block);
+  text-wrap: balance;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-lead {
+  max-width: 48ch;
+  margin: 0;
+  color: var(--v3-ink-secondary);
+  font-size: var(--v3-type-body-large);
+  line-height: 1.65;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-portal .beta-query-chips {
+  gap: var(--v3-space-2);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-portal .beta-chip {
+  min-height: 28px;
+  border: 1px solid rgb(47 52 44 / 12%);
+  background: rgb(248 241 228 / 72%);
+  color: var(--v3-ink-secondary);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-portal .beta-chip-accent {
+  border-color: rgb(96 108 56 / 28%);
+  background: rgb(139 157 131 / 24%);
+  color: var(--v3-ink);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-actions,
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-recovery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--v3-space-3);
+  align-items: center;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-portal .beta-button {
+  min-height: 44px;
+  border-radius: var(--v3-radius-control);
+  border-color: var(--v3-ink);
+  color: var(--v3-ink);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-portal .beta-button-primary {
+  border-color: var(--v3-ink);
+  background: var(--v3-ink);
+  color: var(--v3-surface-elevated);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-portal .beta-button-primary:hover:not(:disabled),
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-portal .beta-button-secondary:hover:not(:disabled) {
+  background: var(--v3-brand);
+  color: var(--v3-surface-elevated);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-portal .beta-button-secondary {
+  background: transparent;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-portal .beta-button-tertiary {
+  min-height: 44px;
+  padding-inline: 0;
+  border-color: transparent;
+  background: transparent;
+  color: var(--v3-ink-secondary);
+  text-decoration: underline;
+  text-decoration-color: rgb(47 52 44 / 34%);
+  text-underline-offset: 4px;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-portal .beta-button-tertiary:hover:not(:disabled) {
+  background: transparent;
+  color: var(--v3-ink);
+  text-decoration-color: currentColor;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-privacy-line {
+  margin: 0;
+  color: var(--v3-ink-muted);
+  font-size: var(--v3-type-caption);
+  line-height: 1.55;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-scope {
+  position: relative;
+  display: grid;
+  grid-column: span 5;
+  gap: var(--v3-space-5);
+  min-width: 0;
+  align-self: center;
+  padding: clamp(24px, 4vw, 40px);
+  overflow: hidden;
+  border: 1px solid var(--v3-hairline);
+  border-radius: var(--v3-radius-artwork);
+  background: var(--v3-surface-elevated);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-scope-heading {
+  display: grid;
+  gap: var(--v3-space-2);
+  padding-bottom: var(--v3-space-4);
+  border-bottom: 1px solid var(--v3-divider);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-scope-heading strong {
+  max-width: 14ch;
+  color: var(--v3-ink);
+  font-size: clamp(28px, 3.2vw, 42px);
+  font-weight: 720;
+  letter-spacing: -.035em;
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-scope dl {
+  display: grid;
+  gap: 0;
+  margin: 0;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-scope dl > div {
+  display: grid;
+  grid-template-columns: minmax(72px, .45fr) minmax(0, 1fr);
+  gap: var(--v3-space-3);
+  padding: var(--v3-space-3) 0;
+  border-bottom: 1px solid var(--v3-divider);
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-scope dt {
+  color: var(--v3-ink-muted);
+  font-size: var(--v3-type-caption);
+  font-weight: 700;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-scope dd {
+  margin: 0;
+  color: var(--v3-ink);
+  font-family: var(--v3-font-ui);
+  font-size: var(--v3-type-label);
+  font-weight: 650;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-archive-mark {
+  position: absolute;
+  right: 11%;
+  bottom: 15%;
+  width: 46%;
+  height: 1px;
+  background: var(--v3-brand);
+  box-shadow: 18px -24px 0 var(--v3-divider), 42px -44px 0 var(--v3-accent);
+  transform: rotate(-24deg);
+}
+
+@media (max-width: 959px) {
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-copy {
+    grid-column: span 5;
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-scope {
+    grid-column: span 3;
+  }
+}
+
+@media (max-width: 760px) {
+  .desktop-app.beta-enabled[data-visual-version="v3"] .beta-mode-navigation {
+    margin-bottom: var(--v3-space-5);
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-hero {
+    padding-block: var(--v3-space-7);
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-copy,
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-scope {
+    grid-column: 1 / -1;
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-scope {
+    align-self: start;
+  }
+}
+
+@media (max-width: 599px) {
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-title {
+    max-width: 10ch;
+    font-size: clamp(46px, 15vw, 64px);
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-hero {
+    padding-inline: 0;
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-home-scope {
+    padding: var(--v3-space-5);
   }
 }

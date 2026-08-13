@@ -44,13 +44,13 @@
 
 ## 5. V3.5 — Cross-Product Polish and Acceptance Candidate
 
-- [ ] 5.1 [Luna Max] Refine Home with the Organic foundation and V3 shell while preserving import/history/restore semantics, realistic local-first copy, keyboard order, error recovery, and the transition into Annual/Detailed modes.
-- [ ] 5.2 [Luna Max] Audit every supported viewport for responsive composition, safe-area behavior, long text, zoom/reflow, touch targets, hover-independent affordances, landmark/headings, focus visibility, scroll offsets, and no horizontal overflow.
-- [ ] 5.3 [Luna Max] Complete the cross-product motion/performance pass: bounded observer work, Canvas frame budgeting, no analytics or layout authority in scroll handlers, stable screenshot mode, reduced-motion parity, and documented fallback for repeated tasks over 100 ms.
-- [ ] 5.4 [Luna Max] Finish CSS authority consolidation across Home, Annual, and Detailed; prove that active selectors have one owner, deprecated V1/V2 patch layers no longer win the cascade, and protected Share Preview rules remain byte-for-byte or behaviorally covered.
-- [ ] 5.5 [Luna Max] Run the complete synthetic unit, integration, browser, screenshot, geometry, accessibility, performance, and packaged-desktop suites; if any Share/export path changed exceptionally, rerun the full B5 acceptance suite and document the reason.
-- [ ] 5.6 [Luna Max] Assemble the acceptance evidence inventory: viewport/state matrix, geometry JSON, screenshots, keyboard and screen-reader notes, reduced-motion evidence, performance traces, packaged-offline result, known deviations, and reviewer decisions; do not claim real private-data acceptance.
-- [ ] 5.7 [Luna Max] Conduct the V3.5 human visual gate across Home, Annual, Detailed, and Share Preview with representative synthetic fixtures, comparing hierarchy, density, mode distinction, narrative rhythm, climax, and closing balance against this design.
+- [x] 5.1 [Luna Max] Refine Home with the Organic foundation and V3 shell while preserving import/history/restore semantics, realistic local-first copy, keyboard order, error recovery, and the transition into Annual/Detailed modes.
+- [x] 5.2 [Luna Max] Audit every supported viewport for responsive composition, safe-area behavior, long text, zoom/reflow, touch targets, hover-independent affordances, landmark/headings, focus visibility, scroll offsets, and no horizontal overflow.
+- [x] 5.3 [Luna Max] Complete the cross-product motion/performance pass: bounded observer work, Canvas frame budgeting, no analytics or layout authority in scroll handlers, stable screenshot mode, reduced-motion parity, and documented fallback for repeated tasks over 100 ms.
+- [x] 5.4 [Luna Max] Finish CSS authority consolidation across Home, Annual, and Detailed; prove that active selectors have one owner, deprecated V1/V2 patch layers no longer win the cascade, and protected Share Preview rules remain byte-for-byte or behaviorally covered.
+- [x] 5.5 [Luna Max] Run the complete synthetic unit, integration, browser, screenshot, geometry, accessibility, performance, and packaged-desktop suites; if any Share/export path changed exceptionally, rerun the full B5 acceptance suite and document the reason.
+- [x] 5.6 [Luna Max] Assemble the acceptance evidence inventory: viewport/state matrix, geometry JSON, screenshots, keyboard and screen-reader notes, reduced-motion evidence, performance traces, packaged-offline result, known deviations, and reviewer decisions; do not claim real private-data acceptance.
+- [x] 5.7 [Luna Max] Conduct the V3.5 human visual gate across Home, Annual, Detailed, and Share Preview with representative synthetic fixtures, comparing hierarchy, density, mode distinction, narrative rhythm, climax, and closing balance against this design.
 
 ## 6. Final Review Gate
 

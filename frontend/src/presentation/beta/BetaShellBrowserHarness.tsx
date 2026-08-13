@@ -88,6 +88,7 @@ export function BetaShellBrowserHarness({
           pending={false}
           onOpenRecap={() => undefined}
           onOpenDetailed={() => setMode("detailed-analysis")}
+          onAnalyzeOtherFiles={() => undefined}
           onRestoreFullRange={() => undefined}
         />
       ) : (

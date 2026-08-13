@@ -36,8 +36,10 @@ export interface BetaHomeViewModel {
   readonly heading: string;
   readonly lead: string;
   readonly scopeLabel: string;
+  readonly scopeStatusLabel: string;
   readonly messageCountLabel: string;
   readonly representedYears: readonly RepresentedYearOption[];
+  readonly latestRepresentedYear?: number;
   readonly defaultYear?: number;
   readonly empty: boolean;
   readonly queryChips: readonly QueryChipViewModel[];
@@ -97,14 +99,22 @@ export function createBetaHomeViewModel(
   const yearOptions = representedYearOptions(representedYears, reportBaseRange);
   const defaultYear = defaultRepresentedYear(yearOptions)?.year;
   const empty = result.aggregate.userMessageCount === 0;
+  const filtered =
+    result.filters.startDate !== result.dataset.minimumCalendarDate ||
+    result.filters.endDate !== result.dataset.maximumCalendarDate ||
+    result.filters.sender !== "both" ||
+    result.filters.selectedYear !== null ||
+    result.filters.sessionThresholdHours !== 6;
   return {
     heading: empty ? "当前范围没有可回顾的用户消息" : "你的本地聊天回顾已经准备好",
     lead: empty
-      ? "可以恢复全部数据范围、重新选择文件，或进入详细分析检查当前筛选。"
-      : "先从年度故事浏览，再按需要进入完整的八个分析页面。",
+      ? "可以恢复全部数据范围，或重新选择文件后再开始年度报告。"
+      : "先查看年度报告，再按需要进入详细分析。",
     scopeLabel: `${result.filters.startDate} – ${result.filters.endDate}`,
+    scopeStatusLabel: filtered ? "已筛选范围" : "完整数据范围",
     messageCountLabel: `${result.aggregate.userMessageCount.toLocaleString("zh-CN")} 条用户消息`,
     representedYears: yearOptions,
+    latestRepresentedYear: empty ? undefined : yearOptions[yearOptions.length - 1]?.year,
     defaultYear,
     empty,
     queryChips: createQueryChips(result.filters, result.dataset),

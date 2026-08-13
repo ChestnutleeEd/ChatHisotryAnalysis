@@ -149,12 +149,6 @@
   text-wrap: balance;
 }
 
-.desktop-app.beta-enabled .beta-home .beta-type-display {
-  max-width: 13ch;
-  font-size: clamp(48px, 5.6vw, 72px);
-  line-height: 1;
-}
-
 .desktop-app.beta-enabled .beta-type-heading {
   max-width: 28ch;
   margin: 0;
@@ -514,7 +508,6 @@
   cursor: not-allowed;
 }
 
-.desktop-app.beta-enabled .beta-home-kicker,
 .desktop-app.beta-enabled .beta-product-labels {
   display: flex;
   flex-wrap: wrap;
@@ -591,7 +584,6 @@
 .desktop-app.beta-enabled > .desktop-workflow-card,
 .desktop-app.beta-enabled > .desktop-status-card,
 .desktop-app.beta-enabled > .desktop-alert,
-.desktop-app.beta-enabled > .beta-home,
 .desktop-app.beta-enabled > .beta-report,
 .desktop-app.beta-enabled > .desktop-handoff-card,
 .desktop-app.beta-enabled > .desktop-export-status,
@@ -734,62 +726,11 @@
   stroke-width: 2;
 }
 
-/* Home: direct scene canvas, with one supporting summary surface and no art
-   quota. The product is understandable without a generated image here. */
-.desktop-app.beta-enabled .beta-home {
-  background: var(--beta-color-report);
-}
-
-.desktop-app.beta-enabled .beta-home-hero {
-  display: grid;
-  grid-template-columns: minmax(0, 7fr) minmax(260px, 5fr);
-  gap: clamp(32px, 6vw, 80px);
-  min-height: 500px;
-  padding: clamp(40px, 7vw, 96px) clamp(24px, 5vw, 64px);
-  background: var(--beta-color-report);
-}
-
-.desktop-app.beta-enabled .beta-home-copy {
-  display: grid;
-  align-content: center;
-  gap: var(--beta-space-5);
-}
-
-.desktop-app.beta-enabled .beta-home-copy .beta-type-eyebrow,
-.desktop-app.beta-enabled .beta-home-copy .beta-type-report-lead {
-  margin: 0;
-}
-
-.desktop-app.beta-enabled .beta-home-actions,
 .desktop-app.beta-enabled .beta-report-footer-actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--beta-space-3);
   align-items: center;
-}
-
-.desktop-app.beta-enabled .beta-home-folio {
-  position: relative;
-  display: grid;
-  align-content: center;
-  gap: var(--beta-space-3);
-  min-height: 320px;
-  padding: var(--beta-space-6);
-  overflow: hidden;
-  background:
-    linear-gradient(160deg, transparent 0 46%, var(--beta-color-primary-soft) 46% 47%, transparent 47%),
-    var(--beta-color-elevated);
-}
-
-.desktop-app.beta-enabled .beta-home-summary-mark {
-  position: absolute;
-  right: 16%;
-  bottom: 18%;
-  width: 44%;
-  height: 1px;
-  background: var(--beta-color-coral);
-  box-shadow: 18px -24px 0 var(--beta-color-divider), 42px -44px 0 var(--beta-color-primary);
-  transform: rotate(-24deg);
 }
 
 .desktop-app.beta-enabled .beta-report-pending,
@@ -948,21 +889,8 @@
 
 /* Named Compact / Narrow grids; no arbitrary auto-fit for major scenes. */
 @media (max-width: 959px) {
-  .desktop-app.beta-enabled .beta-home-hero,
   .desktop-app.beta-enabled .beta-closing-scene {
     gap: var(--beta-space-6);
-  }
-
-  .desktop-app.beta-enabled .beta-home-hero {
-    grid-template-columns: repeat(8, minmax(0, 1fr));
-  }
-
-  .desktop-app.beta-enabled .beta-home-copy {
-    grid-column: 1 / span 5;
-  }
-
-  .desktop-app.beta-enabled .beta-home-folio {
-    grid-column: 6 / -1;
   }
 }
 
@@ -973,8 +901,7 @@
 
   .desktop-app.beta-enabled .desktop-app-header,
   .desktop-app.beta-enabled .desktop-header-actions,
-  .desktop-app.beta-enabled .beta-mode-navigation,
-  .desktop-app.beta-enabled .beta-home-actions {
+  .desktop-app.beta-enabled .beta-mode-navigation {
     align-items: flex-start;
   }
 
@@ -999,26 +926,15 @@
     align-items: flex-start;
   }
 
-  .desktop-app.beta-enabled .beta-home-hero,
   .desktop-app.beta-enabled .beta-closing-scene {
-    grid-template-columns: 1fr;
     min-height: 0;
     padding: var(--beta-space-7) 0;
-  }
-
-  .desktop-app.beta-enabled .beta-home-copy,
-  .desktop-app.beta-enabled .beta-home-folio {
-    grid-column: auto;
   }
 
   .desktop-app.beta-enabled .beta-closing-poster {
     max-width: none;
     margin: 0;
     aspect-ratio: 1 / 1;
-  }
-
-  .desktop-app.beta-enabled .beta-home-folio {
-    min-height: 220px;
   }
 
   .desktop-app.beta-enabled .beta-report-map {

@@ -645,7 +645,7 @@ function CoreOpeningSection({
       <StoryGrid mode="asymmetric" className="v3-opening-grid">
         <div className="v3-opening-copy" data-v3-geometry-cell="opening-copy" data-v3-cell-mode="asymmetric">
           <p className="v3-opening-folio">年度回顾 · 01 / {viewModel.metadata.scopeLabel}</p>
-          <h1 id="beta-report-heading" className="v3-opening-title" tabIndex={-1}>{openingTitle}</h1>
+          <h1 id="beta-report-heading" className="v3-opening-title" data-mode-focus-target tabIndex={-1}>{openingTitle}</h1>
           <p className="v3-opening-lead">{section.lead}</p>
           {section.status === "PARTIAL" ? (
             <p className="v3-opening-partial" role="note">{section.statusLabel}：当前报告只使用已提交范围。</p>

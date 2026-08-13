@@ -460,7 +460,7 @@ export function DesktopImportPanel() {
     const timer = window.setTimeout(() => {
       document
         .querySelector<HTMLElement>(
-          `[data-beta-mode="${productMode}"] h1[tabindex], [data-beta-mode="${productMode}"] .dashboard-panel-wrap`,
+          `[data-beta-mode="${productMode}"] [data-mode-focus-target], [data-beta-mode="${productMode}"] h1[tabindex], [data-beta-mode="${productMode}"] .dashboard-panel-wrap`,
         )
         ?.focus();
     }, 0);
@@ -1682,7 +1682,7 @@ export function DesktopImportPanel() {
               : productMode === "home"
                 ? "分析首页"
                 : productMode === "annual-recap"
-                  ? "年度聊天报告"
+                  ? "年度报告"
                   : "详细分析"}
           </p>
         </div>
@@ -1718,7 +1718,7 @@ export function DesktopImportPanel() {
         </section>
       ) : null}
 
-      {workflowReady ? (
+      {workflowReady ? productMode === "home" ? null : (
         <section className="desktop-status-card beta-ready-status" aria-labelledby="desktop-status-heading" aria-live="polite">
           <div className="beta-ready-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" focusable="false"><path d="m5 12.5 4.2 4.2L19 7" /></svg>
@@ -1778,6 +1778,7 @@ export function DesktopImportPanel() {
           pending={analyticsPending || pendingCommand}
           onOpenRecap={openAnnualReportFromHome}
           onOpenDetailed={() => setProductMode("detailed-analysis")}
+          onAnalyzeOtherFiles={() => void analyzeOtherFiles()}
           onRestoreFullRange={restoreFullReportRange}
         />
       ) : null}

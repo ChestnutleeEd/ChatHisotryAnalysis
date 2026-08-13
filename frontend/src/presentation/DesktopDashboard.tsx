@@ -1013,7 +1013,7 @@ export function DesktopDashboard({
       <div className="dashboard-workspace-grid" data-layout-mode="ledger">
         <DashboardNavigation route={route} onRouteChange={handleRouteChange} />
         <div className="dashboard-canvas-stack">
-          <div ref={headingRef} id={`dashboard-panel-${activePanelIndex}`} role="tabpanel" aria-labelledby={`dashboard-tab-${activePanelIndex}`} tabIndex={-1} aria-label={DASHBOARD_ROUTE_LABELS[route]} className="dashboard-panel-wrap dashboard-content-canvas" data-route={route}>
+          <div ref={headingRef} id={`dashboard-panel-${activePanelIndex}`} role="tabpanel" aria-labelledby={`dashboard-tab-${activePanelIndex}`} tabIndex={-1} aria-label={DASHBOARD_ROUTE_LABELS[route]} className="dashboard-panel-wrap dashboard-content-canvas" data-mode-focus-target data-route={route}>
             {resultError !== undefined ? <DashboardResultErrorState message={resultError} /> : null}
             <div className="dashboard-route-transition" key={route}>
               {route === "Overview" ? <OverviewPage model={model} onNavigate={handleRouteChange} /> : null}

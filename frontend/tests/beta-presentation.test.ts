@@ -131,8 +131,10 @@ describe("Beta B1a Home and navigation", () => {
     heading: "你的本地聊天回顾已经准备好",
     lead: "先从年度故事浏览，再进入详细分析。",
     scopeLabel: "2024-01-01 – 2025-12-31",
+    scopeStatusLabel: "完整数据范围",
     messageCountLabel: "1,248 条用户消息",
     representedYears: representedYearOptions([2024, 2025], baseRange),
+    latestRepresentedYear: 2025,
     defaultYear: 2025,
     empty: false,
     queryChips,
@@ -144,12 +146,15 @@ describe("Beta B1a Home and navigation", () => {
       pending: false,
       onOpenRecap: noop,
       onOpenDetailed: noop,
+      onAnalyzeOtherFiles: noop,
       onRestoreFullRange: noop,
     }));
-    expect(html).toContain("beta-home");
-    expect(html).toMatch(/beta-button-primary[^>]*><span[^>]*>查看年度聊天报告/u);
+    expect(html).toContain("v3-home-portal");
+    expect(html).toContain("最新年份");
+    expect(html).toContain("重新选择文件");
+    expect(html).toMatch(/beta-button-primary[^>]*><span[^>]*>查看年度报告/u);
     expect(html).toMatch(/beta-button-secondary[^>]*><span[^>]*>进入详细分析/u);
-    expect(html).toContain("本地处理 · 不上传");
+    expect(html).toContain("只在本机处理 · 不上传消息正文或联系人信息");
     expect(html).not.toMatch(/generation|queryKey|schema|DTO|Worker/iu);
   });
 
@@ -161,7 +166,7 @@ describe("Beta B1a Home and navigation", () => {
     expect(html).toContain('aria-label="产品模式"');
     expect(html).toContain("首页");
     expect(html).toContain('aria-pressed="true"');
-    expect(html).toContain("年度回顾");
+    expect(html).toContain("年度报告");
     expect(html).toContain("详细分析");
   });
 });
@@ -224,7 +229,7 @@ describe("Beta B1a annual report skeleton", () => {
     expect(css).not.toContain("beta-v2-scale-grid");
     expect(css).not.toContain("beta-core-visual-details");
     expect(css).toContain(".beta-artwork-frame");
-    expect(css).toContain("font-size: clamp(48px, 5.6vw, 72px)");
+    expect(css).not.toContain(".beta-home-hero");
     expect(css).toContain("min-height: 44px");
     expect(css).toContain(".desktop-app.beta-enabled .beta-button");
     expect(css).toContain(".desktop-app.beta-enabled .beta-button:disabled");
@@ -235,6 +240,9 @@ describe("Beta B1a annual report skeleton", () => {
     expect(css).toContain("scroll-behavior: auto !important");
     expect(foundationCss).toContain("--v3-canvas: #E8DCC7");
     expect(foundationCss).toContain("--v3-workspace-signal: #002FA7");
+    expect(foundationCss).toContain("--v3-shell-active: var(--v3-brand)");
+    expect(foundationCss).toContain(".v3-home-title");
+    expect(foundationCss).toContain("font-size: clamp(44px, 5.4vw, 68px)");
     expect(foundationCss).toContain("grid-template-columns: repeat(12, minmax(0, 1fr))");
     expect(foundationCss).toContain("align-items: start");
     expect(annualCss).toContain("width: 100%");

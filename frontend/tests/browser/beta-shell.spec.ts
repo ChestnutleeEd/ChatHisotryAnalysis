@@ -1,5 +1,38 @@
 import { expect, test } from "@playwright/test";
 
+test("keeps Home as a quiet portal and moves focus across mode entry", async ({ page }) => {
+  await page.setViewportSize({ width: 1180, height: 760 });
+  await page.goto("/?fixture=beta-home");
+
+  await expect(page.locator(".v3-home-portal")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "你的本地聊天回顾已经准备好", exact: true })).toBeVisible();
+  await expect(page.locator(".v3-home-scope")).toContainText("最新年份");
+  await expect(page.getByRole("button", { name: "重新选择文件", exact: true })).toBeVisible();
+  await expect(page.locator(".beta-ready-status")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "进入详细分析", exact: true }).click();
+  await expect(page.locator(".dashboard-panel-wrap")).toBeFocused();
+
+  await page.getByRole("button", { name: "首页", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "你的本地聊天回顾已经准备好", exact: true })).toBeFocused();
+
+  for (const width of [1180, 760, 380]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect.poll(() => page.evaluate(() => (
+      document.documentElement.scrollWidth <= document.documentElement.clientWidth &&
+      document.body.scrollWidth <= document.documentElement.clientWidth
+    ))).toBe(true);
+  }
+
+  await page.setViewportSize({ width: 760, height: 900 });
+  await page.evaluate(() => { document.documentElement.style.zoom = "2"; });
+  await expect.poll(() => page.evaluate(() => (
+    document.documentElement.scrollWidth <= document.documentElement.clientWidth &&
+    document.body.scrollWidth <= document.documentElement.clientWidth
+  ))).toBe(true);
+  await page.evaluate(() => { document.documentElement.style.zoom = ""; });
+});
+
 test("renders synthetic Detailed shell without result validation errors", async ({ page }) => {
   const consoleErrors: string[] = [];
   page.on("console", (message) => {

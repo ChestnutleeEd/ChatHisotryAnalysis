@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "react";
+
 import type { BetaProductMode } from "./report-state";
 import { Navigation } from "./primitives";
 
@@ -8,6 +10,22 @@ export function BetaModeNavigation({
   readonly mode: BetaProductMode;
   readonly onModeChange: (mode: BetaProductMode) => void;
 }) {
+  const previousMode = useRef(mode);
+
+  useEffect(() => {
+    if (previousMode.current === mode) {
+      return;
+    }
+    previousMode.current = mode;
+    const focusTimer = window.setTimeout(() => {
+      const target = document.querySelector<HTMLElement>(
+        `[data-beta-mode="${mode}"] [data-mode-focus-target], [data-beta-mode="${mode}"] h1[tabindex], [data-beta-mode="${mode}"] .dashboard-panel-wrap`,
+      );
+      target?.focus();
+    }, 0);
+    return () => window.clearTimeout(focusTimer);
+  }, [mode]);
+
   return (
     <Navigation label="产品模式" className="beta-mode-navigation">
       <button
@@ -27,7 +45,7 @@ export function BetaModeNavigation({
           aria-current={mode === "annual-recap" ? "page" : undefined}
           onClick={() => onModeChange("annual-recap")}
         >
-          年度回顾
+          年度报告
         </button>
         <button
           type="button"
