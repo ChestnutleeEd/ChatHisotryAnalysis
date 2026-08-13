@@ -34,12 +34,12 @@
 
 ## 4. V3.4 — Detailed Instrument Ledger
 
-- [ ] 4.1 [Luna Max] Replace Detailed’s stacked chrome with the Swiss “Instrument Ledger” shell: Context Strip → Toolbar → Rail → Canvas, using the approved wide/standard/compact behavior, semantic landmarks, stable focus order, and offline typography.
-- [ ] 4.2 [Luna Max] Recompose Detailed Overview on the 12-column ledger grid with explicit spans, dense but readable labels, shared Owner/Other semantics, and evidence links that preserve every existing route and report fact.
-- [ ] 4.3 [Luna Max] Migrate the remaining Detailed analytical routes to the Swiss primitives, keeping filters/query semantics, unavailable states, chart alternatives, evidence tables, and provenance unchanged while removing redundant cards and wrappers.
-- [ ] 4.4 [Luna Max] Rebuild methodology/provenance as structured ledger content rather than undifferentiated prose, with correct headings, anchors, copyable definitions, scroll margins, and keyboard reachability.
-- [ ] 4.5 [Luna Max] Consolidate Detailed CSS into its declared authority layer and remove only proven-obsolete selector blocks from explicit files; do not modify protected B5 Share Preview selectors or export renderer behavior.
-- [ ] 4.6 [Luna Max] Run route-level unit/browser/a11y/regression tests plus 1440/1180/760/380/200 synthetic screenshots, long-label and unavailable-state fixtures, packaged-offline checks, and the V3.4 human visual gate.
+- [x] 4.1 [Luna Max] Replace Detailed’s stacked chrome with the Swiss “Instrument Ledger” shell: Context Strip → Toolbar → Rail → Canvas, using the approved wide/standard/compact behavior, semantic landmarks, stable focus order, and offline typography.
+- [x] 4.2 [Luna Max] Recompose Detailed Overview on the 12-column ledger grid with explicit spans, dense but readable labels, shared Owner/Other semantics, and evidence links that preserve every existing route and report fact.
+- [x] 4.3 [Luna Max] Migrate the remaining Detailed analytical routes to the Swiss primitives, keeping filters/query semantics, unavailable states, chart alternatives, evidence tables, and provenance unchanged while removing redundant cards and wrappers.
+- [x] 4.4 [Luna Max] Rebuild methodology/provenance as structured ledger content rather than undifferentiated prose, with correct headings, anchors, copyable definitions, scroll margins, and keyboard reachability.
+- [x] 4.5 [Luna Max] Consolidate Detailed CSS into its declared authority layer and remove only proven-obsolete selector blocks from explicit files; do not modify protected B5 Share Preview selectors or export renderer behavior.
+- [x] 4.6 [Luna Max] Run route-level unit/browser/a11y/regression tests plus 1440/1180/760/380/200 synthetic screenshots, long-label and unavailable-state fixtures, packaged-offline checks, and the V3.4 human visual gate.
 - [ ] 4.7 [Sol xHigh — STOP GATE] Review Detailed for Swiss hierarchy, density, terminology, route fidelity, responsive collapse, and Annual/Detailed differentiation; resolve bounded findings, validate, stage exact paths, commit, push, and stop before V3.5.
 
 ## 5. V3.5 — Cross-Product Polish and Acceptance Candidate

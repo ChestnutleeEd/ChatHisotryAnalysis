@@ -383,13 +383,17 @@ function detailedFilters(): CanonicalAnalysisFilters {
  * A complete, validator-safe fixture for the Detailed shell only.
  * It remains synthetic and intentionally independent from the Annual Recap DTO fixture above.
  */
-export function syntheticBetaDetailedResult(): CanonicalAnalysisResult {
-  const filters = detailedFilters();
+export function syntheticBetaDetailedResult(
+  filterOverrides: Partial<CanonicalAnalysisFilters> = {},
+): CanonicalAnalysisResult {
+  const filters = { ...detailedFilters(), ...filterOverrides };
   const categoryCountsValue = detailedCategoryCounts();
   const emptyStats = detailedEmptyReplyStats();
   const queryKey = canonicalQueryKey(SYNTHETIC_REPORT_DATASET_ID, SYNTHETIC_REPORT_GENERATION, filters);
   const hourlyCounts = Array.from({ length: 24 }, (_, hour) => (hour === 20 ? 8 : 0));
   const weekdayCounts = WEEKDAY_LABELS.map((_, index) => (index < 2 ? 4 : 0));
+  const detailedDates = ["2025-01-01", "2025-01-02", "2025-01-03", "2025-01-04"]
+    .filter((date) => date >= filters.startDate && date <= filters.endDate);
   const wordValues = [
     { token: "report", count: 8, ratePer10000: 5_000 },
     { token: "synthetic", count: 8, ratePer10000: 5_000 },
@@ -442,12 +446,11 @@ export function syntheticBetaDetailedResult(): CanonicalAnalysisResult {
       timePolicy: ACTIVITY_TIME_POLICY,
       population: ACTIVITY_USER_MESSAGE_POPULATION,
       trends: {
-        daily: [
-          { key: "2025-01-01", count: 2, partial: false },
-          { key: "2025-01-02", count: 2, partial: false },
-          { key: "2025-01-03", count: 2, partial: false },
-          { key: "2025-01-04", count: 2, partial: false },
-        ],
+        daily: detailedDates.map((key, index) => ({
+          key,
+          count: index === detailedDates.length - 1 ? 8 - (detailedDates.length - 1) * 2 : 2,
+          partial: false,
+        })),
         monthly: [{ key: "2025-01", count: 8, partial: true }],
         yearly: [{ key: "2025", count: 8, partial: true }],
       },
@@ -473,9 +476,9 @@ export function syntheticBetaDetailedResult(): CanonicalAnalysisResult {
       },
       chatActivity: {
         sender: filters.sender,
-        totalChatDays: 4,
-        longestStreakLength: 4,
-        longestStreaks: [{ startDate: filters.startDate, endDate: filters.endDate, length: 4 }],
+        totalChatDays: detailedDates.length,
+        longestStreakLength: detailedDates.length,
+        longestStreaks: detailedDates.length === 0 ? [] : [{ startDate: filters.startDate, endDate: filters.endDate, length: detailedDates.length }],
       },
     },
     stage7: {
@@ -573,6 +576,153 @@ export function syntheticBetaDetailedResult(): CanonicalAnalysisResult {
           other: { initiator: "other", count: 2, share: 0.5 },
           unknown: { initiator: "unknown", count: 0, share: 0 },
         },
+      },
+    },
+  };
+}
+
+/** Validator-safe empty Detailed fixture for presentation-only state QA. */
+export function syntheticBetaSparseDetailedResult(): CanonicalAnalysisResult {
+  const base = syntheticBetaDetailedResult();
+  const emptyCategories = Object.fromEntries(
+    CANONICAL_MESSAGE_CATEGORIES.map((category) => [category, 0]),
+  ) as Record<CanonicalMessageCategory, number>;
+  const emptyReplyStats = detailedEmptyReplyStats();
+  const emptyLength = { count: 0, sum: 0, mean: null, median: null, p90: null };
+  return {
+    ...base,
+    dataset: {
+      ...base.dataset,
+      eventCount: 0,
+      userMessageCount: 0,
+      eligibleTextCount: 0,
+      messageCategoryCounts: emptyCategories,
+    },
+    index: {
+      ...base.index,
+      indexedRecordCount: 0,
+      eligibleTextCodePointCount: 0,
+      tokenCount: 0,
+      distinctTokenCount: 0,
+    },
+    aggregate: {
+      ...base.aggregate,
+      eventCount: 0,
+      userMessageCount: 0,
+      eligibleTextCount: 0,
+      messageCategoryCounts: emptyCategories,
+      senderCounts: { owner: 0, other: 0 },
+      eligibleTextCodePointCount: 0,
+      tokenCount: 0,
+    },
+    activity: {
+      ...base.activity,
+      trends: {
+        daily: base.activity.trends.daily.map((bucket) => ({ ...bucket, count: 0 })),
+        monthly: base.activity.trends.monthly.map((bucket) => ({ ...bucket, count: 0 })),
+        yearly: base.activity.trends.yearly.map((bucket) => ({ ...bucket, count: 0 })),
+      },
+      senderComparison: {
+        ...base.activity.senderComparison,
+        denominator: 0,
+        owner: { sender: "owner", count: 0, share: null },
+        other: { sender: "other", count: 0, share: null },
+      },
+      hourActivity: {
+        ...base.activity.hourActivity,
+        denominator: 0,
+        buckets: base.activity.hourActivity.buckets.map((bucket) => ({ ...bucket, count: 0, share: null })),
+      },
+      weekdayActivity: {
+        ...base.activity.weekdayActivity,
+        denominator: 0,
+        buckets: base.activity.weekdayActivity.buckets.map((bucket) => ({ ...bucket, count: 0, share: null })),
+      },
+      chatActivity: {
+        ...base.activity.chatActivity,
+        totalChatDays: 0,
+        longestStreakLength: 0,
+        longestStreaks: [],
+      },
+    },
+    stage7: {
+      ...base.stage7,
+      wordEvolution: {
+        ...base.stage7.wordEvolution,
+        vocabulary: [],
+        years: base.stage7.wordEvolution.years.map((year) => ({ ...year, totalTokenCount: 0, values: [] })),
+      },
+      averageLength: {
+        ...base.stage7.averageLength,
+        overall: emptyLength,
+        owner: emptyLength,
+        other: emptyLength,
+      },
+      yearlyKeywords: {
+        ...base.stage7.yearlyKeywords,
+        years: base.stage7.yearlyKeywords.years.map((year) => ({
+          ...year,
+          mode: "insufficient-evidence",
+          omissionReason: "NO_ELIGIBLE_TEXT",
+          keywords: [],
+        })),
+      },
+      messageTypes: {
+        ...base.stage7.messageTypes,
+        denominator: 0,
+        eligibleTextCount: 0,
+        categories: base.stage7.messageTypes.categories.map((bucket) => ({ ...bucket, count: 0, share: null })),
+      },
+    },
+    replySessions: {
+      ...base.replySessions,
+      replyIntervals: {
+        ...base.replySessions.replyIntervals,
+        overall: emptyReplyStats,
+        directions: [
+          { ...base.replySessions.replyIntervals.directions[0], stats: emptyReplyStats },
+          { ...base.replySessions.replyIntervals.directions[1], stats: emptyReplyStats },
+        ],
+      },
+      conversationSessions: {
+        ...base.replySessions.conversationSessions,
+        sessionCount: 0,
+        shareDenominator: 0,
+        initiatorCounts: {
+          owner: { initiator: "owner", count: 0, share: null },
+          other: { initiator: "other", count: 0, share: null },
+          unknown: { initiator: "unknown", count: 0, share: null },
+        },
+      },
+    },
+  };
+}
+
+/** Maximum-length mixed-script token fixture for Detailed reflow QA. */
+export function syntheticBetaLongLabelDetailedResult(): CanonicalAnalysisResult {
+  const base = syntheticBetaDetailedResult();
+  const longToken = [..."跨年度合成词汇标签用于窄屏和百分之二百缩放验证abcdefgh"].slice(0, 32).join("");
+  return {
+    ...base,
+    stage7: {
+      ...base.stage7,
+      wordEvolution: {
+        ...base.stage7.wordEvolution,
+        vocabulary: ["synthetic", longToken],
+        years: base.stage7.wordEvolution.years.map((year) => ({
+          ...year,
+          values: [
+            { ...year.values[1], token: "synthetic" },
+            { ...year.values[0], token: longToken },
+          ],
+        })),
+      },
+      yearlyKeywords: {
+        ...base.stage7.yearlyKeywords,
+        years: base.stage7.yearlyKeywords.years.map((year) => ({
+          ...year,
+          keywords: year.keywords.map((keyword, index) => index === 0 ? { ...keyword, token: longToken } : keyword),
+        })),
       },
     },
   };

@@ -62,14 +62,19 @@ test("keeps all eight Detailed routes, committed query context, and responsive o
     }
   }
 
-  const appliedSummary = page.locator(".dashboard-applied-summary");
+  const appliedSummary = page.locator(".dashboard-context-register");
   const applyQuery = page.getByRole("button", { name: "应用筛选", exact: true });
   await expect(applyQuery).toBeDisabled();
   await page.locator('input[name="startDate"]').fill("2025-01-02");
   await expect(applyQuery).toBeEnabled();
   await expect(appliedSummary).toContainText("2025-01-01 → 2025-01-04");
-  await applyQuery.click();
+  await expect(page.locator(".dashboard-draft-status")).toContainText("有未应用更改");
+  await page.getByRole("tab", { name: routeLabels.Trends, exact: true }).click();
   await expect(appliedSummary).toContainText("2025-01-01 → 2025-01-04");
+  await expect(page.locator('input[name="startDate"]')).toHaveValue("2025-01-02");
+  await applyQuery.click();
+  await expect(appliedSummary).toContainText("2025-01-02 → 2025-01-04");
+  await expect(page.locator(".dashboard-draft-status")).toContainText("与当前分析一致");
 
   await page.getByRole("tab", { name: routeLabels["Words & Years"], exact: true }).click();
   const methodology = page.locator("details.dashboard-words-methodology");

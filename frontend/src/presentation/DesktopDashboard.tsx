@@ -294,15 +294,14 @@ function ScopeLine({ result }: { readonly result: CanonicalAnalysisResult }) {
     result.filters.startDate !== result.dataset.minimumCalendarDate ||
     result.filters.endDate !== result.dataset.maximumCalendarDate;
   return (
-    <div className="dashboard-scope-line">
-      <ul className="dashboard-query-chips" aria-label="当前已提交分析范围">
-        <li><span>{result.filters.startDate} → {result.filters.endDate}</span></li>
-        <li><span>{senderLabel(result.filters.sender)}</span></li>
-        <li><span>UTC+08</span></li>
-        <li><span>会话 {result.filters.sessionThresholdHours}h</span></li>
-        {isFiltered ? <li><span className="is-active">已筛选</span></li> : null}
-      </ul>
-    </div>
+    <dl className="dashboard-context-register" aria-label="当前已提交分析范围">
+      <div><dt>范围</dt><dd>{result.filters.startDate} → {result.filters.endDate}</dd></div>
+      <div><dt>年度</dt><dd>{result.filters.selectedYear ?? "全部"}</dd></div>
+      <div><dt>角色</dt><dd>{senderLabel(result.filters.sender)}</dd></div>
+      <div><dt>时区</dt><dd>UTC+08:00</dd></div>
+      <div><dt>会话</dt><dd>{result.filters.sessionThresholdHours} 小时</dd></div>
+      <div><dt>状态</dt><dd>{isFiltered ? "已筛选" : "完整范围"}</dd></div>
+    </dl>
   );
 }
 
@@ -374,36 +373,36 @@ function OverviewPage({
             </div>
           </div>
         </section>
-      </div>
-      <div className="dashboard-overview-support-grid">
-        <section className="dashboard-chart-card dashboard-overview-support-primary" aria-labelledby="overview-trend-heading">
-          <div className="dashboard-card-heading-row"><div><p className="dashboard-eyebrow">时间趋势</p><h3 id="overview-trend-heading">范围内趋势</h3></div><span className="dashboard-card-kicker">按年</span></div>
-          <BarChart
-            title="年度用户消息数量"
-            description="所有类别的去重后用户消息；完整数据见趋势。"
-            rows={result.activity.trends.yearly.map((bucket) => ({
-              label: bucket.key,
-              value: bucket.count,
-              displayValue: formatCount(bucket.count),
-              secondary: bucket.partial ? "部分周期" : undefined,
-            }))}
-          />
-        </section>
-        <section className="dashboard-chart-card" aria-labelledby="overview-type-heading">
-          <div className="dashboard-card-heading-row"><div><p className="dashboard-eyebrow">消息构成</p><h3 id="overview-type-heading">主要消息类别</h3></div><span className="dashboard-card-kicker">当前范围</span></div>
-          <BarChart
-            title="当前范围的类别计数"
-            description="类别顺序和计数来自同一份本地结果；完整类别表见消息类型。"
-            rows={model.overview.leadingTypes.map((bucket) => ({
-              label: categoryLabel(bucket.category),
-              value: bucket.count,
-              displayValue: `${formatCount(bucket.count)} · ${formatShare(bucket.share)}`,
-            }))}
-          />
-          {model.overview.leadingTypes.length === 0 ? (
-            <p className="dashboard-empty" role="status">当前筛选没有用户消息类别。</p>
-          ) : null}
-        </section>
+        <div className="dashboard-overview-support-stack">
+          <section className="dashboard-chart-card dashboard-overview-support-primary" aria-labelledby="overview-trend-heading">
+            <div className="dashboard-card-heading-row"><div><p className="dashboard-eyebrow">时间趋势</p><h3 id="overview-trend-heading">范围内趋势</h3></div><span className="dashboard-card-kicker">按年</span></div>
+            <BarChart
+              title="年度用户消息数量"
+              description="所有类别的去重后用户消息；完整数据见趋势。"
+              rows={result.activity.trends.yearly.map((bucket) => ({
+                label: bucket.key,
+                value: bucket.count,
+                displayValue: formatCount(bucket.count),
+                secondary: bucket.partial ? "部分周期" : undefined,
+              }))}
+            />
+          </section>
+          <section className="dashboard-chart-card" aria-labelledby="overview-type-heading">
+            <div className="dashboard-card-heading-row"><div><p className="dashboard-eyebrow">消息构成</p><h3 id="overview-type-heading">主要消息类别</h3></div><span className="dashboard-card-kicker">当前范围</span></div>
+            <BarChart
+              title="当前范围的类别计数"
+              description="类别顺序和计数来自同一份本地结果；完整类别表见消息类型。"
+              rows={model.overview.leadingTypes.map((bucket) => ({
+                label: categoryLabel(bucket.category),
+                value: bucket.count,
+                displayValue: `${formatCount(bucket.count)} · ${formatShare(bucket.share)}`,
+              }))}
+            />
+            {model.overview.leadingTypes.length === 0 ? (
+              <p className="dashboard-empty" role="status">当前筛选没有用户消息类别。</p>
+            ) : null}
+          </section>
+        </div>
       </div>
       <Definition>
         <p>去重后用户消息包含媒体、未知类别和不符合文字规则的消息，排除系统消息。</p>
@@ -667,6 +666,7 @@ function MessageTypesPage({ result }: { readonly result: CanonicalAnalysisResult
       <PageHeading eyebrow="06 / 消息类型" id="types-page-heading" title="消息类型" description="消息类别按固定顺序展示；系统诊断独立于用户消息分母。" schema={result.stage7.messageTypes.schemaVersion} />
       <section className="dashboard-chart-card" aria-labelledby="types-chart-heading">
         <div className="dashboard-card-heading-row"><div><p className="dashboard-eyebrow">类别条</p><h3 id="types-chart-heading">用户消息类别</h3></div><span className="dashboard-card-kicker">数量 · 占比</span></div>
+        {result.stage7.messageTypes.denominator === 0 ? <p className="dashboard-empty" role="status">当前筛选没有用户消息类别。</p> : null}
         <BarChart title="类别计数与占比" description={`分母：${formatCount(result.stage7.messageTypes.denominator)} 条筛选后的用户消息。`} rows={categoryRows} />
         <details className="dashboard-definition dashboard-progressive-disclosure">
           <summary>查看精确类别统计</summary>
@@ -829,6 +829,50 @@ function PageHeading({ eyebrow, id, title, description, schema }: { readonly eye
   );
 }
 
+function MethodologyLedger({ result }: { readonly result: CanonicalAnalysisResult }) {
+  const facts = methodologyFacts();
+  const groups = [
+    { id: "population", title: "Population", facts: [facts[1]] },
+    { id: "scope", title: "Scope", facts: [facts[0], facts[3]] },
+    { id: "timezone", title: "Timezone", facts: [facts[2]] },
+    { id: "exceptions", title: "Exceptions", facts: [facts[4]] },
+  ] as const;
+  return (
+    <details className="dashboard-methodology">
+      <summary id="dashboard-methodology-heading">
+        <span>查看口径与方法</span>
+        <small>Population · Scope · Timezone · Exceptions · Version</small>
+      </summary>
+      <div className="dashboard-methodology-ledger">
+        <nav aria-label="方法分组">
+          {groups.map((group) => <a key={group.id} href={`#dashboard-method-${group.id}`}>{group.title}</a>)}
+          <a href="#dashboard-method-version">Version</a>
+        </nav>
+        <div className="dashboard-methodology-groups">
+          {groups.map((group) => (
+            <section key={group.id} aria-labelledby={`dashboard-method-${group.id}`}>
+              <h3 id={`dashboard-method-${group.id}`}>{group.title}</h3>
+              <dl>
+                {group.facts.map((fact) => fact === undefined ? null : (
+                  <div key={fact.label}><dt>{fact.label}</dt><dd>{fact.value}</dd></div>
+                ))}
+              </dl>
+            </section>
+          ))}
+          <section aria-labelledby="dashboard-method-version">
+            <h3 id="dashboard-method-version">Version</h3>
+            <dl>
+              <div><dt>结果版本</dt><dd>{result.schemaVersion}</dd></div>
+              <div><dt>结果代次</dt><dd>{result.generation}</dd></div>
+            </dl>
+          </section>
+        </div>
+        <p className="dashboard-methodology-note">统计描述数据分布、时间差和阈值，不提供情感、关系质量或心理推断。</p>
+      </div>
+    </details>
+  );
+}
+
 function DashboardNavigation({ route, onRouteChange }: { readonly route: DashboardRoute; readonly onRouteChange: (route: DashboardRoute, focusTarget: "content" | "rail") => void }) {
   const buttonRefs = useRef<Array<HTMLButtonElement | null>>([]);
   function onKeyDown(event: KeyboardEvent<HTMLButtonElement>): void {
@@ -855,6 +899,7 @@ function DashboardNavigation({ route, onRouteChange }: { readonly route: Dashboa
             type="button"
             role="tab"
             aria-selected={item === route}
+            aria-current={item === route ? "page" : undefined}
             aria-controls={`dashboard-panel-${index}`}
             id={`dashboard-tab-${index}`}
             tabIndex={item === route ? 0 : -1}
@@ -862,7 +907,8 @@ function DashboardNavigation({ route, onRouteChange }: { readonly route: Dashboa
             onClick={() => onRouteChange(item, "content")}
             onKeyDown={onKeyDown}
           >
-            {DASHBOARD_ROUTE_LABELS[item]}
+            <span className="dashboard-route-folio" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+            <span>{DASHBOARD_ROUTE_LABELS[item]}</span>
           </button>
         ))}
       </div>
@@ -885,7 +931,7 @@ export function DesktopDashboard({
   const [route, setRoute] = useState<DashboardRoute>(initialRoute);
   const [draftFilters, setDraftFilters] = useState<CanonicalAnalysisFilters>(result.filters);
   const [filterErrors, setFilterErrors] = useState<FilterErrors>({});
-  const headingRef = useRef<HTMLHeadingElement>(null);
+  const headingRef = useRef<HTMLDivElement>(null);
   const firstRouteRender = useRef(true);
   const routeFocusTarget = useRef<"content" | "rail">("content");
 
@@ -928,55 +974,47 @@ export function DesktopDashboard({
   }
 
   const activePanelIndex = routeIndex(route);
+  const draftDirty = !filtersEqual(draftFilters, result.filters);
   return (
-    <section id="beta-main-content" className="dashboard-shell dashboard-content-shell" aria-label="本地分析结果 Dashboard" aria-busy={pending} tabIndex={-1}>
-      <header className="dashboard-header dashboard-shell-header">
-        <div>
+    <section id="beta-main-content" className="dashboard-shell dashboard-content-shell" aria-label="本地分析结果工作区" aria-busy={pending} tabIndex={-1}>
+      <header className="dashboard-context-strip" aria-label="当前分析上下文">
+        <div className="dashboard-context-title">
           <p className="dashboard-eyebrow">本地分析 · 详细</p>
           <h1>详细分析</h1>
-          <p>用当前已应用条件查看趋势、比较、活动和词汇证据。</p>
-        </div>
-        <div className="dashboard-header-actions">
           <span className="dashboard-local-badge">仅本地处理</span>
-          <button className="dashboard-button" type="button" onClick={onAnalyzeOtherFiles}>分析其他文件</button>
         </div>
-      </header>
-      <div className="dashboard-context-row dashboard-applied-summary" aria-label="已应用条件">
-        <div><p className="dashboard-eyebrow">已应用筛选</p><strong>已应用条件</strong></div>
         <ScopeLine result={result} />
-        <span className="dashboard-comparative-note">比较面板固定包含双方</span>
-      </div>
-      <form className="dashboard-filter-bar dashboard-filter-toolbar dashboard-query-bar" aria-labelledby="dashboard-filters-heading" onSubmit={submitFilters}>
-        <div className="dashboard-filter-heading"><div><p className="dashboard-eyebrow">编辑筛选</p><h2 id="dashboard-filters-heading">筛选条件</h2></div><span>修改日期或发送方后，点击应用筛选。</span></div>
+        <button className="dashboard-context-action" type="button" onClick={onAnalyzeOtherFiles}>分析其他文件</button>
+      </header>
+      <form className="dashboard-filter-bar dashboard-filter-toolbar dashboard-query-bar" aria-labelledby="dashboard-filters-heading" aria-describedby="dashboard-draft-status" onSubmit={submitFilters}>
+        <div className="dashboard-filter-heading"><div><p className="dashboard-eyebrow">筛选草稿</p><h2 id="dashboard-filters-heading">调整分析范围</h2></div><span id="dashboard-draft-status" className="dashboard-draft-status" data-dirty={draftDirty ? "true" : "false"} aria-live="polite">{draftDirty ? "有未应用更改" : "与当前分析一致"}</span></div>
         <label>开始日期<input name="startDate" autoComplete="off" type="date" value={draftFilters.startDate} min={result.dataset.minimumCalendarDate} max={result.dataset.maximumCalendarDate} aria-invalid={filterErrors.startDate !== undefined || filterErrors.range !== undefined} aria-describedby={filterErrors.startDate !== undefined ? "dashboard-start-error" : filterErrors.range !== undefined ? "dashboard-range-error" : undefined} onChange={(event) => updateDraft({ startDate: event.currentTarget.value })} /></label>
         <label>结束日期<input name="endDate" autoComplete="off" type="date" value={draftFilters.endDate} min={result.dataset.minimumCalendarDate} max={result.dataset.maximumCalendarDate} aria-invalid={filterErrors.endDate !== undefined || filterErrors.range !== undefined} aria-describedby={filterErrors.endDate !== undefined ? "dashboard-end-error" : filterErrors.range !== undefined ? "dashboard-range-error" : undefined} onChange={(event) => updateDraft({ endDate: event.currentTarget.value })} /></label>
         <label>发送方<select name="sender" autoComplete="off" value={draftFilters.sender} onChange={(event) => updateDraft({ sender: event.currentTarget.value as CanonicalAnalysisFilters["sender"] })}><option value="both">Owner 与 Other</option><option value="owner">仅 Owner</option><option value="other">仅 Other</option></select></label>
-        <button className="dashboard-button dashboard-button-primary" type="submit" disabled={pending || filtersEqual(draftFilters, result.filters)}>应用筛选</button>
+        <button className="dashboard-button dashboard-button-primary" type="submit" disabled={pending || !draftDirty}>应用筛选</button>
         {filterErrors.startDate !== undefined ? <p id="dashboard-start-error" className="dashboard-field-error" role="alert">{filterErrors.startDate}</p> : null}
         {filterErrors.endDate !== undefined ? <p id="dashboard-end-error" className="dashboard-field-error" role="alert">{filterErrors.endDate}</p> : null}
         {filterErrors.range !== undefined ? <p id="dashboard-range-error" className="dashboard-field-error" role="alert">{filterErrors.range}</p> : null}
       </form>
       {pending ? <div className="dashboard-pending" role="status" aria-live="polite"><strong>正在本地更新统计</strong><span>上一次完整结果仍可阅读；当前筛选未完成前不能导出。</span></div> : null}
-      <DashboardNavigation route={route} onRouteChange={handleRouteChange} />
-      <div ref={headingRef} id={`dashboard-panel-${activePanelIndex}`} role="tabpanel" aria-labelledby={`dashboard-tab-${activePanelIndex}`} tabIndex={-1} aria-label={DASHBOARD_ROUTE_LABELS[route]} className="dashboard-panel-wrap dashboard-content-canvas">
-        {route === "Overview" ? <OverviewPage model={model} onNavigate={handleRouteChange} /> : null}
-        {route === "Trends" ? <TrendsPage result={result} /> : null}
-        {route === "Comparison" ? <ComparisonPage result={result} /> : null}
-        {route === "Activity" ? <ActivityPage result={result} /> : null}
-        {route === "Words & Years" ? <WordsYearsPage model={model} onLocalFilterChange={onFilterChange} pending={pending} /> : null}
-        {route === "Message Types" ? <MessageTypesPage result={result} /> : null}
-        {route === "Replies & Sessions" ? <RepliesSessionsPage result={result} onLocalFilterChange={onFilterChange} pending={pending} /> : null}
-        {route === "Export" ? <ExportPage result={result} pending={pending} draftFilters={draftFilters} onExport={onExport} /> : null}
-      </div>
-      <details className="dashboard-methodology">
-        <summary id="dashboard-methodology-heading">查看全局方法与隐私边界</summary>
-        <div className="dashboard-methodology-facts">
-          <dl>
-            {methodologyFacts().map((fact) => <div key={fact.label}><dt>{fact.label}</dt><dd>{fact.value}</dd></div>)}
-          </dl>
-          <p>统计描述数据分布、时间差和阈值，不提供情感、关系质量或心理推断。</p>
+      <div className="dashboard-workspace-grid" data-layout-mode="ledger">
+        <DashboardNavigation route={route} onRouteChange={handleRouteChange} />
+        <div className="dashboard-canvas-stack">
+          <div ref={headingRef} id={`dashboard-panel-${activePanelIndex}`} role="tabpanel" aria-labelledby={`dashboard-tab-${activePanelIndex}`} tabIndex={-1} aria-label={DASHBOARD_ROUTE_LABELS[route]} className="dashboard-panel-wrap dashboard-content-canvas" data-route={route}>
+            <div className="dashboard-route-transition" key={route}>
+              {route === "Overview" ? <OverviewPage model={model} onNavigate={handleRouteChange} /> : null}
+              {route === "Trends" ? <TrendsPage result={result} /> : null}
+              {route === "Comparison" ? <ComparisonPage result={result} /> : null}
+              {route === "Activity" ? <ActivityPage result={result} /> : null}
+              {route === "Words & Years" ? <WordsYearsPage model={model} onLocalFilterChange={onFilterChange} pending={pending} /> : null}
+              {route === "Message Types" ? <MessageTypesPage result={result} /> : null}
+              {route === "Replies & Sessions" ? <RepliesSessionsPage result={result} onLocalFilterChange={onFilterChange} pending={pending} /> : null}
+              {route === "Export" ? <ExportPage result={result} pending={pending} draftFilters={draftFilters} onExport={onExport} /> : null}
+            </div>
+          </div>
+          <MethodologyLedger result={result} />
         </div>
-      </details>
+      </div>
     </section>
   );
 }

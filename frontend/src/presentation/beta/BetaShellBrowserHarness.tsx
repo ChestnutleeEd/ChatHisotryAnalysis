@@ -1,13 +1,20 @@
 import { useMemo, useState } from "react";
 
 import type { ApprovedChartKey, ReportFormat } from "../../desktop/ipc-contract";
-import type { CanonicalAnalysisFilters } from "../../worker-analysis/analytics-contract";
+import type {
+  CanonicalAnalysisFilters,
+  CanonicalAnalysisResult,
+} from "../../worker-analysis/analytics-contract";
 import { DesktopDashboard } from "../DesktopDashboard";
 import { BetaHome } from "./BetaHome";
 import { BetaModeNavigation } from "./BetaModeNavigation";
 import { SkipLink } from "./primitives";
 import { createBetaHomeViewModel } from "./view-model";
-import { syntheticBetaDetailedResult } from "./synthetic-report-fixture";
+import {
+  syntheticBetaDetailedResult,
+  syntheticBetaLongLabelDetailedResult,
+  syntheticBetaSparseDetailedResult,
+} from "./synthetic-report-fixture";
 
 export function BetaShellBrowserHarness({
   initialMode,
@@ -15,14 +22,21 @@ export function BetaShellBrowserHarness({
   readonly initialMode: "home" | "detailed-analysis";
 }) {
   const [mode, setMode] = useState<"home" | "detailed-analysis">(initialMode);
-  const result = useMemo(() => syntheticBetaDetailedResult(), []);
+  const fixtureState = new URLSearchParams(window.location.search).get("state");
+  const [result, setResult] = useState<CanonicalAnalysisResult>(() => (
+    fixtureState === "empty"
+      ? syntheticBetaSparseDetailedResult()
+      : fixtureState === "long"
+        ? syntheticBetaLongLabelDetailedResult()
+        : syntheticBetaDetailedResult()
+  ));
   const homeViewModel = useMemo(
     () => createBetaHomeViewModel(result, { startDate: "2024-01-01", endDate: "2025-12-31" }, [2024, 2025]),
     [result],
   );
 
-  function noopFilter(_filters: CanonicalAnalysisFilters): void {
-    void _filters;
+  function applyFilters(filters: CanonicalAnalysisFilters): void {
+    setResult(syntheticBetaDetailedResult(filters));
   }
   function noopExport(_format: ReportFormat, _chartKey: ApprovedChartKey): void {
     void _format;
@@ -63,8 +77,8 @@ export function BetaShellBrowserHarness({
         <div data-beta-mode="detailed-analysis">
           <DesktopDashboard
             result={result}
-            pending={false}
-            onFilterChange={noopFilter}
+            pending={fixtureState === "loading"}
+            onFilterChange={applyFilters}
             onAnalyzeOtherFiles={() => undefined}
             onExport={noopExport}
             initialRoute="Overview"

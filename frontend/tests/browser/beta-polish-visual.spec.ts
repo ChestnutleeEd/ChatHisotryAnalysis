@@ -169,8 +169,8 @@ test("passes synthetic P1 Annual and Detailed presentation QA with fixed screens
   await expect(page.getByText("本地分析 · 详细", { exact: true })).toBeVisible();
   await expect(page.getByRole("tab", { name: "概览", exact: true })).toBeVisible();
   await expect(page.getByRole("tab", { name: "词汇与年份", exact: true })).toBeVisible();
-  await expect(page.getByText("已应用筛选", { exact: true })).toBeVisible();
-  await expect(page.getByText("比较面板固定包含双方", { exact: true })).toBeVisible();
+  await expect(page.locator(".dashboard-context-register")).toContainText("完整范围");
+  await expect(page.locator(".dashboard-draft-status")).toContainText("与当前分析一致");
   await expect(page.locator(".dashboard-query-bar")).toContainText("应用筛选");
   await expect(page.locator(".dashboard-methodology")).not.toHaveAttribute("open");
   await page.screenshot({ path: resolve(screenshotDir, "detailed-top-1180.png") });
@@ -188,7 +188,7 @@ test("passes synthetic P1 Annual and Detailed presentation QA with fixed screens
 
   const methodology = page.locator("details.dashboard-methodology");
   await methodology.locator("summary").click();
-  await expect(methodology.locator(".dashboard-methodology-facts dl")).toBeVisible();
+  await expect(methodology.locator(".dashboard-methodology-groups")).toBeVisible();
   await expect(methodology).toContainText("处理位置");
   await methodology.screenshot({ path: resolve(screenshotDir, "detailed-methodology-1180.png") });
 
