@@ -546,14 +546,17 @@ function WordsYearsPage({
   model,
   onLocalFilterChange,
   pending,
+  draftFilters,
+  onDraftYearChange,
 }: {
   readonly model: DashboardViewModel;
   readonly onLocalFilterChange: (filters: CanonicalAnalysisFilters) => void;
   readonly pending: boolean;
+  readonly draftFilters: CanonicalAnalysisFilters;
+  readonly onDraftYearChange: (selectedYear: CanonicalAnalysisFilters["selectedYear"]) => void;
 }) {
   const { result } = model;
-  const [selectedYear, setSelectedYear] = useState<number | null>(result.filters.selectedYear);
-  useEffect(() => setSelectedYear(result.filters.selectedYear), [result.filters.selectedYear]);
+  const selectedYear = draftFilters.selectedYear;
   const selectedKeywordYear = selectedYear === null
     ? model.activeKeywordYear
     : result.stage7.yearlyKeywords.years.find((year) => year.year === selectedYear);
@@ -571,7 +574,7 @@ function WordsYearsPage({
       </section>
       <div className="dashboard-local-control dashboard-year-control">
         <label htmlFor="dashboard-year">年度关键词与摘要</label>
-        <select id="dashboard-year" value={selectedYear ?? ""} onChange={(event) => setSelectedYear(event.currentTarget.value === "" ? null : Number(event.currentTarget.value))}>
+        <select id="dashboard-year" value={selectedYear ?? ""} onChange={(event) => onDraftYearChange(event.currentTarget.value === "" ? null : Number(event.currentTarget.value))}>
           <option value="">最新有数据年份</option>
           {model.yearOptions.map((year) => <option key={year} value={year}>{year}</option>)}
         </select>
@@ -1020,7 +1023,7 @@ export function DesktopDashboard({
               {route === "Trends" ? <TrendsPage result={result} /> : null}
               {route === "Comparison" ? <ComparisonPage result={result} /> : null}
               {route === "Activity" ? <ActivityPage result={result} /> : null}
-              {route === "Words & Years" ? <WordsYearsPage model={model} onLocalFilterChange={onFilterChange} pending={pending} /> : null}
+              {route === "Words & Years" ? <WordsYearsPage model={model} onLocalFilterChange={onFilterChange} pending={pending} draftFilters={draftFilters} onDraftYearChange={(selectedYear) => updateDraft({ selectedYear })} /> : null}
               {route === "Message Types" ? <MessageTypesPage result={result} /> : null}
               {route === "Replies & Sessions" ? <RepliesSessionsPage result={result} onLocalFilterChange={onFilterChange} pending={pending} draftThreshold={draftSessionThreshold} onDraftThresholdChange={setDraftSessionThreshold} /> : null}
               {route === "Export" ? <ExportPage result={result} pending={pending} draftFilters={draftFilters} onExport={onExport} /> : null}

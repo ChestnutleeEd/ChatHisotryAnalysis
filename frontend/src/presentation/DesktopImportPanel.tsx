@@ -52,6 +52,9 @@ import {
   BETA_VOCABULARY_POLICY_VERSION,
 } from "../worker-analysis/vocabulary-policy";
 import { DesktopDashboard } from "./DesktopDashboard";
+import {
+  handleAnalyticsUpdateError,
+} from "./analytics-error-classifier";
 import { BetaAnnualReport } from "./beta/BetaAnnualReport";
 import { BetaHome } from "./beta/BetaHome";
 import { BetaModeNavigation } from "./beta/BetaModeNavigation";
@@ -830,17 +833,24 @@ export function DesktopImportPanel() {
       ) {
         return;
       }
-      if (error instanceof WorkerClientCancelledError) {
-        setStatus("筛选已取消，保留上一次完整结果");
-      } else {
-        setAnalyticsError(analyticsFailureMessage(error));
-        setStatus("筛选未完成，保留上一次完整结果");
-      }
-      try {
-        await stopAnalyticsWorker(currentSession, currentGeneration);
-      } catch {
-        // The host cleanup path is authoritative when a renderer request is stale.
-      }
+      await handleAnalyticsUpdateError(
+        error,
+        async () => {
+          try {
+            await stopAnalyticsWorker(currentSession, currentGeneration);
+          } catch {
+            // The host cleanup path is authoritative when a renderer request is stale.
+          }
+        },
+        (classification) => {
+          if (classification.kind === "cancellation") {
+            setStatus("筛选已取消，保留上一次完整结果");
+            return;
+          }
+          setAnalyticsError(analyticsFailureMessage(classification.error));
+          setStatus("筛选未完成，保留上一次完整结果");
+        },
+      );
     } finally {
       if (mountedRef.current && attempt === analyticsAttemptRef.current) {
         setAnalyticsPending(false);

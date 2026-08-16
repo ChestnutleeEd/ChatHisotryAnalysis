@@ -7,6 +7,7 @@ import {
   type CanonicalAnalysisResult,
 } from "../../worker-analysis/analytics-contract";
 import { DesktopDashboard } from "../DesktopDashboard";
+import { classifyAnalyticsError } from "../analytics-error-classifier";
 import { BetaHome } from "./BetaHome";
 import { BetaModeNavigation } from "./BetaModeNavigation";
 import { SkipLink } from "./primitives";
@@ -46,7 +47,7 @@ export function BetaShellBrowserHarness({
     try {
       validateCanonicalAnalyticsResult(nextResult);
     } catch (error) {
-      if (error instanceof Error && /^(?:INVALID_RESULT|INVALID_REPLY_SESSION_RESULT)$/u.test(error.message)) {
+      if (classifyAnalyticsError(error).kind !== "unexpected") {
         setResultError("合成结果未通过当前分析契约；上一份已提交结果仍保留。调整条件后可再次应用。");
         return;
       }

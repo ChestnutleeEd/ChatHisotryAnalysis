@@ -10,6 +10,8 @@ html:has(.desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-naviga
 .desktop-app.beta-enabled[data-visual-version="v3"] .v3-annual-report {
   width: min(100%, var(--v3-layout-standard));
   margin-inline: auto;
+  container-name: annual-workspace;
+  container-type: inline-size;
   color: var(--v3-ink);
   background: var(--v3-canvas);
   scroll-padding-top: calc(var(--v3-nav-occupied-block) + 16px);
@@ -2733,5 +2735,59 @@ html:has(.desktop-app.beta-enabled[data-visual-version="v3"] .v3-progress-naviga
   .desktop-app.beta-enabled[data-visual-version="v3"] .beta-word-cloud-bar-row > :nth-child(n + 3) {
     grid-column: 2;
     justify-self: start;
+  }
+}
+
+@container annual-workspace (max-width: 599px) {
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-beats,
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-vocabulary-control-strip,
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-vocabulary-primary-grid,
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-vocabulary-secondary {
+    grid-template-columns: 1fr;
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-weekday,
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-hour,
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-vocabulary-control-strip > *,
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-vocabulary-primary-grid > *,
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-frequent-ledger,
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-keyword-field,
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-vocabulary-stage[data-vocabulary-composition] .v3-frequent-ledger,
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-vocabulary-stage[data-vocabulary-composition] .v3-keyword-field {
+    grid-column: 1 / -1;
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-rhythm-hour,
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-keyword-field {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-frequent-ledger,
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-keyword-field,
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-vocabulary-stage[data-vocabulary-composition] .v3-frequent-ledger,
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-vocabulary-stage[data-vocabulary-composition] .v3-keyword-field {
+    min-height: 0;
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-vocabulary-control-strip > *,
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-vocabulary-primary-grid > * {
+    grid-row: auto;
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-vocabulary-control-strip .beta-word-control-group label,
+  .desktop-app.beta-enabled[data-visual-version="v3"] .v3-vocabulary-control-strip .beta-word-control-group label > span {
+    min-height: 44px;
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .beta-closing-scene {
+    grid-template-columns: 1fr;
+  }
+
+  .desktop-app.beta-enabled[data-visual-version="v3"] .beta-closing-copy,
+  .desktop-app.beta-enabled[data-visual-version="v3"] .beta-closing-art {
+    grid-column: 1;
+    width: 100%;
+    min-width: 0;
   }
 }
