@@ -205,7 +205,7 @@ test.describe("approved V3.6 bounded remediation", () => {
     await expect(page.locator(".v3-annual-report")).toBeVisible();
 
     for (const viewport of [
-      { width: 1180, height: 900 },
+      { width: 1180, height: 760 },
       { width: 760, height: 900 },
       { width: 380, height: 900 },
     ]) {
