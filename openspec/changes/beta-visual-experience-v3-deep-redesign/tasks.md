@@ -54,7 +54,7 @@
 
 ## 6. Final Review Gate
 
-- [ ] 6.1 [Sol High] Perform an independent repository-wide review for functional regressions, accessibility, privacy boundaries, query/worker/canvas authority, deterministic rendering, tests, and protected Share behavior; record file/line evidence and severity for every finding.
+- [x] 6.1 [Sol High] Perform an independent repository-wide review for functional regressions, accessibility, privacy boundaries, query/worker/canvas authority, deterministic rendering, tests, and protected Share behavior; record file/line evidence and severity for every finding.
 - [ ] 6.2 [Sol xHigh — STOP GATE] Perform the final visual-architecture review against every normative requirement and scenario, classify findings as blocking/bounded/deferred, and approve a written V3.6 fix scope before implementation continues.
 
 ## 7. V3.6 — Conditional Fixes, Packaging, and Handoff
