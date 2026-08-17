@@ -36,6 +36,7 @@ B5_MARKER_DIRECTORY = "chat-history-analysis-b5-packaged"
 B5_PNG_LIMIT = 10 * 1024 * 1024
 B5_APP_PROCESS = "chat-history-analysis"
 B5_APP_DISPLAY_PROCESS = "Chat History Analysis"
+MACOS_IGNORE_PERSISTENCE_ARGS = ("-ApplePersistenceIgnoreState", "YES")
 B5_BUNDLE_ASSET_MARKERS = (
     "annual-opening-hero-v1",
     "closing-poster-v1",
@@ -259,6 +260,28 @@ def _regular_files(root: Path):
             candidate = current_path / name
             if candidate.is_file() and not candidate.is_symlink():
                 yield candidate
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _sha256_tree(root: Path) -> tuple[str, int]:
+    digest = hashlib.sha256()
+    total_bytes = 0
+    for path in sorted(_regular_files(root), key=lambda candidate: candidate.relative_to(root).as_posix()):
+        relative = path.relative_to(root).as_posix().encode("utf-8")
+        digest.update(relative)
+        digest.update(b"\0")
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+                total_bytes += len(chunk)
+    return digest.hexdigest(), total_bytes
 
 
 def _file_description(path: Path) -> str:
@@ -629,6 +652,17 @@ def _prepare_b5_marker_root() -> tuple[Path, Path]:
         "selection-smoke-core-sections-ready",
         "selection-smoke-word-evidence-ready",
         "selection-smoke-word-cloud-ready",
+        "selection-smoke-share-preview-trigger-missing",
+        "selection-smoke-share-preview-trigger-disabled",
+        "selection-smoke-share-preview-trigger-enabled",
+        "selection-smoke-share-preview-dialog-open",
+        "selection-smoke-share-preview-dialog-not-ready",
+        "selection-smoke-share-preview-vocabulary-missing",
+        "selection-smoke-share-preview-vocabulary-unavailable",
+        "selection-smoke-share-preview-vocabulary-disabled",
+        "selection-smoke-share-preview-vocabulary-enabled",
+        "selection-smoke-share-preview-vocabulary-clicked",
+        "selection-smoke-share-preview-vocabulary-not-ready",
         "selection-smoke-dashboard-ready",
         "selection-smoke-worker-error-visible",
         "selection-smoke-error",
@@ -973,7 +1007,17 @@ def _wait_for_saved_png(output: Path, before: set[Path], timeout: float = 60) ->
 
 def _run_finder_equivalent_launch(app: Path) -> None:
     _wait_for_process_state(B5_APP_PROCESS, exists=False)
-    _run(["/usr/bin/open", "-n", app, "--args", "--b5-off"], timeout=60)
+    _run(
+        [
+            "/usr/bin/open",
+            "-n",
+            app,
+            "--args",
+            "--b5-off",
+            *MACOS_IGNORE_PERSISTENCE_ARGS,
+        ],
+        timeout=60,
+    )
     _wait_for_process_state(B5_APP_PROCESS, exists=True, timeout=30)
     time.sleep(4)
     _run_applescript(f'tell application {_apple_string(B5_APP_DISPLAY_PROCESS)} to quit')
@@ -995,12 +1039,22 @@ def _run_b5_packaged_acceptance(app: Path, root: Path) -> dict[str, object]:
         raise RuntimeError("B5_NETWORK_SANDBOX_UNAVAILABLE")
     app_executable = app / "Contents" / "MacOS" / APP_EXECUTABLE
     before_first = set(output.glob("chat-recap-*.png"))
+    stdout_log_path = root / "b5-packaged.stdout.log"
+    stderr_log_path = root / "b5-packaged.stderr.log"
+    stdout_log = stdout_log_path.open("wb")
+    stderr_log = stderr_log_path.open("wb")
     process = subprocess.Popen(
-        [sandbox, "-p", "(version 1) (allow default) (deny network*)", app_executable],
+        [
+            sandbox,
+            "-p",
+            "(version 1) (allow default) (deny network*)",
+            app_executable,
+            *MACOS_IGNORE_PERSISTENCE_ARGS,
+        ],
         cwd=cwd,
         env=environment,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=stdout_log,
+        stderr=stderr_log,
     )
     first_png: Path | None = None
     second_png: Path | None = None
@@ -1037,6 +1091,8 @@ def _run_b5_packaged_acceptance(app: Path, root: Path) -> dict[str, object]:
     finally:
         if process.poll() is None:
             _stop_exact_process(process)
+        stdout_log.close()
+        stderr_log.close()
 
     if _process_exists("chat-history-analysis-sidecar"):
         raise RuntimeError("B5_SIDECAR_ORPHAN_AFTER_QUIT")
@@ -1046,7 +1102,7 @@ def _run_b5_packaged_acceptance(app: Path, root: Path) -> dict[str, object]:
     restart_environment, restart_cwd = _clean_environment(restart_clean_root)
     restart_environment["CHAT_HISTORY_ANALYSIS_SYNTHETIC_ROOT"] = os.fspath(marker_root)
     restart = subprocess.Popen(
-        [app_executable, "--b5-off"],
+        [app_executable, "--b5-off", *MACOS_IGNORE_PERSISTENCE_ARGS],
         cwd=restart_cwd,
         env=restart_environment,
         stdout=subprocess.DEVNULL,
@@ -1099,6 +1155,8 @@ def _run_b5_packaged_acceptance(app: Path, root: Path) -> dict[str, object]:
         _remove_known_file(path)
     for path in sorted(marker_root.glob("selection-smoke-*")):
         _remove_known_file(path)
+    _remove_known_file(stdout_log_path)
+    _remove_known_file(stderr_log_path)
     output.rmdir()
     marker_root.rmdir()
     b5_evidence["temporaryPngCleanup"] = "passed"
@@ -1180,7 +1238,13 @@ def _run_b6_packaged_acceptance(app: Path, root: Path) -> dict[str, object]:
         raise RuntimeError("B6_NETWORK_SANDBOX_UNAVAILABLE")
     app_executable = app / "Contents" / "MacOS" / APP_EXECUTABLE
     process = subprocess.Popen(
-        [sandbox, "-p", "(version 1) (allow default) (deny network*)", app_executable],
+        [
+            sandbox,
+            "-p",
+            "(version 1) (allow default) (deny network*)",
+            app_executable,
+            *MACOS_IGNORE_PERSISTENCE_ARGS,
+        ],
         cwd=cwd,
         env=environment,
         stdout=subprocess.DEVNULL,
@@ -1241,7 +1305,7 @@ def _run_b6_packaged_acceptance(app: Path, root: Path) -> dict[str, object]:
     restart_root = _fresh_b6_environment_root(root, "b6-restart-clean-user")
     restart_environment, restart_cwd = _clean_environment(restart_root)
     restart = subprocess.Popen(
-        [app_executable],
+        [app_executable, *MACOS_IGNORE_PERSISTENCE_ARGS],
         cwd=restart_cwd,
         env=restart_environment,
         stdout=subprocess.DEVNULL,
@@ -1340,13 +1404,17 @@ def _run_clean_user_smoke(
     selection_environment["CHAT_HISTORY_ANALYSIS_SYNTHETIC_NATIVE_DIALOG_ROLE"] = "annual"
     selection_executable = selection_smoke_app / "Contents" / "MacOS" / APP_EXECUTABLE
     selection_host: subprocess.Popen[bytes] | None = None
+    selection_stdout_log_path = root / "selection-smoke.stdout.log"
+    selection_stderr_log_path = root / "selection-smoke.stderr.log"
+    selection_stdout_log = selection_stdout_log_path.open("wb")
+    selection_stderr_log = selection_stderr_log_path.open("wb")
     try:
         selection_host = subprocess.Popen(
-            [selection_executable],
+            [selection_executable, *MACOS_IGNORE_PERSISTENCE_ARGS],
             cwd=selection_cwd,
             env=selection_environment,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=selection_stdout_log,
+            stderr=selection_stderr_log,
         )
         selection_marker = selection_root / "isolated-temp" / "selection-smoke-passed"
         selection_deadline = time.monotonic() + 180
@@ -1392,17 +1460,23 @@ def _run_clean_user_smoke(
     finally:
         if selection_host is not None:
             _stop_exact_process(selection_host)
+        selection_stdout_log.close()
+        selection_stderr_log.close()
     if selection_host.returncode not in (0, None):
         raise RuntimeError("PACKAGED_SELECTION_SMOKE_FAILED")
 
     host: subprocess.Popen[bytes] | None = None
+    host_stdout_log_path = root / "packaged-host.stdout.log"
+    host_stderr_log_path = root / "packaged-host.stderr.log"
+    host_stdout_log = host_stdout_log_path.open("wb")
+    host_stderr_log = host_stderr_log_path.open("wb")
     try:
         host = subprocess.Popen(
-            [app_executable],
+            [app_executable, *MACOS_IGNORE_PERSISTENCE_ARGS],
             cwd=cwd,
             env=environment,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=host_stdout_log,
+            stderr=host_stderr_log,
         )
         time.sleep(4)
         if host.poll() is not None:
@@ -1410,6 +1484,16 @@ def _run_clean_user_smoke(
     finally:
         if host is not None:
             _stop_exact_process(host)
+        host_stdout_log.close()
+        host_stderr_log.close()
+
+    for path in (
+        selection_stdout_log_path,
+        selection_stderr_log_path,
+        host_stdout_log_path,
+        host_stderr_log_path,
+    ):
+        _remove_known_file(path)
 
     return {
         "finderEquivalentHostLaunch": "passed",
@@ -1438,6 +1522,8 @@ def _write_manifest(
     smoke: dict[str, object],
     negative_checks: dict[str, str],
 ) -> Path:
+    app_sha256, app_bytes = _sha256_tree(app)
+    main_executable = app / "Contents" / "MacOS" / APP_EXECUTABLE
     manifest = {
         "schema": "chat-history-analysis.stage11-package-manifest.v1",
         "target": {
@@ -1449,6 +1535,10 @@ def _write_manifest(
             "relativePath": app.name,
             "repositoryRelativePath": app.relative_to(ROOT).as_posix(),
             "mainExecutable": f"Contents/MacOS/{APP_EXECUTABLE}",
+            "sha256": app_sha256,
+            "bytes": app_bytes,
+            "mainExecutableSha256": _sha256_file(main_executable),
+            "mainExecutableBytes": main_executable.stat().st_size,
             "bundleIdentifier": BUNDLE_IDENTIFIER,
             "metadata": metadata,
             "machOMemberCount": member_count,
@@ -1457,6 +1547,8 @@ def _write_manifest(
         },
         "dmg": {
             "relativePath": dmg.name,
+            "sha256": _sha256_file(dmg),
+            "bytes": dmg.stat().st_size,
             "volumeName": DMG_VOLUME,
             "verified": True,
             "mountedCopiedUnmounted": True,

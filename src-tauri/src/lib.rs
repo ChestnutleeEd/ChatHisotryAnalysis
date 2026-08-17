@@ -139,10 +139,17 @@ pub fn run() {
                       const failureCodes = ["SIDECAR_UNAVAILABLE", "SIDECAR_VERIFICATION_FAILED", "SIDECAR_SPAWN_FAILED", "SIDECAR_START_FAILED", "SIDECAR_HANDSHAKE_TIMEOUT", "PREPROCESSING_STALLED", "SIDECAR_PROTOCOL_MISMATCH", "SIDECAR_PROTOCOL_FAILED", "SIDECAR_EXITED", "SIDECAR_EXITED_UNEXPECTEDLY", "SIDECAR_PROTOCOL_INVALID", "SIDECAR_CRASHED", "DATASET_HANDOFF_INVALID", "DATASET_TRANSPORT_INVALID", "WORKER_RUNTIME_FAILED", "WORKER_TIMEOUT", "MEMORY_PRESSURE", "CLEANUP_REQUIRED", "SESSION_CLEANUP_FAILED", "SESSION_STALE", "SELECTION_STALE", "SOURCE_SET_INVALID", "INVALID_REQUEST", "INVALID_STATE"];
                       const visibleFailureCode = () => failureCodes.find((code) => document.body.textContent?.includes(code));
                       const betaHome = () => document.querySelector('[data-beta-mode="home"]');
+                      const betaAnnualReportEntry = () => document.querySelector('[data-testid="beta-home-annual-report"]');
                       const betaAnnualRecap = () => document.querySelector('[data-beta-mode="annual-recap"]');
                       const betaCoreSectionIds = ["opening", "messages", "active-days", "longest-streak", "peak-month", "peak-weekday", "peak-hour", "sender-share", "message-length", "message-types", "sessions", "replies", "frequent-words", "distinctive-keywords", "word-cloud"];
                       const betaCoreReady = () => betaAnnualRecap() !== null && betaCoreSectionIds.every((id) => document.getElementById(id) !== null);
-                      const betaWordCloudReady = () => document.querySelector('[data-testid="beta-word-cloud-canvas"][data-layout-state="ready"]') !== null;
+                      const betaWordCloudReady = () => {
+                        const vocabularyStage = document.querySelector('.v3-vocabulary-stage');
+                        const vocabularyState = vocabularyStage?.getAttribute('data-vocabulary-state');
+                        return document.querySelector('[data-testid="beta-word-cloud-canvas"][data-layout-state="ready"]') !== null
+                          && document.querySelector('#frequent-words ol li') !== null
+                          && (vocabularyState === "ready" || vocabularyState === "sparse");
+                      };
                       const waitFor = (predicate, deadline = Date.now() + 120000) => new Promise((resolve, reject) => {
                         const tick = () => {
                           if (predicate()) { resolve(true); return; }
@@ -202,7 +209,7 @@ pub fn run() {
                           await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "dashboard-ready" });
                         } else if (betaHome() !== null) {
                           await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "home-ready" });
-                          button("查看年度聊天报告")?.click();
+                          betaAnnualReportEntry()?.click();
                           await waitFor(() => betaCoreReady() || visibleFailureCode() !== undefined || document.body.textContent?.includes("本地统计未完成") === true);
                           if (!betaCoreReady()) {
                             const checkpoint = visibleFailureCode() ?? (document.body.textContent?.includes("本地统计未完成") === true ? "worker-error-visible" : "error");
@@ -219,6 +226,8 @@ pub fn run() {
                           }
                           await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "word-evidence-ready" });
                           await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "word-cloud-ready" });
+                          await waitFor(() => betaWordCloudReady());
+                          await new Promise((resolve) => window.setTimeout(resolve, 250));
                           if (b5AcceptanceMode === "b6") {
                             const b6Checkpoint = (checkpoint) => window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint }).catch(() => undefined);
                             const b6WaitFor = (predicate, deadline = Date.now() + 120000) => new Promise((resolve, reject) => {
@@ -408,13 +417,39 @@ pub fn run() {
                           }
                           if (b5AcceptanceMode === "b5" || b5AcceptanceMode === "b6") {
                             const shareTrigger = document.querySelector('[data-testid="beta-share-preview-trigger"]');
-                            if (shareTrigger === null) throw new Error("share preview trigger unavailable");
+                            if (shareTrigger === null) {
+                              await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "share-preview-trigger-missing" });
+                              throw new Error("share preview trigger unavailable");
+                            }
+                            if (shareTrigger instanceof HTMLButtonElement && shareTrigger.disabled) {
+                              await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "share-preview-trigger-disabled" });
+                              throw new Error("share preview trigger disabled");
+                            }
+                            await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "share-preview-trigger-enabled" });
                             shareTrigger.click();
-                            await waitFor(() => {
-                              const dialog = document.querySelector('[data-testid="beta-share-preview-dialog"][data-state="ready"]');
-                              const card = dialog?.querySelector('[data-testid="beta-share-card-preview"][data-render-state="ready"]');
-                              return dialog !== null && card !== null;
-                            });
+                            try {
+                              await waitFor(() => document.querySelector('[data-testid="beta-share-preview-dialog"]') !== null || visibleFailureCode() !== undefined);
+                            } catch (error) {
+                              await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "share-preview-dialog-not-ready" });
+                              throw error;
+                            }
+                            if (document.querySelector('[data-testid="beta-share-preview-dialog"]') !== null) {
+                              await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "share-preview-dialog-open" });
+                            }
+                            try {
+                              await waitFor(() => {
+                                const dialog = document.querySelector('[data-testid="beta-share-preview-dialog"][data-state="ready"]');
+                                const card = dialog?.querySelector('[data-testid="beta-share-card-preview"][data-render-state="ready"]');
+                                return (dialog !== null && card !== null) || visibleFailureCode() !== undefined;
+                              });
+                            } catch (error) {
+                              await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "share-preview-dialog-not-ready" });
+                              throw error;
+                            }
+                            if (document.querySelector('[data-testid="beta-share-preview-dialog"][data-state="ready"] [data-testid="beta-share-card-preview"][data-render-state="ready"]') === null) {
+                              await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "share-preview-dialog-not-ready" });
+                              throw new Error("share preview dialog did not become ready");
+                            }
                             await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "share-preview-ready" });
                             const offCard = document.querySelector('[data-testid="beta-share-card-preview"]');
                             const offDigest = offCard?.getAttribute("data-rgba-digest") ?? "";
@@ -436,15 +471,35 @@ pub fn run() {
                             await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "native-cancelled" });
                             await waitFor(() => document.querySelector('[data-testid="beta-share-preview-dialog"]')?.getAttribute("data-save-state") === "ready");
                             const vocabularyToggle = document.querySelector('input[name="includeVocabulary"]');
-                            if (vocabularyToggle instanceof HTMLInputElement && !vocabularyToggle.checked && !vocabularyToggle.disabled) {
-                              vocabularyToggle.click();
+                            if (!(vocabularyToggle instanceof HTMLInputElement)) {
+                              await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "share-preview-vocabulary-missing" });
+                              throw new Error("share preview vocabulary toggle unavailable");
                             }
-                            await waitFor(() => {
-                              const dialog = document.querySelector('[data-testid="beta-share-preview-dialog"][data-vocabulary="on"]');
-                              const card = dialog?.querySelector('[data-testid="beta-share-card-preview"][data-render-state="ready"]');
-                              const digest = card?.getAttribute("data-rgba-digest") ?? "";
-                              return dialog !== null && card !== null && digest.length === 64 && digest !== offDigest;
-                            });
+                            if (vocabularyToggle.disabled) {
+                              const vocabularyUnavailable = document.querySelector('.beta-share-preview-unavailable') !== null;
+                              await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", {
+                                checkpoint: vocabularyUnavailable
+                                  ? "share-preview-vocabulary-unavailable"
+                                  : "share-preview-vocabulary-disabled",
+                              });
+                              throw new Error("share preview vocabulary toggle disabled");
+                            }
+                            await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "share-preview-vocabulary-enabled" });
+                            if (!vocabularyToggle.checked) {
+                              vocabularyToggle.click();
+                              await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "share-preview-vocabulary-clicked" });
+                            }
+                            try {
+                              await waitFor(() => {
+                                const dialog = document.querySelector('[data-testid="beta-share-preview-dialog"][data-vocabulary="on"]');
+                                const card = dialog?.querySelector('[data-testid="beta-share-card-preview"][data-render-state="ready"]');
+                                const digest = card?.getAttribute("data-rgba-digest") ?? "";
+                                return dialog !== null && card !== null && digest.length === 64 && digest !== offDigest;
+                              });
+                            } catch (error) {
+                              await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "share-preview-vocabulary-not-ready" });
+                              throw error;
+                            }
                             await window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "vocabulary-on" });
                             const onCard = document.querySelector('[data-testid="beta-share-card-preview"]');
                             await window.__TAURI_INTERNALS__.invoke("record_b5_render_evidence", {
@@ -521,7 +576,9 @@ pub fn run() {
                       })().catch(() => window.__TAURI_INTERNALS__.invoke("record_selection_smoke_checkpoint", { checkpoint: "error" }).catch(() => undefined));
                     })()"###,
                 );
-                let _ = webview.eval(smoke_script);
+                if let Err(error) = webview.eval(smoke_script) {
+                    eprintln!("[stage11 synthetic smoke] webview eval failed: {error}");
+                }
             }
         });
     #[cfg(feature = "synthetic-dialog-adapter")]

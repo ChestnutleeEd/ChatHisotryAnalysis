@@ -102,6 +102,15 @@ class Stage11SourceContractTests(unittest.TestCase):
         self.assertNotIn("shutil.rmtree", source)
         self.assertNotIn("rm -rf", source)
 
+    def test_packaged_smoke_uses_stable_home_annual_entry_contract(self) -> None:
+        home = (ROOT / "frontend" / "src" / "presentation" / "beta" / "BetaHome.tsx").read_text(
+            encoding="utf-8"
+        )
+        smoke = (ROOT / "src-tauri" / "src" / "lib.rs").read_text(encoding="utf-8")
+        self.assertIn('data-testid="beta-home-annual-report"', home)
+        self.assertIn('[data-testid="beta-home-annual-report"]', smoke)
+        self.assertNotIn('button("查看年度聊天报告")', smoke)
+
     def test_placeholder_icons_are_real_assets(self) -> None:
         png = (ROOT / "src-tauri" / "icons" / "icon.png").read_bytes()
         icns = (ROOT / "src-tauri" / "icons" / "icon.icns").read_bytes()

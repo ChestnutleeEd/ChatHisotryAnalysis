@@ -35,7 +35,12 @@ export function BetaHome({
               <p className="v3-home-lead">{viewModel.lead}</p>
               <QueryChips chips={viewModel.queryChips} />
               <div className="v3-home-actions">
-                <BetaButton variant="primary" loading={pending} onClick={onOpenRecap}>
+                <BetaButton
+                  variant="primary"
+                  loading={pending}
+                  data-testid="beta-home-annual-report"
+                  onClick={onOpenRecap}
+                >
                   查看年度报告
                 </BetaButton>
                 <BetaButton variant="secondary" disabled={pending} onClick={onOpenDetailed}>
