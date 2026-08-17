@@ -1,74 +1,397 @@
-# B6 Final Synthetic Packaged Beta Acceptance
+# V3 Final Synthetic Evidence Inventory + User Handoff (7.3)
 
-本报告记录 B6 的合成验收边界。它证明当前 macOS arm64 本地原型适合进入用户的真实数据手动验收，不代表 Release、Production、Developer ID、notarization 或公发布就绪。
+模型：Luna Max
+日期：2026-08-17
+范围：Beta Visual Experience V3 的最终 synthetic/package evidence inventory 与 user handoff preparation。7.3 不做 implementation、remediation、packaging rebuild 或 7.4 release stop gate。
 
-验收时间：2026-08-12
-分支：`feat/implement-local-chat-wordcloud-mvp`
-基线：`eb0bd993702d804e6b69aade7fdbd451d9b2ee4d`
-B6 work root：`build/stage11/macos-arm64/b6-final-acceptance`
-当前包目录：`build/stage11/macos-arm64/b6-final-acceptance/final-release`
+Freshness 约定：`RE-RUN IN 7.3` 只表示本批实际重新执行；`REUSED FROM COMPLETED 7.2 ACCEPTANCE` 表示沿用已完成 7.2 的有效 synthetic evidence，本批没有为了写报告重复整套重型 suite。
 
-## Status
+## 1. Result
 
 ```text
-PASS WITH USER ACCEPTANCE PENDING
-BETA_PACKAGE_READY_FOR_USER_TEST=true
-RELEASE_READY=false
+PASS
+7_3_HANDOFF_READY=true
+V3_READY=false
+REAL_DATA_USER_ACCEPTANCE_PENDING=true
+7.4 NOT STARTED
 ```
 
-## Automated Source Gates
+本批没有 production code change，也没有把 synthetic/package acceptance 误写成真实数据最终产品验收完成。
 
-- Python：`PYTHONPATH=src /opt/anaconda3/bin/python3.12 -m unittest discover -s tests -v` — 229 passed, 22 intentionally skipped。
-- Frontend：type-check、lint、Vitest — 37 files，262 passed，1 skipped。
-- Browser preview：`npm --prefix frontend run test:browser:preview` — 22 passed；Word Cloud long-task count 0；main-thread layout calls 0。
-- Rust/Tauri：fmt、check、lib/tests — 73 library tests passed、3 packaged-runtime tests skipped、21 integration tests passed；保留既有 `parse_stdout` dead-code warning。
-- ACL/platform：Tauri ACL digest replay 与 platform-neutrality audit passed。
-- OpenSpec 与 `git diff --check` 在最终提交前复核。
+## 2. Repository Baseline
 
-## Packaged Synthetic Gates
+- initial HEAD：`dd3e4a511b485c8b609f480322b9ecea928d6c97`
+- reference HEAD：`dd3e4a511b485c8b609f480322b9ecea928d6c97`
+- branch：`feat/implement-local-chat-wordcloud-mvp`
+- initial workspace：clean；`git status --short` 无输出
+- initial upstream：`git rev-list --left-right --count HEAD...@{upstream}` → `0 0`
+- recent HEAD commits：`dd3e4a5 fix: align packaged acceptance with v3 navigation`、`5554f7a test: cover Annual compact viewport matrix`、`6d52b4c fix: resolve approved v3.6 findings`
+- privacy boundary command：`git check-ignore -v data/private` → `.gitignore:4:data/private/	data/private`
 
-正式 artifact：
+除该 ignore check 外，本批没有列出、搜索、遍历、打开或读取 `data/private`，没有导入真实 JSON、真实聊天、联系人、关键词或统计。
 
-- `.app`：`build/stage11/macos-arm64/b6-final-acceptance/final-release/Chat History Analysis.app`
-- `.dmg`：`build/stage11/macos-arm64/b6-final-acceptance/final-release/Chat History Analysis Prototype.dmg`
-- manifest：`build/stage11/macos-arm64/b6-final-acceptance/final-release/package-manifest.json`
-- DMG SHA-256：`ba63855d679fd828d13fae6770817cd4fe094f50d61fafab02c927f70637353f`
+## 3. OpenSpec 7.3
 
-manifest 与 clean-install vertical 已验证：arm64 Mach-O、nested-first ad-hoc signature、tamper/错误架构拒绝、bundle-relative sidecar/art/font、`hdiutil verify`、mount/copy/unmount、仓库外隔离 HOME/TMPDIR、网络沙箱下 0 次网络尝试、Finder-equivalent launch、sidecar shutdown/restart，以及临时输出清理。
+7.3 exact wording：
 
-Fixture A 使用三个嵌入式多文件年度源，覆盖 overlap/dedup、Owner/Other、文本/图片/语音/system、活动/会话/回复、词汇和部分范围；Fixture B/C 的 sparse/malformed 约束与公开 fixture 清单保留在 `contracts/b6-fixtures/`，不读取真实聊天数据。
+> 7.3 [Luna Max] Update the final evidence inventory and handoff with exact commands, results, known non-blocking limitations, and an explicit statement that real-data final product acceptance belongs to the user in the local application.
 
-packaged vertical 已完成：
+结果：满足。OpenSpec progress 为 `43/45` → 本批勾选后 `44/45`。
 
-- all-years → Year A → Year B → all-years scope correlation；
-- 七个 Annual scenes；raw/per-10k、Owner/Other/Both、Clean Mode、custom hidden word 和 accessible Word Cloud list；
-- Share Preview vocabulary off/on、真实 AppKit PNG Save/cancel/retry/readback；PNG 为 1200×1500、opaque、无禁用 metadata；
-- Detailed draft 保留到一次 Apply，八条 route 均可达；aggregate JSON 导出读回通过且不泄露 fixture/source path；
-- cancel/retry/reselect、无 stale hidden word/DTO、quit/no orphan、restart/clean state。
+7.4 exact wording（未执行、未勾选）：
 
-## Evidence Reused
+> 7.4 [Sol xHigh — RELEASE STOP GATE] Review the bounded fixes and final evidence, confirm all blockers closed and all functional/privacy authorities preserved, stage only exact approved paths, commit, push, verify clean worktree and upstream `0 0`, then hand control to the user for real-data acceptance.
 
-Alpha/B1–B5 已接受的 canonical event、opaque transport、host lease、PNG chunk/RGBA、word-cloud geometry、privacy、browser-v1 和 B5 native-save/readback 矩阵继续作为受保护基线；B5 rollback 保留在：
+## 4. Final Package Candidate
 
-`build/stage11/macos-arm64/b5-rebuild-4/final-release`
+用户进行 real-data acceptance 的主候选是 **Standard final packaged-offline acceptance package**：
 
-B6 没有重复完整的旧矩阵，也没有修改 Dashboard、word-cloud geometry 或 export authority。B6 仅新增 final packaged integration seams 与导出完成后的状态回读补偿路径，避免 native save 返回后 renderer 恰好错过 `exported` event 时错误显示“已取消”。
+`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260817T070900Z`
 
-## User Manual Gate — 10–20 minutes
+原因是 packaging authority 的无 flag 路径 `python3.12 scripts/package_macos_prototype.py` 先构造仅供 selection smoke 的 adapter app，再构造最终 app；最终 app 以 `--no-default-features --bin chat-history-analysis` 构建，不编译 synthetic-dialog test-only IPC。该 root 的 Standard manifest 记录了 arm64、bundle-relative sidecar、selection/worker/packaged vertical smoke、offline block 和 clean host close 均通过。
 
-此部分必须由用户使用自己的数据完成；Agent 不选择、打开、解析、截图或判断真实聊天内容。
+B5 package 是受保护的 acceptance evidence package，不是主候选：它使用 `--b5-acceptance` 与 `packaged-b5-acceptance` feature，专门证明 protected Share Preview/native AppKit save/cancel/retry/readback。它保留用于 7.4 review 和 Share regression 对照。
 
-1. 从 DMG 复制并启动 `.app`，选择一个年度 JSON；如需 overlap/verification，再选择一份可验证源。
-2. 完成分析后检查 Home → Annual → Detailed；确认日期范围、Owner/Other、空状态和错误提示符合预期。
-3. 在 Annual 中切换 all-years、两个代表年份并恢复 all-years；切换 raw/per-10k、Owner/Other/Both、Clean Mode 和自定义隐藏词，确认显示内容与标签一致。
-4. 打开 Share Preview，分别保持词汇关闭/打开，实际保存一次 PNG，再各测试一次取消和重试；检查 PNG 只包含你选择的摘要内容。
-5. 在 Detailed 编辑日期但先不 Apply，再 Apply；浏览八个 route，并测试一次 aggregate JSON/CSV 导出。
-6. 在分析或导出附近退出并重新启动，确认应用能正常恢复，之后删除你自行生成的测试导出文件。
+## 5. Package Paths
 
-真实数据若出现问题，请记录复现步骤、界面状态和脱敏后的错误码；不要上传聊天正文、原始 JSON、截图或导出文件。完成这份 checklist 后，B6 才可由用户确认进入真实 Beta 使用；在此之前不得将它标记为 Release。
+Standard final candidate：
 
-## Storage and limitations
+- root：`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260817T070900Z`
+- 可交给用户的 copied app：`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260817T070900Z/clean-install/Applications-like/Chat History Analysis.app`
+- DMG 内 staging app：`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260817T070900Z/dmg-staging/Chat History Analysis.app`
+- DMG：`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260817T070900Z/Chat History Analysis Prototype.dmg`
+- manifest：`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260817T070900Z/package-manifest.json`
 
-旧的 `package-20260810T065335Z` 仍按约定保留，需由用户手动删除；Agent 不执行递归或批量删除。完成删除后再由 Agent 做只读 artifact audit。构建缓存和 `target` 不清理。
+B5 protected package：
 
-本包是 ad-hoc prototype，未做 Developer ID、notarization、stapling、Gatekeeper/public distribution 或 Release hardening。productization 12.7/12.8、legacy 13.10/15.10 和 Release 8.5/D.1–D.10 均未被本报告标记完成。
+- root：`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260817T070634Z`
+- copied app：`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260817T070634Z/clean-install/Applications-like/Chat History Analysis.app`
+- DMG：`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260817T070634Z/Chat History Analysis Prototype.dmg`
+- manifest：`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260817T070634Z/package-manifest.json`
+
+两个 root、manifest、DMG、staging app 和 clean-install app 均已在本批确认仍存在。manifest 的 `app.relativePath` 是 package/staging 内部 bundle name，不代表 root 顶层必须另有一个 `.app`。
+
+## 6. Package Integrity
+
+两份 manifest 都记录：macOS arm64、minimum macOS `11.0`、bundle identifier `com.chathistoryanalysis.desktop`、version `0.1.0`、bundleVersion `1`、60 个 arm64 Mach-O member、bundle-relative sidecar、DMG `verified=true`、`mountedCopiedUnmounted=true`、tampered member rejected、wrong-architecture member rejected。
+
+| Package | manifest app SHA-256 | manifest executable SHA-256 | manifest DMG SHA-256 | independent verification |
+| --- | --- | --- | --- | --- |
+| B5 | `97e820fb686b3d717801002c78bd4d9ae08fe794a3143b2b0d5112c66b4b5c65` | `1a939958b0f9666bc36df3f40692bd32ad7ae5c7899f5bd3800eefaa13dabc76` | `b2523592d6b5f7d0c9807c64e7b294f49963ed015f65e1e82513f4f6924fea5f` | app tree, executable and DMG all equal |
+| Standard | `716e5d4f24d732691fc69b161f83d468ce8d362e78d6ca929609be512c14da9e` | `7f12c6b23404c24258089a7b8d3ad2d4d6e26e7b9175028d38fdfacd285fc9c3` | `015d1e19e178b2b29847024e8d3906d9b07a40ca25bed91be58f8e700a7adee0` | app tree, executable and DMG all equal |
+
+`RE-RUN IN 7.3` commands/results：
+
+- `jq . <package>/package-manifest.json`：两份 manifest 均可解析。
+- `shasum -a 256 <B5 DMG> <Standard DMG>`：分别得到上表 DMG hash。
+- 独立重算 app tree hash（按 manifest 的 relative-path + NUL + file bytes 规则）与 executable hash：两份 app hash、byte count、executable hash 均与 manifest 一致。
+- `codesign --verify --deep --strict --verbose=1 <copied .app>`：B5、Standard 均 `valid on disk` / `satisfies their Designated Requirement`。
+- `hdiutil verify <B5 DMG>`、`hdiutil verify <Standard DMG>`：两者均 `VALID`。
+- `file -b <copied .app>/Contents/MacOS/chat-history-analysis`：两者均 `Mach-O 64-bit executable arm64`。
+
+## 7. Package Sizes
+
+| Package | app bytes (manifest) | copied app `du -sk` | DMG bytes | package root `du -sk` |
+| --- | ---: | ---: | ---: | ---: |
+| B5 | `38,062,089` | `37,312 KiB` | `16,613,964` | `229,736 KiB` |
+| Standard | `37,995,897` | `37,248 KiB` | `16,593,722` | `1,394,656 KiB` |
+
+Standard root 较大主要因为保留了 `selection-smoke-target` 的构建产物；这是当前 successful package inventory 的一部分，本批不删除。
+
+## 8. B5 Protected Package
+
+B5 用途：protected B5 Share Preview acceptance，包括 vocabulary off/on、Canvas/PNG RGBA parity、native `NSSavePanel` save/cancel、overwrite retry、offline sandbox、bundle-relative artwork、quit/restart 和 temporary PNG cleanup。
+
+- root：`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260817T070634Z`
+- DMG SHA-256：`b2523592d6b5f7d0c9807c64e7b294f49963ed015f65e1e82513f4f6924fea5f`
+- app SHA-256：`97e820fb686b3d717801002c78bd4d9ae08fe794a3143b2b0d5112c66b4b5c65`
+- manifest 的 B5 synthetic evidence：`sharePreview=passed`、`vocabularyOff=passed`、`vocabularyOn=passed`、native AppKit save/cancel/retry 均标记 `actual-packaged-AppKit`、`networkAttempts=0`、`temporaryPngCleanup=passed`。
+
+它与 Standard 的区别是 acceptance feature surface，而不是用户功能语义；B5 的 test-only capability 只为该 synthetic packaged smoke 编译，不能替代最终用户 app。
+
+## 9. F-01 Closure Evidence
+
+`REUSED FROM COMPLETED 7.2 ACCEPTANCE`，证据文件：`frontend/tests/browser/beta-v36-remediation.spec.ts`，并由 7.3 重读测试代码与 commit `6d52b4c`/`5554f7a` 确认。
+
+- Annual effective-width authority：`container-type:inline-size`、`container-name:annual-workspace`；无 JS layout measurement。
+- true `760×900` + `documentElement.zoom=2`：Opening PASS、Rhythm PASS、Vocabulary PASS、Closing PASS。
+- true zoom 下 Rhythm Weekday/Hour、Vocabulary Frequent/Keywords/Cloud、Closing copy/art 均按 Narrow flow；控件/CTA 至少 44px；无 page overflow。
+- normal `1180×760`、`760×900`、`380×900` smoke：PASS。
+- no Worker authority change、no Canvas geometry change、no Share authority change。
+
+## 10. F-02 Closure Evidence
+
+`REUSED FROM COMPLETED 7.2 ACCEPTANCE`，证据文件：`frontend/tests/browser/beta-v36-remediation.spec.ts`。
+
+All → draft `2025` → route switch → return → draft persists → Apply → committed `2025`，PASS。Committed context 在 explicit Apply 前保持 All，Apply 后才更新；没有 implicit Apply，也没有 query/analytics semantics change。
+
+## 11. F-03 Closure Evidence
+
+`REUSED FROM COMPLETED 7.2 ACCEPTANCE`，实现和单元证据：`frontend/src/presentation/analytics-error-classifier.ts`、`frontend/tests/analytics-error-classification.test.ts`。
+
+classification contract：
+
+- cancellation：`WorkerClientCancelledError`
+- known Worker/recoverable failure：`WorkerClientError`
+- known analytics contract failure：`INVALID_RESULT`、`INVALID_REPLY_SESSION_RESULT`
+- unexpected error：保留 diagnostics，并在既有 `updateAnalyticsFilters` catch boundary cleanup 后 rethrow
+
+测试覆盖每类、cleanup ordering 和 unexpected programmer error rethrow，PASS。
+
+## 12. Home Evidence
+
+`REUSED FROM COMPLETED 7.2 ACCEPTANCE`，证据文件：`frontend/tests/browser/beta-v35-cross-product.spec.ts`、`frontend/tests/browser/beta-shell.spec.ts` 与 Standard packaged selection smoke。
+
+Synthetic completed dataset 下 Home ready、Annual CTA、Detailed CTA、reselect、focus transfer、responsive composition、true zoom/Narrow entry 均 PASS。稳定 test locator 是 `data-testid="beta-home-annual-report"`；它只服务于 presentation-neutral smoke 定位，visible wording 和行为未改变。
+
+## 13. Annual Evidence
+
+`REUSED FROM COMPLETED 7.2 ACCEPTANCE`。Opening、Scale、Rhythm、Balance、Conversation、Vocabulary、Closing 七场顺序、logical anchors、exact alternatives、sparse/partial state、responsive composition 和 reduced-motion final state 均 PASS。
+
+重点 closure：Opening provenance/range、Scale message total + active days/streak、Rhythm month/weekday/hour、Balance Owner/Other + length/type、Conversation session/reply、Vocabulary frequent/keywords/cloud、Closing poster/Share/Detailed CTA。F-01 true zoom fix 已关闭；没有重新定义视觉历史，也没有改变事实或 authority。
+
+## 14. Detailed Evidence
+
+`REUSED FROM COMPLETED 7.2 ACCEPTANCE`。8 routes 均 PASS：Overview、Trends、Comparison、Activity、Words & Years、Message Types、Replies & Sessions、Export。
+
+覆盖：Draft/Apply、year、session threshold、known error resilience、route switching、representative charts/tables、responsive collapse、200% equivalent viewport、labelled local table scroll、keyboard route semantics 和 exact alternatives。
+
+## 15. Share Protected Evidence
+
+Browser Share acceptance：**PASS**，证据文件：`frontend/tests/browser/beta-share-preview.spec.ts`。
+
+Packaged B5 Share acceptance：**PASS**，证据为 B5 `package-manifest.json` 的 `cleanUserSynthetic` 和 `previewRenderEvidence`。
+
+两层 evidence 覆盖：ready、Vocabulary opt-in/off/on、hidden-word/clean state、cancel、retry、native save、RGBA/PNG decode、opaque output、forbidden PNG chunks absent、focus entry/return、offline sandbox。B5 manifest 记录 PNG `1200×1500`、`opaque=true`、actual packaged AppKit save/cancel/retry；Canvas/PNG/native save authority 未被 V3.6 或 7.3 改写。
+
+## 16. Worker / Canvas Evidence
+
+`REUSED FROM COMPLETED 7.2 ACCEPTANCE`，证据文件：`frontend/tests/word-cloud-layout-diagnostics.test.ts`、`frontend/tests/word-cloud-layout.test.ts`、`frontend/tests/word-cloud-layout-integration.test.ts`、`frontend/tests/browser/beta-word-cloud.spec.ts`、`frontend/tests/browser/v3-geometry.spec.ts`。
+
+- determinism：synthetic layout request 的 seed/rank/order 与 repeated layout 结果稳定。
+- authority：Word Cloud placement 在 Worker；Canvas 只负责已放置 geometry 的 presentation/draw。
+- stale fencing：新 digest/取消/隐藏 document/unmount/input 会取消或丢弃旧 presentation，不提交 stale result。
+- `mainThreadLayoutCalls=0`：PASS。
+- long tasks：7.2 browser preview evidence 记录 Word Cloud long-task count `0`；diagnostic inventory 的 `longTasks=[]`。
+- Canvas accessible alternative：Canvas `aria-hidden`，完整 ranked list 保留 token/rank/count/rate/role/year evidence。
+
+## 17. Responsive / True 200%
+
+固定 synthetic matrix：`1440×900`、`1180×760`、`760×900`、`380×900`，以及 200% equivalent/Narrow。各目标 viewport 的 Home、Annual 七场、Vocabulary states、Detailed routes、Share smoke 均有 7.2 PASS evidence；page-level overflow、covered heading、clipped focus、two-dimensional page scroll 均未成为 blocker。
+
+F-01 的真实 `760×900` + `documentElement.zoom=2` 是额外 closure，已在第 9 节记录；true zoom blocker 已关闭。
+
+## 18. Accessibility
+
+`REUSED FROM COMPLETED 7.2 ACCEPTANCE`：
+
+- semantic structure：headings、landmarks、nav、fieldsets、labels、figures、tables、details/disclosures；
+- keyboard：Home → Annual → Detailed、dock/chapter、native selects、Vocabulary controls、Share dialog、8 route tabs；
+- focus：`:focus-visible`、dialog/disclosure focus return、anchor clears dock；
+- 200% zoom/reflow：Narrow controls and CTAs remain reachable and at least 44px where required；
+- reduced motion：same final semantic state, geometry and focus without animation；
+- chart alternatives：exact ordered list/table/definition remains available；
+- Canvas list：Canvas is decorative/presentation-only, ranked alternative is complete；
+- Detailed tables：only labelled local scroll regions may scroll horizontally；
+- role/selection/status/peak/partial meaning is not color-only；
+- F-01 true zoom blocker：closed。
+
+## 19. Offline Evidence
+
+- Browser offline evidence：`REUSED FROM COMPLETED 7.2 ACCEPTANCE`；dev/preview runner 的 non-loopback HTTP(S)/WebSocket block and no-remote-request assertions PASS。
+- Packaged B5 network sandbox：manifest `networkBlocked=passed`、`networkAttempts=0`；B5 uses `deny network*` and still passes Share/PNG smoke。
+- Standard packaged network-block smoke：manifest `networkBlocked=passed`、`privacy.networkDependency=false`；Standard manifest 没有记录 numeric `networkAttempts`，本报告不把它伪写成 `0`。
+
+## 20. Backend/Core Evidence
+
+除第 20 节最后一行外，均为 `REUSED FROM COMPLETED 7.2 ACCEPTANCE`，没有在 7.3 重跑完整 backend suite。
+
+| Area | Exact command | Result |
+| --- | --- | --- |
+| Python repository standard | `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3.12 -m unittest discover -s tests -v` | `208 passed, 22 skipped` |
+| Rust format | `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check` | PASS |
+| Rust library/integration | `cargo test --manifest-path src-tauri/Cargo.toml --locked --lib --tests` | `73 library passed, 21 integration passed, 3 ignored` |
+| Stage11 focused source contract | `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3.12 -m unittest tests.test_stage11_productization -v` | **RE-RUN IN 7.3：9 passed** |
+
+Python invocation 使用 repository-standard `python3.12 -m unittest discover`，没有把裸 Python collection error 作为推荐命令。Rust ignored tests 是 packaged AppKit runtime boundary，不是本批新失败。
+
+## 21. Frontend Evidence
+
+均为 `REUSED FROM COMPLETED 7.2 ACCEPTANCE`；7.3 未重复全套 frontend/browser suite。
+
+| Area | Exact command | Result |
+| --- | --- | --- |
+| Type-check | `npm --prefix frontend run type-check` | PASS |
+| Lint | `npm --prefix frontend run lint` | PASS |
+| Unit | `npm --prefix frontend run test` | `289 passed, 1 skipped` |
+| Browser dev | `npm --prefix frontend run test:browser:dev` | `52 passed` |
+| Browser preview | `npm --prefix frontend run test:browser:preview` | `52 passed` |
+
+Focused F-01/F-02 browser evidence is in `beta-v36-remediation.spec.ts`; F-03 unit evidence is in `analytics-error-classification.test.ts`; Word Cloud/geometry/Share evidence paths are listed above. Screenshot and geometry files are generated acceptance artifacts rather than newly tracked source files; 7.3 inventories the completed 7.2 evidence and does not fabricate a fresh screenshot run.
+
+## 22. Synthetic IPC / Test-Only Boundary
+
+本批实际读取了 `src-tauri/src/ipc.rs`、`src-tauri/src/lib.rs`、`src-tauri/Cargo.toml`、HEAD diff 以及 `scripts/package_macos_prototype.py`。
+
+- `ipc.rs` 的 `record_selection_smoke`、`record_selection_smoke_checkpoint`、`record_selection_smoke_host_state`、`record_b5_render_evidence` 均标记 `#[cfg(feature = "synthetic-dialog-adapter")]`；checkpoint 是固定 allowlist，render evidence 只接受固定 dimensions/size/digest，不接受 renderer path/content。
+- `lib.rs` 的 injected packaged smoke script 与 synthetic command registration 同样受 `synthetic-dialog-adapter` feature gate 约束。
+- `Cargo.toml` 定义 `packaged-b5-acceptance = ["synthetic-dialog-adapter"]`、`packaged-b6-acceptance = ["synthetic-dialog-adapter"]`；production/default app 的 invoke handler 走 `#[cfg(not(feature = "synthetic-dialog-adapter"))]` 分支。
+- Standard final app 的 packaging command 以 `--no-default-features --bin chat-history-analysis` 构建；selection smoke adapter 是单独的 temporary build target，不是最终 user app。
+- B5 需要该 feature 是因为 packaged Share acceptance 必须在 synthetic app 内记录固定 checkpoints、render digest 和 native save evidence；这不扩大 production security/privacy authority。
+
+结论：synthetic capability gating、production/default exposure judgment 和 packaged need 均可由当前 code/script 证明；没有新增 blocker，也不需要因“无法解释”添加额外 7.4 debt。7.4 仍应按其 stop-gate scope 复核这项敏感 evidence。
+
+## 23. Packaging Harness Changes
+
+HEAD 的 packaging harness 变化已实际读取，目的如下：
+
+- stable Home selector：`BetaHome.tsx` 的 `data-testid="beta-home-annual-report"`，Rust smoke 使用该 presentation-neutral selector，避免依赖可见文案；visible wording/behavior unchanged；
+- `ApplePersistenceIgnoreState`：统一 Finder-equivalent、B5、B6、Standard smoke 的 launch arguments，避免 macOS persisted UI state 影响 synthetic acceptance；
+- failure diagnostics：packaged B5/Standard smoke 将 stdout/stderr 收集到明确 root，失败后移除已知临时日志；
+- manifest hashes：增加 app tree SHA-256、main executable SHA-256/bytes、DMG SHA-256/bytes，便于后续 handoff/integrity review。
+
+这些变化没有弱化 B5 Share acceptance、selection smoke 或 offline sandbox；B5 仍执行 actual packaged AppKit save/cancel/retry 和 `deny network*`，Standard 仍执行 packaged selection/worker smoke。
+
+## 24. Privacy
+
+所有 Agent acceptance、browser fixture、package smoke、manifest evidence 和本报告均为 **synthetic-only**。
+
+- Agent 没有读取真实数据。
+- Agent 没有选择、打开、解析、截图、复制、分析或保存真实聊天内容。
+- Agent 没有使用真实联系人、真实关键词、真实统计或真实 source path。
+- 真实数据最终产品验收必须由用户本人在本地 packaged application 中执行。
+- `REAL_DATA_USER_ACCEPTANCE_PENDING=true`；不得把它改为 synthetic completion 的副作用。
+
+## 25. Known Non-Blocking Limitations
+
+仅列当前 HEAD 和 7.1 frozen scope 中仍真实存在的项目：
+
+- Vocabulary zero-state duplicate copy；
+- Sparse Trends；
+- Detailed 380 density；
+- existing `>500k` frontend bundle warning；
+- release signing/notarization 尚未完成。
+
+这些不是本批新 blocker，也没有在 7.3 自行修复或扩大 scope。
+
+## 26. Release Boundary
+
+当前 artifact 是 **Beta/local user acceptance candidate**，不是 public release artifact。
+
+manifest truth：`signing.mode=ad-hoc`、`developerId=false`、`notarized=false`、`stapled=false`；generated Tauri config 的 `hardenedRuntime=false`，minimum macOS `11.0`。因此本报告不使用 production-signed、Apple notarized、release-ready、public distribution 等表述。
+
+本批未启动 notarization、Developer ID、updater、Windows、release distribution 或 7.4。
+
+## 27. User Real-Data Acceptance Checklist
+
+以下步骤只由用户本人执行，Agent 不读取结果、不截图、不分析、不复制、不保存真实内容，也不要求用户把真实数据发给 Agent：
+
+1. 安装/打开第 28 节的 Standard final candidate app。
+2. 在本地 app 内手动选择真实聊天 JSON。
+3. 确认 Home 正常进入 ready。
+4. 打开 Annual。
+5. 检查 Opening、Rhythm、Vocabulary、Closing。
+6. 视需要切换 year、role；测试 Clean Mode 和 hidden words。
+7. 打开 Detailed。
+8. 检查 route switching、year Draft/Apply、threshold、representative charts。
+9. 打开 Share Preview。
+10. 测试 Vocabulary opt-in，以及 PNG save/cancel。
+11. 确认无明显空白、无错位、无 crash，且数据范围正确。
+
+发现问题时只保留用户自己的本地复现信息和脱敏错误码；不要上传聊天正文、原始 JSON、截图或导出文件。
+
+## 28. User Package Instructions
+
+主候选 DMG：
+
+`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260817T070900Z/Chat History Analysis Prototype.dmg`
+
+SHA-256：
+
+`015d1e19e178b2b29847024e8d3906d9b07a40ca25bed91be58f8e700a7adee0`
+
+使用步骤：
+
+1. 双击或 mount DMG。
+2. 将 `Chat History Analysis.app` copy/open 到本地 Applications-like 目录。
+3. 如 macOS 对 ad-hoc prototype 显示 unverified developer/Gatekeeper 提示，按本地 Finder 的 Open/Privacy & Security 流程确认；这不代表 notarization。
+4. 打开 app，在 app 内手动 select 文件并按第 27 节执行真实数据验收。
+
+没有 Developer ID/notarization 承诺；用户不需要也不应把真实文件交给 Agent。
+
+## 29. Storage / Cleanup Notes
+
+本批没有删除任何文件或目录。
+
+必须保留：
+
+- 当前 successful B5 root：`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260817T070634Z`；
+- 当前 Standard candidate root：`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260817T070900Z`；
+- protected historical B5：`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/b5-rebuild-4/final-release`；
+- protected historical B6：`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/b6-final-acceptance/final-release`。
+
+真实数据验收完成后，`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260810T065335Z` 可由用户决定是否成为 cleanup candidate；本批不执行删除。当前 Standard root 内的 selection-smoke-target 也不在 7.3 删除。
+
+## 30. Evidence / Handoff Files
+
+本批实际修改的既有 handoff/evidence 文件：
+
+- `docs/BETA_FINAL_ACCEPTANCE.md`：更新为 V3 7.3 final evidence inventory + user handoff。
+- `openspec/changes/beta-visual-experience-v3-deep-redesign/tasks.md`：只勾 7.3。
+
+本批只读核对的 evidence/artifact source 包括两个 current package manifests、两个 current package roots、protected B5/B6 roots、`scripts/package_macos_prototype.py`、`src-tauri/src/ipc.rs`、`src-tauri/src/lib.rs`、F-01/F-02/F-03 tests、browser/Word Cloud/geometry tests 和既有 B6 acceptance record；没有修改 `.app`、`.dmg`、screenshots、traces 或 build roots。
+
+## 31. Validation
+
+7.3 完成后执行并记录：
+
+- `openspec validate beta-visual-experience-v3-deep-redesign --strict` → PASS；
+- `openspec validate --all --strict` → PASS；
+- `git diff --check` → PASS；
+- focused Stage11 Python command → 9 passed；
+- package hash/signature/DMG checks → PASS。
+
+因为 7.3 只有文档与 task checkbox 变化，没有重跑完整 product suite 或重新 package。
+
+## 32. Changed Files
+
+本批精确修改路径：
+
+- `/Users/chestnut/Projects/ChatHisotryAnalysis/docs/BETA_FINAL_ACCEPTANCE.md`
+- `/Users/chestnut/Projects/ChatHisotryAnalysis/openspec/changes/beta-visual-experience-v3-deep-redesign/tasks.md`
+
+不得 stage `.app`、`.dmg`、screenshots、traces、build root。
+
+## 33. OpenSpec
+
+- 7.3：before unchecked → after checked；
+- progress：`43/45` → `44/45`；
+- 7.4：before unchecked → after unchanged unchecked；
+- V3 readiness：仍 `V3_READY=false`；真实数据状态仍 `REAL_DATA_USER_ACCEPTANCE_PENDING=true`。
+
+## 34. Commit / Push
+
+本节在验证通过后由 7.3 执行：
+
+- exact staging：只 stage 上述两个路径；
+- commit message：`docs: finalize v3 acceptance evidence`；
+- push target：`origin/feat/implement-local-chat-wordcloud-mvp`；
+- commit hash 与 push result 记录在最终 handoff/final report。
+
+## 35. Final Git State
+
+预期并在 commit/push 后复核：
+
+- HEAD：7.3 docs commit；
+- workspace：clean；
+- `git rev-list --left-right --count HEAD...@{upstream}`：`0 0`；
+- branch：`feat/implement-local-chat-wordcloud-mvp`。
+
+## 36. Next Step
+
+若本报告的 validation、commit、push 和 final Git state 全部 PASS，下一授权步骤是：
+
+**7.4 — RELEASE STOP GATE**
+**Model: Sol xHigh**
+
+7.4 未在本批开始。完成 handoff 后停止，等待 7.4 reviewer；真实数据验收仍由用户本人执行。
