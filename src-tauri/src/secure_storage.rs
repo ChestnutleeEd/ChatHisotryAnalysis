@@ -229,6 +229,7 @@ impl SecureStorage {
         let root = root.into();
         validate_initial_path(&root)?;
         let descriptor = open_root_descriptor(&root, true)?;
+        prepare_root_descriptor(&descriptor)?;
         Self::from_root_descriptor(root, descriptor)
     }
 
@@ -1414,6 +1415,36 @@ fn validate_directory_fd(fd: &OwnedFd) -> Result<(), StorageErrorCode> {
 }
 
 #[cfg(unix)]
+fn prepare_root_descriptor(fd: &OwnedFd) -> Result<(), StorageError> {
+    let stat = stat_fd(fd).map_err(StorageError::new)?;
+    if !is_directory_stat(&stat) {
+        return Err(StorageError::new(StorageErrorCode::TypeMismatch));
+    }
+    let uid = unsafe { libc::geteuid() } as libc::uid_t;
+    if stat.st_uid != uid {
+        return Err(StorageError::new(StorageErrorCode::OwnerMismatch));
+    }
+    // A pre-existing macOS app-cache directory is commonly 0755. It is safe
+    // to narrow that owner-owned, non-writable-by-others directory in place;
+    // a group/world-writable root is rejected before any mutation.
+    if stat.st_mode & 0o022 != 0 {
+        return Err(StorageError::new(StorageErrorCode::ModeMismatch));
+    }
+    if stat.st_nlink == 0 {
+        return Err(StorageError::new(StorageErrorCode::LinkCountChanged));
+    }
+    if stat.st_mode & 0o777 != 0o700 && unsafe { libc::fchmod(fd.as_raw_fd(), 0o700) } != 0 {
+        return Err(map_open_error(io::Error::last_os_error(), true));
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn prepare_root_descriptor(_fd: &OwnedFd) -> Result<(), StorageError> {
+    Ok(())
+}
+
+#[cfg(unix)]
 fn validate_destination_directory_fd(fd: &OwnedFd) -> Result<(), StorageErrorCode> {
     let stat = stat_fd(fd)?;
     if !is_directory_stat(&stat) {
@@ -1951,6 +1982,31 @@ mod tests {
         );
         assert_eq!(fs::read(&outside).unwrap(), b"preserve");
         fs::remove_file(outside).unwrap();
+        fs::remove_dir(sessions).unwrap();
+        fs::remove_dir(root).unwrap();
+    }
+
+    #[test]
+    fn new_or_create_repairs_a_preexisting_nonwritable_cache_root() {
+        let (root, sessions, _) = fixture();
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o777)).unwrap();
+        assert_eq!(
+            SecureStorage::new_or_create(&root).unwrap_err().code,
+            StorageErrorCode::ModeMismatch
+        );
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let storage = SecureStorage::new_or_create(&root).unwrap();
+        assert_eq!(
+            fs::metadata(&root).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        assert_eq!(
+            fs::metadata(&sessions).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        drop(storage);
+
         fs::remove_dir(sessions).unwrap();
         fs::remove_dir(root).unwrap();
     }
