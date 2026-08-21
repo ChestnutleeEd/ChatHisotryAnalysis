@@ -1,8 +1,8 @@
-# V3 Final Synthetic Evidence Inventory + User Handoff (7.3)
+# V3 Final Synthetic Evidence Inventory + Standard Candidate Regeneration Handoff
 
 模型：Luna Max
-日期：2026-08-17
-范围：Beta Visual Experience V3 的最终 synthetic/package evidence inventory 与 user handoff preparation。7.3 不做 implementation、remediation、packaging rebuild 或 7.4 release stop gate。
+日期：2026-08-21
+范围：Beta Visual Experience V3 的最终 synthetic/package evidence inventory 与 user handoff preparation，并记录确认 startup crash 修复后的 Standard packaged user candidate regeneration。本批不做 implementation、remediation、OpenSpec 变更或 7.4 release stop gate。
 
 Freshness 约定：`RE-RUN IN 7.3` 只表示本批实际重新执行；`REUSED FROM COMPLETED 7.2 ACCEPTANCE` 表示沿用已完成 7.2 的有效 synthetic evidence，本批没有为了写报告重复整套重型 suite。
 
@@ -11,21 +11,23 @@ Freshness 约定：`RE-RUN IN 7.3` 只表示本批实际重新执行；`REUSED F
 ```text
 PASS
 7_3_HANDOFF_READY=true
+STANDARD_CANDIDATE_REGENERATED=true
+PREVIOUS_STANDARD_CANDIDATE_OBSOLETE=true
 V3_READY=false
 REAL_DATA_USER_ACCEPTANCE_PENDING=true
 7.4 NOT STARTED
 ```
 
-本批没有 production code change，也没有把 synthetic/package acceptance 误写成真实数据最终产品验收完成。
+本批没有 frontend/product behavior change，也没有把 synthetic/package acceptance 误写成真实数据最终产品验收完成。Packaging flow 只刷新了与当前 source revision 绑定的 sidecar trust anchor，并生成新的 Standard artifact。
 
 ## 2. Repository Baseline
 
-- initial HEAD：`dd3e4a511b485c8b609f480322b9ecea928d6c97`
-- reference HEAD：`dd3e4a511b485c8b609f480322b9ecea928d6c97`
+- initial HEAD：`789c384bc16e5cfe96756803c27d0999c919fed2`
+- reference HEAD：`789c384bc16e5cfe96756803c27d0999c919fed2`
 - branch：`feat/implement-local-chat-wordcloud-mvp`
 - initial workspace：clean；`git status --short` 无输出
-- initial upstream：`git rev-list --left-right --count HEAD...@{upstream}` → `0 0`
-- recent HEAD commits：`dd3e4a5 fix: align packaged acceptance with v3 navigation`、`5554f7a test: cover Annual compact viewport matrix`、`6d52b4c fix: resolve approved v3.6 findings`
+- initial upstream：`git rev-list --left-right --count HEAD...@{upstream}` → `1 0`
+- recent HEAD commits：`789c384 fix: repair pre-existing macOS cache permissions`、`fb79b07 docs: pass v3 release stop gate`、`8033f18 docs: finalize v3 acceptance evidence`
 - privacy boundary command：`git check-ignore -v data/private` → `.gitignore:4:data/private/	data/private`
 
 除该 ignore check 外，本批没有列出、搜索、遍历、打开或读取 `data/private`，没有导入真实 JSON、真实聊天、联系人、关键词或统计。
@@ -46,9 +48,9 @@ REAL_DATA_USER_ACCEPTANCE_PENDING=true
 
 用户进行 real-data acceptance 的主候选是 **Standard final packaged-offline acceptance package**：
 
-`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260817T070900Z`
+`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260821T070254Z`
 
-原因是 packaging authority 的无 flag 路径 `python3.12 scripts/package_macos_prototype.py` 先构造仅供 selection smoke 的 adapter app，再构造最终 app；最终 app 以 `--no-default-features --bin chat-history-analysis` 构建，不编译 synthetic-dialog test-only IPC。该 root 的 Standard manifest 记录了 arm64、bundle-relative sidecar、selection/worker/packaged vertical smoke、offline block 和 clean host close 均通过。
+原因是 packaging authority 的 Standard 路径最终 app 以 `--no-default-features --bin chat-history-analysis` 构建，不编译 synthetic-dialog test-only IPC，也不使用 B5 feature。正常 harness 的 adapter 只位于独立的 ignored selection-smoke target，不会进入 Standard app 或 DMG。该 root 的 Standard manifest 记录了 arm64、bundle-relative sidecar、selection/worker/packaged vertical smoke、offline block 和 clean host close 均通过；本批另行执行了 DMG fresh-copy、正常关闭/重启和 0755 cache-root repair regression。
 
 B5 package 是受保护的 acceptance evidence package，不是主候选：它使用 `--b5-acceptance` 与 `packaged-b5-acceptance` feature，专门证明 protected Share Preview/native AppKit save/cancel/retry/readback。它保留用于 7.4 review 和 Share regression 对照。
 
@@ -56,11 +58,12 @@ B5 package 是受保护的 acceptance evidence package，不是主候选：它�
 
 Standard final candidate：
 
-- root：`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260817T070900Z`
-- 可交给用户的 copied app：`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260817T070900Z/clean-install/Applications-like/Chat History Analysis.app`
-- DMG 内 staging app：`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260817T070900Z/dmg-staging/Chat History Analysis.app`
-- DMG：`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260817T070900Z/Chat History Analysis Prototype.dmg`
-- manifest：`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260817T070900Z/package-manifest.json`
+- root：`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260821T070254Z`
+- 可交给用户的 copied app：`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260821T070254Z/clean-install/Applications-like/Chat History Analysis.app`
+- fresh-install regression copy：`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260821T070254Z/startup-regression/fresh-install/Applications-like/Chat History Analysis.app`
+- DMG 内 staging app：`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260821T070254Z/dmg-staging/Chat History Analysis.app`
+- DMG：`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260821T070254Z/Chat History Analysis Prototype.dmg`
+- manifest：`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260821T070254Z/package-manifest.json`
 
 B5 protected package：
 
@@ -78,9 +81,9 @@ B5 protected package：
 | Package | manifest app SHA-256 | manifest executable SHA-256 | manifest DMG SHA-256 | independent verification |
 | --- | --- | --- | --- | --- |
 | B5 | `97e820fb686b3d717801002c78bd4d9ae08fe794a3143b2b0d5112c66b4b5c65` | `1a939958b0f9666bc36df3f40692bd32ad7ae5c7899f5bd3800eefaa13dabc76` | `b2523592d6b5f7d0c9807c64e7b294f49963ed015f65e1e82513f4f6924fea5f` | app tree, executable and DMG all equal |
-| Standard | `716e5d4f24d732691fc69b161f83d468ce8d362e78d6ca929609be512c14da9e` | `7f12c6b23404c24258089a7b8d3ad2d4d6e26e7b9175028d38fdfacd285fc9c3` | `015d1e19e178b2b29847024e8d3906d9b07a40ca25bed91be58f8e700a7adee0` | app tree, executable and DMG all equal |
+| Standard (new candidate) | `790be9015e22d7361dec11f1f60b3ea0e4dc399a707796af37fcfb46678147b8` | `183b0b53d476b2e5f10eec4f2af571c52597e2fb0192694393e4d94fbdbfae94` | `5e29d2c3d14e5453f93e36c3b2dcbeb06524244eb9db56603cf06e1be8344512` | app tree, executable and DMG all equal |
 
-`RE-RUN IN 7.3` commands/results：
+`RE-RUN IN FINAL STANDARD REGENERATION` commands/results：
 
 - `jq . <package>/package-manifest.json`：两份 manifest 均可解析。
 - `shasum -a 256 <B5 DMG> <Standard DMG>`：分别得到上表 DMG hash。
@@ -94,7 +97,7 @@ B5 protected package：
 | Package | app bytes (manifest) | copied app `du -sk` | DMG bytes | package root `du -sk` |
 | --- | ---: | ---: | ---: | ---: |
 | B5 | `38,062,089` | `37,312 KiB` | `16,613,964` | `229,736 KiB` |
-| Standard | `37,995,897` | `37,248 KiB` | `16,593,722` | `1,394,656 KiB` |
+| Standard (new candidate) | `37,995,945` | `37,248 KiB` | `16,594,769` | `1,432,564 KiB` |
 
 Standard root 较大主要因为保留了 `selection-smoke-target` 的构建产物；这是当前 successful package inventory 的一部分，本批不删除。
 
@@ -286,7 +289,7 @@ manifest truth：`signing.mode=ad-hoc`、`developerId=false`、`notarized=false`
 
 以下步骤只由用户本人执行，Agent 不读取结果、不截图、不分析、不复制、不保存真实内容，也不要求用户把真实数据发给 Agent：
 
-1. 安装/打开第 28 节的 Standard final candidate app。
+1. 安装/打开第 28 节的 new Standard user candidate app。
 2. 在本地 app 内手动选择真实聊天 JSON。
 3. 确认 Home 正常进入 ready。
 4. 打开 Annual。
@@ -304,18 +307,18 @@ manifest truth：`signing.mode=ad-hoc`、`developerId=false`、`notarized=false`
 
 主候选 DMG：
 
-`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260817T070900Z/Chat History Analysis Prototype.dmg`
+`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260821T070254Z/Chat History Analysis Prototype.dmg`
 
 SHA-256：
 
-`015d1e19e178b2b29847024e8d3906d9b07a40ca25bed91be58f8e700a7adee0`
+`5e29d2c3d14e5453f93e36c3b2dcbeb06524244eb9db56603cf06e1be8344512`
 
 使用步骤：
 
 1. 双击或 mount DMG。
 2. 将 `Chat History Analysis.app` copy/open 到本地 Applications-like 目录。
 3. 如 macOS 对 ad-hoc prototype 显示 unverified developer/Gatekeeper 提示，按本地 Finder 的 Open/Privacy & Security 流程确认；这不代表 notarization。
-4. 打开 app，在 app 内手动 select 文件并按第 27 节执行真实数据验收。
+4. 打开 app，在 app 内手动 select 文件并按第 27 节执行真实数据验收。该真实数据验收仍由用户手动执行。
 
 没有 Developer ID/notarization 承诺；用户不需要也不应把真实文件交给 Agent。
 
@@ -326,7 +329,8 @@ SHA-256：
 必须保留：
 
 - 当前 successful B5 root：`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260817T070634Z`；
-- 当前 Standard candidate root：`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260817T070900Z`；
+- 当前 Standard candidate root：`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260821T070254Z`；
+- 本批 startup regression evidence：`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/package-20260821T070254Z/startup-regression`；
 - protected historical B5：`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/b5-rebuild-4/final-release`；
 - protected historical B6：`/Users/chestnut/Projects/ChatHisotryAnalysis/build/stage11/macos-arm64/b6-final-acceptance/final-release`。
 
@@ -334,38 +338,39 @@ SHA-256：
 
 ## 30. Evidence / Handoff Files
 
-本批实际修改的既有 handoff/evidence 文件：
+本批实际修改的 handoff/evidence 与 packaging-integrity 文件：
 
 - `docs/BETA_FINAL_ACCEPTANCE.md`：更新为 V3 7.3 final evidence inventory + user handoff。
-- `openspec/changes/beta-visual-experience-v3-deep-redesign/tasks.md`：只勾 7.3。
+- `src-tauri/resources/sidecar-trust-anchor.json`：由锁定 packaging flow 刷新为当前 source revision 的 sidecar trust anchor。
 
-本批只读核对的 evidence/artifact source 包括两个 current package manifests、两个 current package roots、protected B5/B6 roots、`scripts/package_macos_prototype.py`、`src-tauri/src/ipc.rs`、`src-tauri/src/lib.rs`、F-01/F-02/F-03 tests、browser/Word Cloud/geometry tests 和既有 B6 acceptance record；没有修改 `.app`、`.dmg`、screenshots、traces 或 build roots。
+本批只读核对的 evidence/artifact source 包括新 Standard package manifest/root、DMG copied app、`scripts/build_macos_alpha.sh`、`scripts/package_macos_prototype.py`、`scripts/verify_macos_alpha.sh`、最终 executable 与 startup regression logs；没有 stage `.app`、`.dmg`、screenshots、traces 或 build root。
 
 ## 31. Validation
 
-7.3 完成后执行并记录：
+本批执行并记录：
 
-- `openspec validate beta-visual-experience-v3-deep-redesign --strict` → PASS；
-- `openspec validate --all --strict` → PASS；
+- `scripts/build_macos_alpha.sh` → PASS；新 Standard root `package-20260821T070254Z`。
+- `scripts/verify_macos_alpha.sh build/stage11/macos-arm64/package-20260821T070254Z/package-manifest.json` → PASS；DMG `hdiutil verify`、mount/copy/unmount、signature and manifest checks passed。
+- independent app-tree/executable/DMG hash comparison → PASS。
+- copied executable `file`/`lipo` → `Mach-O 64-bit executable arm64` / `arm64`。
+- copied app `codesign --verify --deep --strict` → PASS。
+- Standard startup regression → PASS：fresh DMG copy, Home window present, normal close exit code `0`, same-cache relaunch exit code `0`, pre-existing cache root `0755 → 0700`, no panic/abort markers。
 - `git diff --check` → PASS；
-- focused Stage11 Python command → 9 passed；
-- package hash/signature/DMG checks → PASS。
 
-因为 7.3 只有文档与 task checkbox 变化，没有重跑完整 product suite 或重新 package。
+本批没有重跑完整 product suite，也没有修改 OpenSpec；真实数据验收仍是用户手动职责。
 
 ## 32. Changed Files
 
 本批精确修改路径：
 
 - `/Users/chestnut/Projects/ChatHisotryAnalysis/docs/BETA_FINAL_ACCEPTANCE.md`
-- `/Users/chestnut/Projects/ChatHisotryAnalysis/openspec/changes/beta-visual-experience-v3-deep-redesign/tasks.md`
+- `/Users/chestnut/Projects/ChatHisotryAnalysis/src-tauri/resources/sidecar-trust-anchor.json`
 
 不得 stage `.app`、`.dmg`、screenshots、traces、build root。
 
 ## 33. OpenSpec
 
-- 7.3：before unchecked → after checked；
-- progress：`43/45` → `44/45`；
+- 本批 OpenSpec：unchanged；无需记录 packaging artifact update。
 - 7.4：before unchecked → after unchanged unchecked；
 - V3 readiness：仍 `V3_READY=false`；真实数据状态仍 `REAL_DATA_USER_ACCEPTANCE_PENDING=true`。
 
@@ -374,7 +379,7 @@ SHA-256：
 本节在验证通过后由 7.3 执行：
 
 - exact staging：只 stage 上述两个路径；
-- commit message：`docs: finalize v3 acceptance evidence`；
+- commit message：`build: regenerate Standard macOS candidate`；
 - push target：`origin/feat/implement-local-chat-wordcloud-mvp`；
 - commit hash 与 push result 记录在最终 handoff/final report。
 
@@ -382,7 +387,7 @@ SHA-256：
 
 预期并在 commit/push 后复核：
 
-- HEAD：7.3 docs commit；
+- HEAD：Standard candidate regeneration commit；
 - workspace：clean；
 - `git rev-list --left-right --count HEAD...@{upstream}`：`0 0`；
 - branch：`feat/implement-local-chat-wordcloud-mvp`。
